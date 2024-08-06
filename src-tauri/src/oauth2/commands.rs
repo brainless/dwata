@@ -1,32 +1,29 @@
-use super::OAuth2;
+use super::{OAuth2App, OAuth2Token};
 use crate::error::DwataError;
-use crate::workspace::{crud::CRUDRead, DwataDb};
+use crate::workspace::crud::CRUDRead;
+use sqlx::{Pool, Sqlite};
+use std::ops::Deref;
 use tauri::State;
 
 #[tauri::command]
-pub async fn get_oauth2_choice_list(
-    db: State<'_, DwataDb>,
+pub async fn get_oauth2_app_choice_list(
+    db: State<'_, Pool<Sqlite>>,
 ) -> Result<Vec<(String, String)>, DwataError> {
-    let mut db_guard = db.lock().await;
-    let all_oauth2_configs: Vec<OAuth2> = OAuth2::read_all(&mut db_guard).await?;
-    Ok(all_oauth2_configs
+    let db = db.deref();
+    let all_oauth2_apps = OAuth2App::read_all(db).await?;
+    Ok(all_oauth2_apps
         .iter()
-        .map(|x| {
-            (
-                format!("{}", x.id),
-                format!("{}", x.handle.as_ref().unwrap_or(&x.identifier.clone())),
-            )
-        })
+        .map(|x| (format!("{}", x.id), format!("{}", x.provider.to_string())))
         .collect())
 }
 
 #[tauri::command]
 pub async fn refetch_google_access_token(
     pk: i64,
-    store: State<'_, DwataDb>,
+    db: State<'_, Pool<Sqlite>>,
 ) -> Result<(), DwataError> {
-    let mut db_guard = store.lock().await;
-    let oauth2: OAuth2 = OAuth2::read_one_by_pk(pk, &mut db_guard).await?;
-    oauth2.refetch_google_access_token(&mut db_guard).await?;
+    let db = db.deref();
+    let mut oauth2_token: OAuth2Token = OAuth2Token::read_one_by_pk(pk, db).await?;
+    oauth2_token.refetch_google_access_token(db).await?;
     Ok(())
 }

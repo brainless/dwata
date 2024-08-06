@@ -1,9 +1,10 @@
 use super::helpers::generate_text_for_chat;
+use std::ops::Deref;
 // use crate::ai::AITools;
 // use crate::chat::api_types::{APIChatContextNode, APIChatReply, APIChatThread};
 use crate::error::DwataError;
 use crate::workspace::crud::InsertUpdateResponse;
-use crate::workspace::DwataDb;
+use sqlx::{Pool, Sqlite};
 use tauri::State;
 
 /// Tauri command to generate response for a chat thread.
@@ -19,9 +20,9 @@ use tauri::State;
 #[tauri::command]
 pub async fn chat_with_ai(
     chat_id: i64,
-    db: State<'_, DwataDb>,
+    db: State<'_, Pool<Sqlite>>,
 ) -> Result<InsertUpdateResponse, DwataError> {
-    generate_text_for_chat(chat_id, db).await
+    generate_text_for_chat(chat_id, db.deref()).await
 }
 
 // #[tauri::command]

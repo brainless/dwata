@@ -1,16 +1,15 @@
 use super::{Chat, ChatCreateUpdate, ChatFilters, ProcessStatus, Role};
-use crate::{
-    content::content::{Content, ContentType},
-    error::DwataError,
-    workspace::{
-        crud::{
-            CRUDCreateUpdate, CRUDRead, CRUDReadFilter, InputValue, InsertUpdateResponse,
-            VecColumnNameValue,
-        },
-        ModuleFilters,
+use crate::content::content::{Content, ContentType};
+use crate::error::DwataError;
+use crate::workspace::{
+    crud::{
+        CRUDCreateUpdate, CRUDRead, CRUDReadFilter, InputValue, InsertUpdateResponse,
+        VecColumnNameValue,
     },
+    ModuleFilters,
 };
 use chrono::Utc;
+use sqlx::{Pool, Sqlite};
 use std::str::FromStr;
 
 impl CRUDRead for Chat {
@@ -71,7 +70,7 @@ impl CRUDCreateUpdate for ChatCreateUpdate {
     async fn post_insert(
         &self,
         response: InsertUpdateResponse,
-        _db_connection: &mut sqlx::SqliteConnection,
+        _db: &Pool<Sqlite>,
     ) -> Result<InsertUpdateResponse, DwataError> {
         Ok(InsertUpdateResponse {
             next_task: Some("chat_with_ai".to_string()),

@@ -6,9 +6,9 @@ import { Content } from "../api_types/Content";
 import { DirectorySource } from "../api_types/DirectorySource";
 import { DatabaseSource } from "../api_types/DatabaseSource";
 import { AIIntegration } from "../api_types/AIIntegration";
-import { OAuth2 } from "../api_types/OAuth2";
 import { EmailAccount } from "../api_types/EmailAccount";
 import { Module } from "../api_types/Module";
+import { OAuth2App } from "../api_types/OAuth2App";
 
 interface ILabel {
   id: number;
@@ -49,7 +49,7 @@ interface IWorkspace {
   DirectorySource: Array<DirectorySource>;
   DatabaseSource: Array<DatabaseSource>;
   AIIntegration: Array<AIIntegration>;
-  OAuth2: Array<OAuth2>;
+  OAuth2App: Array<OAuth2App>;
   EmailAccount: Array<EmailAccount>;
 
   isReady: Partial<{ [key in Module]: boolean }>;

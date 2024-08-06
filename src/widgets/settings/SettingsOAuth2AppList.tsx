@@ -2,15 +2,15 @@ import { Component, For, createMemo } from "solid-js";
 import { useWorkspace } from "../../stores/workspace";
 import { useUserInterface } from "../../stores/userInterface";
 import { useNavigate } from "@solidjs/router";
-import { OAuth2 } from "../../api_types/OAuth2";
 import { Module } from "../../api_types/Module";
+import { OAuth2App } from "../../api_types/OAuth2App";
 
-const SettingsOAuth2Item: Component<OAuth2> = (props) => {
+const SettingsOAuth2AppItem: Component<OAuth2App> = (props) => {
   const [_, { getColors }] = useUserInterface();
   const navigate = useNavigate();
 
   const handleClick = () => {
-    navigate(`/settings/oauth2/edit/${props.id}`);
+    navigate(`/settings/oauth2-app/edit/${props.id}`);
   };
 
   return (
@@ -23,7 +23,7 @@ const SettingsOAuth2Item: Component<OAuth2> = (props) => {
       onClick={handleClick}
     >
       <i class="fa-solid fa-database w-6 text-gray-500" />
-      {props.handle}
+      {props.provider}
       <div>
         <span class="text-xs bg-gray-500 text-gray-900 rounded-sm px-2">
           {props.provider}
@@ -33,9 +33,9 @@ const SettingsOAuth2Item: Component<OAuth2> = (props) => {
   );
 };
 
-const SettingsOAuth2List: Component = () => {
+const SettingsOAuth2AppList: Component = () => {
   const [workspace] = useWorkspace();
-  const module: Module = "OAuth2";
+  const module: Module = "OAuth2App";
 
   const getItems = createMemo(() => {
     if (!workspace.isFetching[module] && !!workspace.isReady[module]) {
@@ -46,9 +46,11 @@ const SettingsOAuth2List: Component = () => {
 
   return (
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      <For each={getItems()}>{(item) => <SettingsOAuth2Item {...item} />}</For>
+      <For each={getItems()}>
+        {(item) => <SettingsOAuth2AppItem {...item} />}
+      </For>
     </div>
   );
 };
 
-export default SettingsOAuth2List;
+export default SettingsOAuth2AppList;

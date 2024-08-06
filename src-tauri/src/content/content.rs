@@ -1,5 +1,3 @@
-use std::default;
-
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 

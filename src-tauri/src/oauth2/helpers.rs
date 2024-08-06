@@ -4,7 +4,8 @@ use log::error;
 use oauth2::reqwest::async_http_client;
 use oauth2::{basic::BasicClient, TokenResponse};
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, RequestTokenError,
+    Scope, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};

@@ -3,9 +3,10 @@ use crate::content::content::{ContentSpec, ContentType, TextType};
 use crate::content::form::FormField;
 use crate::error::DwataError;
 use crate::workspace::api::{Configuration, NextStep, Writable};
+use sqlx::{Pool, Sqlite};
 
 impl Writable for Chat {
-    fn initiate() -> Result<NextStep, DwataError> {
+    fn initiate(_db: &Pool<Sqlite>) -> Result<NextStep, DwataError> {
         Ok(NextStep::Configure(Configuration::new(
             "Chat with AI",
             "Chat with AI models, sharing your objectives and let AI help you find solutions",

@@ -3,8 +3,10 @@ import type { AIIntegration } from "./AIIntegration";
 import type { Chat } from "./Chat";
 import type { DatabaseSource } from "./DatabaseSource";
 import type { DirectorySource } from "./DirectorySource";
+import type { Email } from "./Email";
 import type { EmailAccount } from "./EmailAccount";
-import type { OAuth2 } from "./OAuth2";
+import type { Mailbox } from "./Mailbox";
+import type { OAuth2App } from "./OAuth2App";
 import type { UserAccount } from "./UserAccount";
 
 export type ModuleDataReadList =
@@ -13,5 +15,7 @@ export type ModuleDataReadList =
   | { type: "DatabaseSource"; data: Array<DatabaseSource> }
   | { type: "AIIntegration"; data: Array<AIIntegration> }
   | { type: "Chat"; data: Array<Chat> }
-  | { type: "OAuth2"; data: Array<OAuth2> }
-  | { type: "EmailAccount"; data: Array<EmailAccount> };
+  | { type: "OAuth2App"; data: Array<OAuth2App> }
+  | { type: "EmailAccount"; data: Array<EmailAccount> }
+  | { type: "Mailbox"; data: Array<Mailbox> }
+  | { type: "Email"; data: Array<Email> };

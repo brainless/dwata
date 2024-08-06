@@ -10,7 +10,7 @@ const makeStore = () => {
     DirectorySource: [],
     DatabaseSource: [],
     AIIntegration: [],
-    OAuth2: [],
+    OAuth2App: [],
     EmailAccount: [],
 
     isReady: {},

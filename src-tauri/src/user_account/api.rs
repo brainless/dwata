@@ -1,3 +1,5 @@
+use sqlx::{Pool, Sqlite};
+
 use super::UserAccount;
 use crate::content::content::{ContentSpec, ContentType};
 use crate::content::form::FormField;
@@ -5,7 +7,7 @@ use crate::error::DwataError;
 use crate::workspace::api::{Configuration, NextStep, Writable};
 
 impl Writable for UserAccount {
-    fn initiate() -> Result<NextStep, DwataError> {
+    fn initiate(_db: &Pool<Sqlite>) -> Result<NextStep, DwataError> {
         Ok(NextStep::Configure(Configuration::new(
             "User Account",
             "User account details",

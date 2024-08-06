@@ -6,7 +6,7 @@ export type EmailAccount = {
   provider: EmailProvider;
   emailAddress: string;
   password: string | null;
-  oauth2Id: bigint | null;
+  oauth2TokenId: bigint | null;
   createdAt: string;
   modifiedAt: string | null;
 };

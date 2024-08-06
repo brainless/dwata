@@ -5,6 +5,7 @@ CREATE TABLE chat
     id                          INTEGER PRIMARY KEY,
 
     root_chat_id                INTEGER,
+    compared_to_root_chat_id    INTEGER,
     role                        VARCHAR(60),
     message                     TEXT,
 
@@ -12,5 +13,7 @@ CREATE TABLE chat
     process_status              JSON,
 
     created_at                  DATETIME NOT NULL,
-    FOREIGN KEY (root_chat_id) REFERENCES chat (id) ON DELETE CASCADE
+
+    FOREIGN KEY (root_chat_id) REFERENCES chat (id) ON DELETE CASCADE,
+    FOREIGN KEY (compared_to_root_chat_id) REFERENCES chat_temp (id) ON DELETE CASCADE
 );

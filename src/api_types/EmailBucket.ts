@@ -2,8 +2,8 @@
 
 export type EmailBucket = {
   id: number;
-  rootEmailId: number;
-  idList: Array<number>;
+  rootEmailUid: number;
+  uidList: Array<number>;
   summary: string | null;
   areInAThread: boolean | null;
   areSimilar: boolean | null;

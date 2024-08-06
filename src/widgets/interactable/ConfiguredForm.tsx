@@ -3,7 +3,6 @@ import {
   For,
   JSX,
   createComputed,
-  createMemo,
   createResource,
   createSignal,
   onMount,
@@ -38,7 +37,7 @@ const Form: Component<IPropTypes> = (props) => {
   const [formData, setFormData] = createSignal<{
     [key: string]: IFormFieldValue;
   }>({});
-  const [dirty, setDirty] = createSignal<Array<string>>([]);
+  // const [dirty, setDirty] = createSignal<Array<string>>([]);
   const navigate = useNavigate();
   const [_, { getColors }] = useUserInterface();
 
@@ -103,6 +102,8 @@ const Form: Component<IPropTypes> = (props) => {
       moduleData() !== undefined &&
       props.module in moduleData()!
     ) {
+      console.log(moduleData());
+
       let _data: { [key: string]: IFormFieldValue } = {};
       let fieldNames = config()!.fields.map((f) => f.name);
       for (const [key, value] of Object.entries(
@@ -117,6 +118,8 @@ const Form: Component<IPropTypes> = (props) => {
         ...state,
         ..._data,
       }));
+
+      // Once we set existing data, we return true so this computation will not run again
       return true;
     }
     return false;
@@ -140,9 +143,9 @@ const Form: Component<IPropTypes> = (props) => {
               [field.name]: value,
             }));
 
-            setDirty((state) =>
-              state.includes(field.name) ? state : [...state, field.name],
-            );
+            // setDirty((state) =>
+            //   state.includes(field.name) ? state : [...state, field.name],
+            // );
           }
         }
       }
@@ -155,30 +158,23 @@ const Form: Component<IPropTypes> = (props) => {
       [name]: value,
     }));
 
-    setDirty((state) => (state.includes(name) ? state : [...state, name]));
+    // setDirty((state) => (state.includes(name) ? state : [...state, name]));
 
     // Let's check if the form configuration has changes for this change in form data
     refetchModuleConfiguration({
-      [props.module]: dirty().reduce(
-        (acc, name) => ({ ...acc, [name]: formData()[name] }),
-        {},
-      ),
+      [props.module]: formData(),
     });
   };
 
   const submitForm = async () => {
     const data = {
-      [props.module]: dirty().reduce(
-        (acc, name) => ({ ...acc, [name]: formData()[name] }),
-        {},
-      ),
+      [props.module]: formData(),
     };
 
     if (!!props.existingItemId) {
       console.info(
-        `Submitting form data to update module ${props.module}, item ID ${props.existingItemId}, data, dirty:`,
+        `Submitting form data to update module ${props.module}, item ID ${props.existingItemId}, data:`,
         formData(),
-        dirty(),
       );
       const response = await invoke<InsertUpdateResponse>(
         "update_module_item",
@@ -192,9 +188,8 @@ const Form: Component<IPropTypes> = (props) => {
       }
     } else {
       console.info(
-        `Submitting form data to insert into module: ${props.module}, data, dirty:`,
+        `Submitting form data to insert into module: ${props.module}, data:`,
         formData(),
-        dirty(),
       );
 
       const response = await invoke<InsertUpdateResponse>(
@@ -228,12 +223,8 @@ const Form: Component<IPropTypes> = (props) => {
     event,
   ) => {
     event.preventDefault();
-
     const data = {
-      [props.module]: dirty().reduce(
-        (acc, name) => ({ ...acc, [name]: formData()[name] }),
-        {},
-      ),
+      [props.module]: formData(),
     };
     let response = await invoke<NextStep>("module_insert_or_update_next_step", {
       module: props.module,

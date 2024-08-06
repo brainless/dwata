@@ -10,7 +10,7 @@ import { SettingsWrapper, SettingsRoutes } from "./routes/Settings";
 import UserAccountForm from "./routes/UserAccountForm";
 import { ChatRoutes, ChatWrapper } from "./routes/Chat";
 import DirectoryBrowser from "./routes/DirectoryBrowser";
-import Search from "./routes/Search";
+import SearchWrapper from "./routes/Search";
 
 render(
   () => (
@@ -24,7 +24,7 @@ render(
       <Route path={"/chat"} component={ChatWrapper}>
         <ChatRoutes />
       </Route>
-      <Route path={"/search"} component={Search} />
+      <Route path={"/search"} component={SearchWrapper} />
       <Route path={"/"} component={Home} />
     </Router>
   ),

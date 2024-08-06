@@ -2,18 +2,17 @@ use super::{DirectorySource, File};
 use crate::content::containers::HeterogeneousContentArray;
 use crate::error::DwataError;
 use crate::workspace::crud::CRUDRead;
-use crate::workspace::DwataDb;
-use std::path::PathBuf;
+use sqlx::{Pool, Sqlite};
+use std::{ops::Deref, path::PathBuf};
 use tauri::State;
 
 #[tauri::command]
 pub(crate) async fn fetch_file_list_in_directory(
     directory_id: i64,
-    db: State<'_, DwataDb>,
+    db: State<'_, Pool<Sqlite>>,
 ) -> Result<Vec<File>, DwataError> {
-    let mut db_guard = db.lock().await;
     // Find the Directory matching the given folder_id
-    match DirectorySource::read_one_by_pk(directory_id, &mut db_guard).await {
+    match DirectorySource::read_one_by_pk(directory_id, db.deref()).await {
         Ok(directory) => Ok(directory.get_file_list()),
         Err(x) => Err(x),
     }
@@ -23,11 +22,10 @@ pub(crate) async fn fetch_file_list_in_directory(
 pub(crate) async fn fetch_file_content_list(
     directory_id: i64,
     relative_file_path: &str,
-    db: State<'_, DwataDb>,
+    db: State<'_, Pool<Sqlite>>,
 ) -> Result<HeterogeneousContentArray, DwataError> {
-    let mut db_guard = db.lock().await;
     // Find the Directory matching the given folder_id
-    match DirectorySource::read_one_by_pk(directory_id, &mut db_guard).await {
+    match DirectorySource::read_one_by_pk(directory_id, db.deref()).await {
         Ok(directory) => {
             // We assume we are reading Markdown files only
             // We parse Markdown file with comrak and extract headings and paragraphs only

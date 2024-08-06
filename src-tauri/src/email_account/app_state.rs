@@ -1,5 +1,5 @@
-use super::EmailAccountIMAPStatus;
+use super::EmailAccountStatus;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-pub type EmailAccountsState = Arc<Mutex<Vec<EmailAccountIMAPStatus>>>;
+pub type EmailAccountsState = Arc<Mutex<Vec<EmailAccountStatus>>>;

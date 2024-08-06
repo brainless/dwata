@@ -43,12 +43,10 @@ reqwest = { version = "0.11.24", features = ["blocking", "json"] }
 serde_json = "1.0.114"
 tokio = { version = "1.36.0", features = ["macros", "rt-multi-thread"] }
 log = "0.4.21"
-openai = { path = "openai" }
 comrak = "0.23.0"
 glob = "0.3.1"
 uuid = "1.8.0"
 env_logger = "0.11.3"
-derive_builder = "0.20.0"
 strum = { version = "0.26.2", features = ["derive"] }
 oauth2 = "4.4.2"
 imap = "2.4.1"
@@ -56,6 +54,8 @@ native-tls = "0.2.12"
 mail-parser = "0.9.3"
 similar = "2.5.0"
 slug = "0.1.5"
+openai = { version = "2.0.0", path = "openai" }
+tantivy = "0.22.0"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

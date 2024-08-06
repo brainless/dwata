@@ -17,7 +17,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@fortawesome/fontawesome-free": "^6.5.2",
+    "@fortawesome/fontawesome-free": "^6.6.0",
     "@solidjs/router": "^0.12.5",
     "@tauri-apps/api": "2.0.0-beta.3",
     "@tauri-apps/plugin-shell": "2.0.0-beta.1",
@@ -30,9 +30,9 @@
     "postcss": "^8.4.39",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.5.14",
-    "tailwindcss": "^3.4.5",
+    "tailwindcss": "^3.4.6",
     "typescript": "^5.5.3",
-    "vite": "^5.3.3",
+    "vite": "^5.3.4",
     "vite-plugin-solid": "^2.10.2"
   }
 }

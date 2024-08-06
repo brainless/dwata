@@ -6,5 +6,7 @@ export type Module =
   | "DatabaseSource"
   | "AIIntegration"
   | "Chat"
-  | "OAuth2"
-  | "EmailAccount";
+  | "OAuth2App"
+  | "EmailAccount"
+  | "Mailbox"
+  | "Email";

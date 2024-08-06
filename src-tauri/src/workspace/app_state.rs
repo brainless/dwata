@@ -1,19 +1,18 @@
 use crate::error::DwataError;
 use log::{error, info};
 use sqlx::migrate::{MigrateDatabase, Migrator};
-use sqlx::{Connection, Sqlite, SqliteConnection};
+use sqlx::{Pool, Sqlite};
 use std::fs::create_dir_all;
-use std::path::{Path, PathBuf};
-use tokio::sync::Mutex;
-
-pub type DwataDb = Mutex<SqliteConnection>;
+use std::path::PathBuf;
 
 pub async fn get_database_connection(
-    app_config_dir: &PathBuf,
+    app_data_dir: &PathBuf,
     migrations_dir: PathBuf,
-) -> Result<SqliteConnection, DwataError> {
-    let mut path = app_config_dir.clone();
-    if let Ok(false) = Path::try_exists(app_config_dir) {
+) -> Result<Pool<Sqlite>, DwataError> {
+    let mut path = app_data_dir.clone();
+    path.push("databases");
+    path.push("sqlite3");
+    if !path.as_path().exists() {
         create_dir_all(path.as_path()).unwrap_or_else(|_| {});
     }
     path.push("dwata.sqlite3");
@@ -23,10 +22,10 @@ pub async fn get_database_connection(
         info!("Could not find existing Dwata DB, creating");
         Sqlite::create_database(db_path).await?;
     }
-    match SqliteConnection::connect(db_path).await {
-        Ok(mut connection) => match Migrator::new(migrations_dir).await {
+    match Pool::<Sqlite>::connect(db_path).await {
+        Ok(connection) => match Migrator::new(migrations_dir).await {
             Ok(migrator) => {
-                migrator.run(&mut connection).await?;
+                migrator.run(&connection).await?;
                 Ok(connection)
             }
             Err(err) => {

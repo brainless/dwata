@@ -1,19 +1,12 @@
 use super::ModuleFilters;
-use crate::ai_integration::{AIIntegration, AIIntegrationCreateUpdate};
-use crate::chat::{Chat, ChatCreateUpdate};
 use crate::content::content::{Content, ContentType};
-use crate::database_source::{DatabaseSource, DatabaseSourceCreateUpdate};
-use crate::directory_source::{DirectorySource, DirectorySourceCreateUpdate};
-use crate::email_account::{EmailAccount, EmailAccountCreateUpdate};
 use crate::error::DwataError;
-use crate::oauth2::{OAuth2, OAuth2CreateUpdate};
-use crate::user_account::{UserAccount, UserAccountCreateUpdate};
 use chrono::{DateTime, Utc};
 use log::{error, info};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use sqlx::sqlite::SqliteRow;
-use sqlx::{query_as, Execute, FromRow, QueryBuilder, Sqlite, SqliteConnection};
+use sqlx::{query_as, Execute, FromRow, Pool, QueryBuilder, Sqlite};
 use ts_rs::TS;
 
 pub trait CRUDRead {
@@ -23,13 +16,13 @@ pub trait CRUDRead {
         None
     }
 
-    async fn read_all_helper(db_connection: &mut SqliteConnection) -> Result<Vec<Self>, DwataError>
+    async fn read_all_helper(db: &Pool<Sqlite>) -> Result<Vec<Self>, DwataError>
     where
         Self: Sized + Send + Unpin,
         for<'r> Self: FromRow<'r, SqliteRow>,
     {
         match query_as(&format!("SELECT * FROM {}", Self::table_name()))
-            .fetch_all(db_connection)
+            .fetch_all(db)
             .await
         {
             Ok(result) => {
@@ -51,7 +44,7 @@ pub trait CRUDRead {
         }
     }
 
-    async fn read_all(db_connection: &mut SqliteConnection) -> Result<Vec<Self>, DwataError>
+    async fn read_all(db: &Pool<Sqlite>) -> Result<Vec<Self>, DwataError>
     where
         Self: Sized + Send + Unpin,
         for<'r> Self: FromRow<'r, SqliteRow>,
@@ -60,19 +53,18 @@ pub trait CRUDRead {
         let default_filters = Self::set_default_filters();
         match default_filters {
             Some(filters) => match filters {
-                ModuleFilters::AIIntegration(x) => {
-                    Self::read_with_filter_helper(x, db_connection).await
+                ModuleFilters::AIIntegration(x) => Self::read_with_filter_helper(x, db).await,
+                ModuleFilters::Chat(x) => Self::read_with_filter_helper(x, db).await,
+                _ => {
+                    error!("Invalid module {}", filters.to_string());
+                    Err(DwataError::ModuleNotFound)
                 }
-                ModuleFilters::Chat(x) => Self::read_with_filter_helper(x, db_connection).await,
             },
-            None => Self::read_all_helper(db_connection).await,
+            None => Self::read_all_helper(db).await,
         }
     }
 
-    async fn read_one_by_pk(
-        pk: i64,
-        db_connection: &mut SqliteConnection,
-    ) -> Result<Self, DwataError>
+    async fn read_one_by_pk(pk: i64, db: &Pool<Sqlite>) -> Result<Self, DwataError>
     where
         Self: Sized + Send + Unpin,
         for<'r> Self: FromRow<'r, SqliteRow>,
@@ -82,7 +74,7 @@ pub trait CRUDRead {
             Self::table_name()
         ))
         .bind(pk)
-        .fetch_one(db_connection)
+        .fetch_one(db)
         .await;
         match result {
             Ok(row) => {
@@ -106,7 +98,7 @@ pub trait CRUDRead {
 
     async fn read_with_filter_helper<T>(
         filters: T,
-        db_connection: &mut SqliteConnection,
+        db: &Pool<Sqlite>,
     ) -> Result<Vec<Self>, DwataError>
     where
         Self: Sized + Send + Unpin,
@@ -152,7 +144,7 @@ pub trait CRUDRead {
         }
         let executable = builder.build_query_as();
         let sql = &executable.sql();
-        match executable.fetch_all(&mut *db_connection).await {
+        match executable.fetch_all(db).await {
             Ok(rows) => {
                 info!(
                     "Fetched {} rows from Dwata DB, table {}",
@@ -173,16 +165,13 @@ pub trait CRUDRead {
         }
     }
 
-    async fn read_with_filter<T>(
-        filters: T,
-        db_connection: &mut SqliteConnection,
-    ) -> Result<Vec<Self>, DwataError>
+    async fn read_with_filter<T>(filters: T, db: &Pool<Sqlite>) -> Result<Vec<Self>, DwataError>
     where
         Self: Sized + Send + Unpin,
         for<'r> Self: FromRow<'r, SqliteRow>,
         T: CRUDReadFilter,
     {
-        Self::read_with_filter_helper(filters, db_connection).await
+        Self::read_with_filter_helper(filters, db).await
     }
 }
 
@@ -190,31 +179,6 @@ pub trait CRUDReadFilter {
     fn get_column_names_values_to_filter(&self) -> VecColumnNameValue {
         VecColumnNameValue::default()
     }
-}
-
-#[derive(Serialize, TS)]
-#[ts(export)]
-pub enum ModuleDataRead {
-    UserAccount(UserAccount),
-    DirectorySource(DirectorySource),
-    DatabaseSource(DatabaseSource),
-    AIIntegration(AIIntegration),
-    Chat(Chat),
-    OAuth2(OAuth2),
-    EmailAccount(EmailAccount),
-}
-
-#[derive(Serialize, TS)]
-#[serde(tag = "type", content = "data")]
-#[ts(export)]
-pub enum ModuleDataReadList {
-    UserAccount(Vec<UserAccount>),
-    DirectorySource(Vec<DirectorySource>),
-    DatabaseSource(Vec<DatabaseSource>),
-    AIIntegration(Vec<AIIntegration>),
-    Chat(Vec<Chat>),
-    OAuth2(Vec<OAuth2>),
-    EmailAccount(Vec<EmailAccount>),
 }
 
 #[derive(Clone)]
@@ -228,11 +192,17 @@ pub enum InputValue {
 }
 
 #[derive(Default)]
-pub struct VecColumnNameValue(Vec<(String, InputValue)>);
+pub struct VecColumnNameValue(pub Vec<(String, InputValue)>);
 
 impl VecColumnNameValue {
     pub fn push_name_value(&mut self, name: &str, value: InputValue) {
         self.0.push((name.to_string(), value));
+    }
+
+    pub fn find_by_name(&self, name: &str) -> Option<InputValue> {
+        self.0
+            .iter()
+            .find_map(|(x, y)| if x == name { Some(y.clone()) } else { None })
     }
 }
 
@@ -252,19 +222,16 @@ pub trait CRUDCreateUpdate {
 
     fn get_column_names_values(&self) -> Result<VecColumnNameValue, DwataError>;
 
-    async fn pre_insert(
-        &self,
-        _db_connection: &mut SqliteConnection,
-    ) -> Result<VecColumnNameValue, DwataError> {
+    async fn pre_insert(&self, _db: &Pool<Sqlite>) -> Result<VecColumnNameValue, DwataError> {
         Ok(VecColumnNameValue::default())
     }
 
     async fn insert_module_data(
         &self,
-        db_connection: &mut SqliteConnection,
+        db: &Pool<Sqlite>,
     ) -> Result<InsertUpdateResponse, DwataError> {
         let column_names_values: VecColumnNameValue = self.get_column_names_values()?;
-        let other_column_names_values: VecColumnNameValue = self.pre_insert(db_connection).await?;
+        let other_column_names_values: VecColumnNameValue = self.pre_insert(db).await?;
         let column_names_values = VecColumnNameValue {
             0: [column_names_values.0, other_column_names_values.0].concat(),
         };
@@ -307,7 +274,7 @@ pub trait CRUDCreateUpdate {
         builder.push(")");
         let executable = builder.build();
         let sql = &executable.sql();
-        match executable.execute(&mut *db_connection).await {
+        match executable.execute(db).await {
             Ok(result) => {
                 info!(
                     "Inserted into Dwata DB, table {}:\nSQL: {}",
@@ -320,7 +287,7 @@ pub trait CRUDCreateUpdate {
                         next_task: None,
                         arguments: None,
                     },
-                    db_connection,
+                    db,
                 )
                 .await
             }
@@ -339,7 +306,7 @@ pub trait CRUDCreateUpdate {
     async fn post_insert(
         &self,
         response: InsertUpdateResponse,
-        _db_connection: &mut SqliteConnection,
+        _db: &Pool<Sqlite>,
     ) -> Result<InsertUpdateResponse, DwataError> {
         Ok(response)
     }
@@ -347,7 +314,7 @@ pub trait CRUDCreateUpdate {
     async fn update_module_data(
         &self,
         pk: i64,
-        db_connection: &mut SqliteConnection,
+        db: &Pool<Sqlite>,
     ) -> Result<InsertUpdateResponse, DwataError> {
         let mut builder: QueryBuilder<Sqlite> =
             QueryBuilder::new(format!("UPDATE {} SET ", Self::table_name()));
@@ -383,7 +350,7 @@ pub trait CRUDCreateUpdate {
         builder.push_bind(pk);
         let executable = builder.build();
         let sql = &executable.sql();
-        match executable.execute(&mut *db_connection).await {
+        match executable.execute(db).await {
             Ok(_) => {
                 info!(
                     "Updated Dwata DB, table {}:\nSQL: {}",
@@ -407,16 +374,4 @@ pub trait CRUDCreateUpdate {
             }
         }
     }
-}
-
-#[derive(Deserialize, TS)]
-#[ts(export)]
-pub enum ModuleDataCreateUpdate {
-    UserAccount(UserAccountCreateUpdate),
-    DirectorySource(DirectorySourceCreateUpdate),
-    DatabaseSource(DatabaseSourceCreateUpdate),
-    AIIntegration(AIIntegrationCreateUpdate),
-    Chat(ChatCreateUpdate),
-    OAuth2(OAuth2CreateUpdate),
-    EmailAccount(EmailAccountCreateUpdate),
 }

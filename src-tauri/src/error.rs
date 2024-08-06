@@ -27,6 +27,8 @@ pub enum DwataError {
     // Workspace and configuration
     ModuleNotFound,
     NextStepNotAvailable,
+    CouldNotReadAppUpdates,
+    ModuleNotWritable,
 
     // AI providers/models/features
     InvalidAIModel,
@@ -52,8 +54,10 @@ pub enum DwataError {
     // Directory related
     CouldNotOpenDirectory,
 
-    // Task related
+    // Task and app state related
     InvalidTaskStatus,
+    TaskHasRunRecently,
+    AppStateNotFound,
 
     // API requests related
     CouldNotConnectToAPI,
@@ -70,11 +74,22 @@ pub enum DwataError {
 
     // Email related
     InvalidEmailProvider,
+    InvalidEmailAddress,
+    InvalidMailbox,
     CouldNotReadMailBody,
     CouldNotCreateLocalEmailStorage,
     CouldNotOpenLocalEmailStorage,
     CouldNotParseEmailFile,
     CouldNotSelectMailbox,
+    CouldNotListMailboxes,
+    MailboxHasNoNewEmails,
+
+    // Search related
+    CouldNotCreateSearchIndex,
+    SearchIndexDoesNotExist,
+    CouldNotOpenSearchIndex,
+    CouldNotParseSearchQuery,
+    CouldNotSearchTheIndex,
 }
 
 impl Error for DwataError {

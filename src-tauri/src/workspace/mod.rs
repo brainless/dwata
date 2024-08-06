@@ -1,16 +1,24 @@
-use crate::{ai_integration::AIIntegrationFilters, chat::ChatFilters};
-use serde::Deserialize;
+use crate::ai_integration::{AIIntegration, AIIntegrationCreateUpdate, AIIntegrationFilters};
+use crate::chat::{Chat, ChatCreateUpdate, ChatFilters};
+use crate::database_source::{DatabaseSource, DatabaseSourceCreateUpdate};
+use crate::directory_source::{DirectorySource, DirectorySourceCreateUpdate};
+use crate::email::{Email, EmailFilters};
+use crate::email_account::{EmailAccount, EmailAccountCreateUpdate, Mailbox};
+use crate::oauth2::{OAuth2App, OAuth2AppCreateUpdate};
+use crate::user_account::{UserAccount, UserAccountCreateUpdate};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::{types::Json, FromRow, Type};
+use strum::{Display, EnumString};
 use ts_rs::TS;
 
 pub mod api;
 pub mod app_state;
 pub mod commands;
 pub mod crud;
-pub mod typesense;
+pub mod process_log;
 
-pub use app_state::DwataDb;
-
-#[derive(Deserialize, TS)]
+#[derive(Deserialize, Display, TS)]
 #[ts(export)]
 pub enum Module {
     UserAccount,
@@ -18,15 +26,105 @@ pub enum Module {
     DatabaseSource,
     AIIntegration,
     Chat,
-    OAuth2,
+    OAuth2App,
     EmailAccount,
+    Mailbox,
+    Email,
+}
+
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub enum ModuleDataRead {
+    UserAccount(UserAccount),
+    DirectorySource(DirectorySource),
+    DatabaseSource(DatabaseSource),
+    AIIntegration(AIIntegration),
+    Chat(Chat),
+    OAuth2App(OAuth2App),
+    EmailAccount(EmailAccount),
+    Mailbox(Mailbox),
+    Email(Email),
+}
+
+#[derive(Serialize, TS)]
+#[serde(tag = "type", content = "data")]
+#[ts(export)]
+pub enum ModuleDataReadList {
+    UserAccount(Vec<UserAccount>),
+    DirectorySource(Vec<DirectorySource>),
+    DatabaseSource(Vec<DatabaseSource>),
+    AIIntegration(Vec<AIIntegration>),
+    Chat(Vec<Chat>),
+    OAuth2App(Vec<OAuth2App>),
+    EmailAccount(Vec<EmailAccount>),
+    Mailbox(Vec<Mailbox>),
+    Email(Vec<Email>),
 }
 
 #[derive(Deserialize, TS)]
 #[ts(export)]
+pub enum ModuleDataCreateUpdate {
+    UserAccount(UserAccountCreateUpdate),
+    DirectorySource(DirectorySourceCreateUpdate),
+    DatabaseSource(DatabaseSourceCreateUpdate),
+    AIIntegration(AIIntegrationCreateUpdate),
+    Chat(ChatCreateUpdate),
+    OAuth2App(OAuth2AppCreateUpdate),
+    EmailAccount(EmailAccountCreateUpdate),
+}
+
+#[derive(Deserialize, Display, TS)]
+#[ts(export)]
 pub enum ModuleFilters {
     AIIntegration(AIIntegrationFilters),
     Chat(ChatFilters),
+    Email(EmailFilters),
+}
+
+#[derive(Clone, Serialize, Type, TS, EnumString, Display)]
+#[sqlx(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+#[ts(export)]
+pub enum ProcessInLog {
+    CheckEmails,
+    FetchEmails,
+    ParseEmails,
+    IndexEmails,
+}
+
+#[derive(Clone, Serialize, Type, TS, EnumString, Display)]
+#[sqlx(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+#[ts(export)]
+pub enum ProcessingStatusInLog {
+    Pending,
+    InProgress,
+    Completed,
+}
+
+#[derive(Clone, Serialize, FromRow, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub struct ProcessLog {
+    #[ts(type = "number")]
+    pub id: i64,
+    pub task: ProcessInLog,
+    #[ts(type = "Array<[string, string]>")]
+    pub arguments: Json<Vec<(String, String)>>,
+    pub status: ProcessingStatusInLog,
+    pub is_sent_to_frontend: bool,
+
+    pub created_at: DateTime<Utc>,
+    pub modified_at: Option<DateTime<Utc>>,
+}
+
+pub struct ProcessLogCreateUpdate {
+    pub process: Option<ProcessInLog>,
+    pub arguments: Option<Vec<(String, String)>>,
+    pub status: Option<ProcessingStatusInLog>,
+    pub is_sent_to_frontend: Option<bool>,
 }
 
 // impl ChatContextNode for Config {

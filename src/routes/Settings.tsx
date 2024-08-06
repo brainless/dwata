@@ -8,16 +8,16 @@ import AIIntegrationForm from "../widgets/settings/AIIntegrationForm";
 import SettingsAIIntegrationList from "../widgets/settings/SettingsAIIntegrationList";
 import DirectorySourceForm from "../widgets/settings/DirectorySourceForm";
 import { useWorkspace } from "../stores/workspace";
-import Oauth2Form from "../widgets/settings/OAuth2Form";
+import Oauth2AppForm from "../widgets/settings/OAuth2AppForm";
 import EmailAccountForm from "../widgets/settings/EmailAccountForm";
-import SettingsOAuth2List from "../widgets/settings/SettingsOAuth2List";
+import SettingsOAuth2AppList from "../widgets/settings/SettingsOAuth2AppList";
 import SettingsEmailAccountList from "../widgets/settings/SettingsEmailAccountList";
 
 const SettingsIndex: Component = () => {
   const [_w, { readModuleList }] = useWorkspace();
   const [_data, { refetch }] = createResource(async () => {
     await readModuleList("AIIntegration");
-    await readModuleList("OAuth2");
+    await readModuleList("OAuth2App");
     await readModuleList("EmailAccount");
   });
 
@@ -66,12 +66,12 @@ const SettingsIndex: Component = () => {
       ></Button>
       <div class="mb-6" />
 
-      <Heading size="xl">OAuth2 credentials</Heading>
-      <SettingsOAuth2List />
+      <Heading size="xl">OAuth2 apps</Heading>
+      <SettingsOAuth2AppList />
       <div class="mb-2" />
       <Button
-        label="Add Oauth2 credentials"
-        href="/settings/oauth2/add"
+        label="Add Oauth2 app"
+        href="/settings/oauth2-app/add"
         size="sm"
       ></Button>
       <div class="mb-6" />
@@ -115,8 +115,8 @@ const SettingsRoutes: Component = () => {
       <Route path="/ai-integration/add" component={AIIntegrationForm} />
       <Route path="/ai-integration/edit/:id" component={AIIntegrationForm} />
 
-      <Route path="/oauth2/add" component={Oauth2Form} />
-      <Route path="/oauth2/edit/:id" component={Oauth2Form} />
+      <Route path="/oauth2-app/add" component={Oauth2AppForm} />
+      <Route path="/oauth2-app/edit/:id" component={Oauth2AppForm} />
 
       <Route path="/email-account/add" component={EmailAccountForm} />
       <Route path="/email-account/edit/:id" component={EmailAccountForm} />

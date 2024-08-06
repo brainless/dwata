@@ -4,7 +4,7 @@ import type { ChatCreateUpdate } from "./ChatCreateUpdate";
 import type { DatabaseSourceCreateUpdate } from "./DatabaseSourceCreateUpdate";
 import type { DirectorySourceCreateUpdate } from "./DirectorySourceCreateUpdate";
 import type { EmailAccountCreateUpdate } from "./EmailAccountCreateUpdate";
-import type { OAuth2CreateUpdate } from "./OAuth2CreateUpdate";
+import type { OAuth2AppCreateUpdate } from "./OAuth2AppCreateUpdate";
 import type { UserAccountCreateUpdate } from "./UserAccountCreateUpdate";
 
 export type ModuleDataCreateUpdate =
@@ -13,5 +13,5 @@ export type ModuleDataCreateUpdate =
   | { DatabaseSource: DatabaseSourceCreateUpdate }
   | { AIIntegration: AIIntegrationCreateUpdate }
   | { Chat: ChatCreateUpdate }
-  | { OAuth2: OAuth2CreateUpdate }
+  | { OAuth2App: OAuth2AppCreateUpdate }
   | { EmailAccount: EmailAccountCreateUpdate };
