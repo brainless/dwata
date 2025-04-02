@@ -21,8 +21,8 @@ importers:
         specifier: 2.0.0-beta.3
         version: 2.0.0-beta.3
       '@tauri-apps/plugin-shell':
-        specifier: 2.0.0-beta.1
-        version: 2.0.0-beta.1
+        specifier: 2.2.1
+        version: 2.2.1
       marked:
         specifier: ^13.0.3
         version: 13.0.3
@@ -426,13 +426,12 @@ packages:
     peerDependencies:
       solid-js: ^1.8.6
 
-  '@tauri-apps/api@2.0.0-beta.2':
-    resolution: {integrity: sha512-4r1r6kgttzIWxJ3HxkZQH+b7EiUtKhdUCPbi0KSalD+2T3j6klw+v8VyxhKwEdjM/eo60NE+J33v1E/Urq8puw==}
-    engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
-
   '@tauri-apps/api@2.0.0-beta.3':
     resolution: {integrity: sha512-gDSJzKpBs6efXw2ZWqjl9QVNImY5GR5qygXqB7JK4y7prcQInxnTj2ARFR0vD4wuzkrUHGrlIKraiJJPHWJ9vg==}
     engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
+
+  '@tauri-apps/api@2.4.1':
+    resolution: {integrity: sha512-5sYwZCSJb6PBGbBL4kt7CnE5HHbBqwH+ovmOW6ZVju3nX4E3JX6tt2kRklFEH7xMOIwR0btRkZktuLhKvyEQYg==}
 
   '@tauri-apps/cli-darwin-arm64@2.0.0-rc.7':
     resolution: {integrity: sha512-DUdO1TCj+cViFkOWtYotq4UNBGfHvl1xLK85n2rmpsCeveGxO9pf1CihOtADuVonHl6ETa9x/uaSTCMeMsKEbA==}
@@ -499,8 +498,8 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-shell@2.0.0-beta.1':
-    resolution: {integrity: sha512-yMf9CMHCRkGnx0pv420MptEeUdk+bVrXyM5zwFisy75GBhXgvEEtSjAkubTsC0jkzLfn4EInizaW2GER9ub7cQ==}
+  '@tauri-apps/plugin-shell@2.2.1':
+    resolution: {integrity: sha512-G1GFYyWe/KlCsymuLiNImUgC8zGY0tI0Y3p8JgBCWduR5IEXlIJS+JuG1qtveitwYXlfJrsExt3enhv5l2/yhA==}
 
   '@tweenjs/tween.js@25.0.0':
     resolution: {integrity: sha512-XKLA6syeBUaPzx4j3qwMqzzq+V4uo72BnlbOjmuljLrRqdsd3qnzvZZoxvMHZ23ndsRS4aufU6JOZYpCbU6T1A==}
@@ -1608,9 +1607,9 @@ snapshots:
     dependencies:
       solid-js: 1.8.21
 
-  '@tauri-apps/api@2.0.0-beta.2': {}
-
   '@tauri-apps/api@2.0.0-beta.3': {}
+
+  '@tauri-apps/api@2.4.1': {}
 
   '@tauri-apps/cli-darwin-arm64@2.0.0-rc.7':
     optional: true
@@ -1655,9 +1654,9 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-rc.7
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-rc.7
 
-  '@tauri-apps/plugin-shell@2.0.0-beta.1':
+  '@tauri-apps/plugin-shell@2.2.1':
     dependencies:
-      '@tauri-apps/api': 2.0.0-beta.2
+      '@tauri-apps/api': 2.4.1
 
   '@tweenjs/tween.js@25.0.0': {}
 

@@ -21,7 +21,7 @@
     "@fortawesome/fontawesome-free": "^6.6.0",
     "@solidjs/router": "^0.12.5",
     "@tauri-apps/api": "2.0.0-beta.3",
-    "@tauri-apps/plugin-shell": "2.0.0-beta.1",
+    "@tauri-apps/plugin-shell": "2.2.1",
     "marked": "^13.0.3",
     "solid-js": "^1.8.21"
   },
