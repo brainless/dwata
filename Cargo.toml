@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "dwata-api",
+    "shared-types",  # Add this
 ]
 exclude = [
     "gui"

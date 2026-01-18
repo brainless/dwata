@@ -1,0 +1,32 @@
+use serde::{Deserialize, Serialize};
+
+pub mod session;
+
+pub use session::{
+    AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionListResponse,
+    SessionMessage, SessionResponse, SessionToolCall,
+};
+
+/// Error response for API endpoints
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorResponse {
+    pub error: String,
+}
+
+/// Request to create a new agent session
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateSessionRequest {
+    pub agent_name: String,
+    pub user_prompt: String,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub config: Option<serde_json::Value>,
+}
+
+/// Response after creating a session
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateSessionResponse {
+    pub session_id: i64,
+    pub agent_name: String,
+    pub status: String,
+}
