@@ -5,7 +5,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_sessions table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_sessions (
-            id INTEGER PRIMARY KEY,
+            id BIGINT PRIMARY KEY,
             agent_name VARCHAR NOT NULL,
             provider VARCHAR NOT NULL,
             model VARCHAR NOT NULL,
@@ -24,12 +24,12 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_messages table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_messages (
-            id INTEGER PRIMARY KEY,
+            id BIGINT PRIMARY KEY,
             session_id BIGINT NOT NULL,
             role VARCHAR NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
             content VARCHAR NOT NULL,
             created_at BIGINT NOT NULL,
-            FOREIGN KEY (session_id) REFERENCES agent_sessions (id) ON DELETE CASCADE
+            FOREIGN KEY (session_id) REFERENCES agent_sessions (id)
         )",
         [],
     )?;
@@ -37,7 +37,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_tool_calls table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_tool_calls (
-            id INTEGER PRIMARY KEY,
+            id BIGINT PRIMARY KEY,
             session_id BIGINT NOT NULL,
             message_id BIGINT,
             tool_call_id VARCHAR NOT NULL,
@@ -49,8 +49,8 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             completed_at BIGINT,
             execution_time_ms BIGINT,
             error_details VARCHAR,
-            FOREIGN KEY (session_id) REFERENCES agent_sessions (id) ON DELETE CASCADE,
-            FOREIGN KEY (message_id) REFERENCES agent_messages (id) ON DELETE SET NULL
+            FOREIGN KEY (session_id) REFERENCES agent_sessions (id),
+            FOREIGN KEY (message_id) REFERENCES agent_messages (id)
         )",
         [],
     )?;
