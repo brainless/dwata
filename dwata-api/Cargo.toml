@@ -1,0 +1,16 @@
+[package]
+name = "dwata-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+actix-web.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+nocodo-llm-sdk.workspace = true
+nocodo-agents.workspace = true
+manager-tools.workspace = true
