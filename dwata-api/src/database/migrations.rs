@@ -79,7 +79,8 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
 
 /// Check if database tables exist
 pub fn has_schema(conn: &Connection) -> anyhow::Result<bool> {
-    let mut stmt = conn
-        .prepare("SELECT table_name FROM information_schema.tables WHERE table_name='agent_sessions'")?;
+    let mut stmt = conn.prepare(
+        "SELECT table_name FROM information_schema.tables WHERE table_name='agent_sessions'",
+    )?;
     Ok(stmt.exists([])?)
 }

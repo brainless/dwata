@@ -1,5 +1,9 @@
 import { A } from "@solidjs/router";
-import { HiOutlineBars3, HiOutlineFolder, HiOutlineCog6Tooth } from "solid-icons/hi";
+import {
+  HiOutlineBars3,
+  HiOutlineFolder,
+  HiOutlineCog6Tooth,
+} from "solid-icons/hi";
 
 export default function Sidebar() {
   return (

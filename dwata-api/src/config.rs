@@ -1,0 +1,73 @@
+use config::{Config, ConfigError, File};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ApiConfig {
+    pub api_keys: Option<ApiKeysConfig>,
+    pub cors: Option<CorsConfig>,
+}
+
+impl Default for ApiConfig {
+    fn default() -> Self {
+        Self {
+            api_keys: None,
+            cors: Some(CorsConfig {
+                allowed_origins: vec!["http://localhost:3000".to_string()],
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ApiKeysConfig {
+    pub gemini_api_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CorsConfig {
+    pub allowed_origins: Vec<String>,
+}
+
+impl ApiConfig {
+    pub fn load() -> Result<(Self, PathBuf), ConfigError> {
+        let config_path = get_config_path();
+
+        // Create config directory if it doesn't exist
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                ConfigError::Message(format!("Failed to create config directory: {e}"))
+            })?;
+        }
+
+        // Create default config file if it doesn't exist
+        if !config_path.exists() {
+            let default_config = r#"
+[api_keys]
+# gemini_api_key = "your-gemini-key"
+
+[cors]
+allowed_origins = ["http://localhost:3000"]
+"#;
+            std::fs::write(&config_path, default_config).map_err(|e| {
+                ConfigError::Message(format!("Failed to write default config: {e}"))
+            })?;
+        }
+
+        let builder = Config::builder()
+            .add_source(File::from(config_path.clone()))
+            .build()?;
+
+        let config: ApiConfig = builder.try_deserialize()?;
+
+        Ok((config, config_path))
+    }
+}
+
+fn get_config_path() -> PathBuf {
+    if let Some(home) = home::home_dir() {
+        home.join(".config/dwata/api.toml")
+    } else {
+        PathBuf::from("api.toml")
+    }
+}

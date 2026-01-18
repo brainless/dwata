@@ -20,3 +20,7 @@ chrono.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
 home = "0.5"
+config = { version = "0.14", default-features = false, features = ["toml"] }
+toml = "0.8"
+tracing = "0.1"
+actix-cors = "0.6"

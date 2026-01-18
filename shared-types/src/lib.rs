@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 pub mod session;
+pub mod settings;
 
 pub use session::{
     AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionListResponse,
     SessionMessage, SessionResponse, SessionToolCall,
 };
+pub use settings::{ApiKeyConfig, SettingsResponse, UpdateApiKeysRequest};
 
 /// Error response for API endpoints
 #[derive(Debug, Serialize, Deserialize)]
