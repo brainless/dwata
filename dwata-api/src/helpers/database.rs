@@ -8,19 +8,19 @@ use std::path::PathBuf;
 ///
 /// # Platform-specific paths
 ///
-/// - **macOS**: `~/Library/Application Support/dwata/db.sqlite3`
-/// - **Linux**: `~/.local/share/dwata/db.sqlite3`
-/// - **Windows**: `%LOCALAPPDATA%\dwata\db.sqlite3`
+/// - **macOS**: `~/Library/Application Support/dwata/db.duckdb`
+/// - **Linux**: `~/.local/share/dwata/db.duckdb`
+/// - **Windows**: `%LOCALAPPDATA%\dwata\db.duckdb`
 pub fn get_db_path() -> anyhow::Result<PathBuf> {
     let home =
         home::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
 
     let db_path = if cfg!(target_os = "macos") {
-        home.join("Library/Application Support/dwata/db.sqlite3")
+        home.join("Library/Application Support/dwata/db.duckdb")
     } else if cfg!(target_os = "linux") {
-        home.join(".local/share/dwata/db.sqlite3")
+        home.join(".local/share/dwata/db.duckdb")
     } else if cfg!(windows) {
-        home.join("AppData/Local/dwata/db.sqlite3")
+        home.join("AppData/Local/dwata/db.duckdb")
     } else {
         anyhow::bail!("Unsupported operating system");
     };

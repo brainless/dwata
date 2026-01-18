@@ -15,7 +15,7 @@ tokio.workspace = true
 # nocodo-agents.workspace = true
 # manager-tools.workspace = true
 shared-types = { path = "../shared-types" }
-rusqlite = { version = "0.37", features = ["bundled"] }
+duckdb = { version = "1.1", features = ["bundled"] }
 chrono.workspace = true
 uuid.workspace = true
 anyhow.workspace = true

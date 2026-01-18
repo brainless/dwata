@@ -2,7 +2,7 @@ pub mod migrations;
 pub mod models;
 pub mod queries;
 
-use rusqlite::{params, Connection};
+use duckdb::{params, Connection};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -21,7 +21,6 @@ impl Database {
         }
 
         let conn = Connection::open(db_path)?;
-        conn.execute("PRAGMA foreign_keys = ON", [])?;
 
         let database = Database {
             connection: Arc::new(Mutex::new(conn)),
@@ -53,13 +52,14 @@ impl Database {
             .map(|c| serde_json::to_string(&c).unwrap())
             .unwrap_or_else(|| "null".to_string());
 
-        conn.execute(
+        let id: i64 = conn.query_row(
             "INSERT INTO agent_sessions (agent_name, provider, model, system_prompt, user_prompt, config, started_at, status)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'running')",
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'running') RETURNING id",
             params![agent_name, provider, model, system_prompt, user_prompt, config_json, now],
+            |row| row.get(0),
         )?;
 
-        Ok(conn.last_insert_rowid())
+        Ok(id)
     }
 
     pub fn complete_session(&self, session_id: i64, result: &str) -> anyhow::Result<()> {
@@ -98,13 +98,14 @@ impl Database {
         let conn = self.connection.lock().unwrap();
         let now = chrono::Utc::now().timestamp();
 
-        conn.execute(
+        let id: i64 = conn.query_row(
             "INSERT INTO agent_messages (session_id, role, content, created_at)
-                VALUES (?1, ?2, ?3, ?4)",
+                VALUES (?1, ?2, ?3, ?4) RETURNING id",
             params![session_id, role, content, now],
+            |row| row.get(0),
         )?;
 
-        Ok(conn.last_insert_rowid())
+        Ok(id)
     }
 
     // Tool call management
@@ -120,13 +121,14 @@ impl Database {
         let now = chrono::Utc::now().timestamp();
         let request_json = serde_json::to_string(&request)?;
 
-        conn.execute(
+        let id: i64 = conn.query_row(
             "INSERT INTO agent_tool_calls (session_id, message_id, tool_call_id, tool_name, request, created_at, status)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending')",
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending') RETURNING id",
             params![session_id, message_id, tool_call_id, tool_name, request_json, now],
+            |row| row.get(0),
         )?;
 
-        Ok(conn.last_insert_rowid())
+        Ok(id)
     }
 
     pub fn complete_tool_call(
