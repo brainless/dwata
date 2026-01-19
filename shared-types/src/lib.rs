@@ -1,8 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+pub mod project;
 pub mod session;
 pub mod settings;
 
+pub use project::{
+    CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
+};
 pub use session::{
     AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionListResponse,
     SessionMessage, SessionResponse, SessionToolCall,
