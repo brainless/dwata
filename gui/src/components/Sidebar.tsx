@@ -2,6 +2,7 @@ import { A } from "@solidjs/router";
 import {
   HiOutlineBars3,
   HiOutlineFolder,
+  HiOutlineClipboardDocumentCheck,
   HiOutlineCog6Tooth,
 } from "solid-icons/hi";
 
@@ -35,6 +36,18 @@ export default function Sidebar() {
             >
               <HiOutlineFolder class="w-5 h-5 flex-shrink-0" />
               <span class="is-drawer-close:hidden ml-3">Projects</span>
+            </A>
+          </div>
+
+          {/* Tasks */}
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/tasks"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineClipboardDocumentCheck class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Tasks</span>
             </A>
           </div>
 

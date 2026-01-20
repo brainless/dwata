@@ -5,6 +5,7 @@ import "./index.css";
 import App from "./App";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
+import Tasks from "./pages/Tasks";
 
 render(
   () => (
@@ -18,6 +19,7 @@ render(
         )}
       />
       <Route path="/projects" component={Projects} />
+      <Route path="/tasks" component={Tasks} />
       <Route path="/settings" component={Settings} />
     </Router>
   ),

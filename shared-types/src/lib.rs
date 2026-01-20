@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub mod project;
 pub mod session;
 pub mod settings;
+pub mod task;
 
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
@@ -12,6 +13,9 @@ pub use session::{
     SessionMessage, SessionResponse, SessionToolCall,
 };
 pub use settings::{ApiKeyConfig, SettingsResponse, UpdateApiKeysRequest};
+pub use task::{
+    CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
+};
 
 /// Error response for API endpoints
 #[derive(Debug, Serialize, Deserialize)]
