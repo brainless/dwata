@@ -1,6 +1,7 @@
 import { A } from "@solidjs/router";
 import {
   HiOutlineBars3,
+  HiOutlineCalendar,
   HiOutlineFolder,
   HiOutlineClipboardDocumentCheck,
   HiOutlineCog6Tooth,
@@ -48,6 +49,18 @@ export default function Sidebar() {
             >
               <HiOutlineClipboardDocumentCheck class="w-5 h-5 flex-shrink-0" />
               <span class="is-drawer-close:hidden ml-3">Tasks</span>
+            </A>
+          </div>
+
+          {/* Calendar */}
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/calendar"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineCalendar class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Calendar</span>
             </A>
           </div>
 

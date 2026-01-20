@@ -99,6 +99,50 @@ export type UpdateTaskRequest = {
 export type TasksResponse = { tasks: Array<Task> };
 
 /**
+ * Event entity for calendar events
+ */
+export type Event = {
+  id: number;
+  name: string;
+  description: string | null;
+  project_id: number | null;
+  task_id: number | null;
+  date: string;
+  attendee_user_ids: Array<number> | null;
+  created_at: bigint;
+  updated_at: bigint;
+};
+
+/**
+ * Request to create a new event
+ */
+export type CreateEventRequest = {
+  name: string;
+  description: string | null;
+  project_id: number | null;
+  task_id: number | null;
+  date: string;
+  attendee_user_ids: Array<number> | null;
+};
+
+/**
+ * Request to update an event
+ */
+export type UpdateEventRequest = {
+  name: string | null;
+  description: string | null;
+  project_id: number | null;
+  task_id: number | null;
+  date: string | null;
+  attendee_user_ids: Array<number> | null;
+};
+
+/**
+ * Response containing a list of events
+ */
+export type EventsResponse = { events: Array<Event> };
+
+/**
  * Message in session response
  */
 export type SessionMessage = {

@@ -14,6 +14,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(UpdateProjectRequest::export_to_string()?));
     types.push(clean_type(ProjectsResponse::export_to_string()?));
 
+    // Event types
+    types.push(clean_type(Event::export_to_string()?));
+    types.push(clean_type(CreateEventRequest::export_to_string()?));
+    types.push(clean_type(UpdateEventRequest::export_to_string()?));
+    types.push(clean_type(EventsResponse::export_to_string()?));
+
     // Task types
     types.push(clean_type(Task::export_to_string()?));
     types.push(clean_type(TaskStatus::export_to_string()?));

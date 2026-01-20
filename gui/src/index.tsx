@@ -3,6 +3,7 @@ import { Router, Route } from "@solidjs/router";
 import "./index.css";
 
 import App from "./App";
+import Calendar from "./pages/Calendar";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Tasks from "./pages/Tasks";
@@ -20,6 +21,7 @@ render(
       />
       <Route path="/projects" component={Projects} />
       <Route path="/tasks" component={Tasks} />
+      <Route path="/calendar" component={Calendar} />
       <Route path="/settings" component={Settings} />
     </Router>
   ),

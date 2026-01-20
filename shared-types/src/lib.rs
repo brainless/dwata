@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+pub mod event;
 pub mod project;
 pub mod session;
 pub mod settings;
 pub mod task;
 
+pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
 };
