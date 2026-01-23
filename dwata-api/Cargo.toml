@@ -22,5 +22,8 @@ anyhow.workspace = true
 home = "0.5"
 config = { version = "0.14", default-features = false, features = ["toml"] }
 toml = "0.8"
-tracing = "0.1"
-actix-cors = "0.6"
+tracing.workspace = true
+ tracing-subscriber.workspace = true
+ tracing-appender = "0.2"
+ clap.workspace = true
+ actix-cors = "0.6"
