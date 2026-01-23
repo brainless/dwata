@@ -40,7 +40,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(SettingsResponse::export_to_string()?));
     types.push(clean_type(UpdateApiKeysRequest::export_to_string()?));
 
-    let output_dir = Path::new("gui/src/api-types");
+    // Extraction types
+    types.push(clean_type(DataType::export_to_string()?));
+    types.push(clean_type(ExtractionMethod::export_to_string()?));
+    types.push(clean_type(Attachment::export_to_string()?));
+    types.push(clean_type(EmailAddress::export_to_string()?));
+    types.push(clean_type(UserPreferences::export_to_string()?));
+    types.push(clean_type(ExtractedEntity::export_to_string()?));
+    types.push(clean_type(ExtractedProject::export_to_string()?));
+    types.push(clean_type(ExtractedTask::export_to_string()?));
+    types.push(clean_type(ExtractedEvent::export_to_string()?));
+    types.push(clean_type(ExtractedContact::export_to_string()?));
+    types.push(clean_type(ExtractedLocation::export_to_string()?));
+    types.push(clean_type(TextSpan::export_to_string()?));
+    types.push(clean_type(TextSource::export_to_string()?));
+    types.push(clean_type(Relationship::export_to_string()?));
+    types.push(clean_type(RelationType::export_to_string()?));
+    types.push(clean_type(EntityRef::export_to_string()?));
+    types.push(clean_type(Ambiguity::export_to_string()?));
+    types.push(clean_type(AmbiguityOption::export_to_string()?));
+
+    let output_dir = Path::new("../gui/src/api-types");
     fs::create_dir_all(output_dir)?;
 
     let output_path = output_dir.join("types.ts");

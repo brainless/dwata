@@ -16,3 +16,4 @@ serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 ts-rs = "8.0"
+thiserror = "1.0"
