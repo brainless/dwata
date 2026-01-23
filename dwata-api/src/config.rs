@@ -47,7 +47,7 @@ impl ApiConfig {
 # gemini_api_key = "your-gemini-key"
 
 [cors]
-allowed_origins = ["http://localhost:3000"]
+allowed_origins = ["http://localhost:3030"]
 "#;
             std::fs::write(&config_path, default_config).map_err(|e| {
                 ConfigError::Message(format!("Failed to write default config: {e}"))
@@ -64,9 +64,9 @@ allowed_origins = ["http://localhost:3000"]
     }
 }
 
-fn get_config_path() -> PathBuf {
-    if let Some(home) = home::home_dir() {
-        home.join(".config/dwata/api.toml")
+pub fn get_config_path() -> PathBuf {
+    if let Some(config_dir) = dirs::config_dir() {
+        config_dir.join("dwata").join("api.toml")
     } else {
         PathBuf::from("api.toml")
     }

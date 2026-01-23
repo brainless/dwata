@@ -42,8 +42,9 @@ pub async fn get_settings(data: web::Data<SettingsAppState>) -> Result<HttpRespo
         vec![]
     };
 
+    let config_path = crate::config::get_config_path();
     let response = SettingsResponse {
-        config_file_path: "api.toml".to_string(),
+        config_file_path: config_path.to_string_lossy().to_string(),
         api_keys,
         projects_default_path: None,
     };
@@ -81,11 +82,7 @@ pub async fn update_api_keys(
         actix_web::error::ErrorInternalServerError(format!("Failed to serialize config: {}", e))
     })?;
 
-    let config_path = if let Some(home) = home::home_dir() {
-        home.join(".config/dwata/api.toml")
-    } else {
-        std::path::PathBuf::from("api.toml")
-    };
+    let config_path = crate::config::get_config_path();
 
     std::fs::write(&config_path, toml_string).map_err(|e| {
         actix_web::error::ErrorInternalServerError(format!("Failed to write config file: {}", e))

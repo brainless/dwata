@@ -12,18 +12,10 @@ use std::path::PathBuf;
 /// - **Linux**: `~/.local/share/dwata/db.duckdb`
 /// - **Windows**: `%LOCALAPPDATA%\dwata\db.duckdb`
 pub fn get_db_path() -> anyhow::Result<PathBuf> {
-    let home =
-        home::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let data_dir = dirs::data_local_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?;
 
-    let db_path = if cfg!(target_os = "macos") {
-        home.join("Library/Application Support/dwata/db.duckdb")
-    } else if cfg!(target_os = "linux") {
-        home.join(".local/share/dwata/db.duckdb")
-    } else if cfg!(windows) {
-        home.join("AppData/Local/dwata/db.duckdb")
-    } else {
-        anyhow::bail!("Unsupported operating system");
-    };
+    let db_path = data_dir.join("dwata").join("db.duckdb");
 
     Ok(db_path)
 }
