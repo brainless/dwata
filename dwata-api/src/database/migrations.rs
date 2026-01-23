@@ -1,6 +1,7 @@
 use duckdb::Connection;
 
 /// Run all database migrations
+#[allow(dead_code)]
 pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_sessions table
     conn.execute(
@@ -78,6 +79,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
 }
 
 /// Check if database tables exist
+#[allow(dead_code)]
 pub fn has_schema(conn: &Connection) -> anyhow::Result<bool> {
     let mut stmt = conn.prepare(
         "SELECT table_name FROM information_schema.tables WHERE table_name='agent_sessions'",

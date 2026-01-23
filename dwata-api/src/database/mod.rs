@@ -12,6 +12,7 @@ pub struct Database {
     pub connection: DbConnection,
 }
 
+#[allow(dead_code)]
 impl Database {
     /// Create a new database connection and run migrations
     pub fn new(db_path: &PathBuf) -> anyhow::Result<Self> {

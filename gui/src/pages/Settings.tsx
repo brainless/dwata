@@ -99,7 +99,9 @@ export default function Settings() {
                 <label class="label">
                   <span class="label-text">Google Gemini API Key</span>
                   <span class="label-text-alt">
-                    {apiKeys().find(k => k.name === "gemini")?.is_configured ? "Configured" : "Not configured"}
+                    {apiKeys().find((k) => k.name === "gemini")?.is_configured
+                      ? "Configured"
+                      : "Not configured"}
                   </span>
                 </label>
                 <input
@@ -120,7 +122,9 @@ export default function Settings() {
                 </button>
               </div>
               {message() && (
-                <div class={`alert mt-4 ${message().includes("success") ? "alert-success" : "alert-error"}`}>
+                <div
+                  class={`alert mt-4 ${message().includes("success") ? "alert-success" : "alert-error"}`}
+                >
                   <span>{message()}</span>
                 </div>
               )}

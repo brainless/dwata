@@ -1,7 +1,9 @@
+#![allow(dead_code, unused_imports)]
+
 use duckdb::Connection;
 use shared_types::{AgentMessage, AgentSession, AgentToolCall, SessionListItem};
-
 /// Get all sessions ordered by most recent
+#[allow(dead_code)]
 pub fn get_all_sessions(conn: &Connection) -> anyhow::Result<Vec<SessionListItem>> {
     let mut stmt = conn.prepare(
         "SELECT id, agent_name, user_prompt, status, started_at

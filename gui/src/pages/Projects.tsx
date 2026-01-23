@@ -15,7 +15,8 @@ export default function Projects() {
     {
       id: 1,
       name: "Website Redesign",
-      description: "Complete overhaul of the company website with modern design",
+      description:
+        "Complete overhaul of the company website with modern design",
       status: "active",
       tasks_completed: 12,
       tasks_total: 24,

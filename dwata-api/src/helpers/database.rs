@@ -36,6 +36,10 @@ pub fn initialize_database() -> anyhow::Result<std::sync::Arc<crate::database::D
         std::fs::create_dir_all(parent)?;
     }
 
+    // If a previous DB file exists, remove it to avoid lock conflicts
+    if db_path.exists() {
+        std::fs::remove_file(&db_path).ok();
+    }
     let db = crate::database::Database::new(&db_path)?;
     Ok(std::sync::Arc::new(db))
 }

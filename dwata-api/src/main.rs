@@ -2,6 +2,7 @@ use actix_cors::Cors;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use clap::Parser;
 use std::sync::Arc;
+use tracing_subscriber::prelude::*;
 
 mod config;
 mod database;
@@ -129,7 +130,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_settings)
             .service(update_api_keys)
     })
-    .bind(("127.0.0.1", 8090))?
+    .bind(("127.0.0.1", 0))? // let OS assign free port
     .run()
     .await
 }
