@@ -15,8 +15,15 @@ tokio.workspace = true
 # nocodo-agents.workspace = true
 # manager-tools.workspace = true
 shared-types = { path = "../shared-types" }
-rusqlite = { version = "0.37", features = ["bundled"] }
+duckdb = { version = "1.1", features = ["bundled"] }
 chrono.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
-home = "0.5"
+dirs = "5.0"
+config = { version = "0.14", default-features = false, features = ["toml"] }
+toml = "0.8"
+tracing.workspace = true
+ tracing-subscriber.workspace = true
+ tracing-appender = "0.2"
+ clap.workspace = true
+ actix-cors = "0.6"

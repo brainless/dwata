@@ -1,7 +1,9 @@
-use rusqlite::Connection;
-use shared_types::{AgentMessage, AgentSession, AgentToolCall, SessionListItem};
+#![allow(dead_code, unused_imports)]
 
+use duckdb::Connection;
+use shared_types::{AgentMessage, AgentSession, AgentToolCall, SessionListItem};
 /// Get all sessions ordered by most recent
+#[allow(dead_code)]
 pub fn get_all_sessions(conn: &Connection) -> anyhow::Result<Vec<SessionListItem>> {
     let mut stmt = conn.prepare(
         "SELECT id, agent_name, user_prompt, status, started_at
@@ -57,7 +59,7 @@ pub fn get_session(conn: &Connection, session_id: i64) -> anyhow::Result<Option<
 
     match session {
         Ok(s) => Ok(Some(s)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(duckdb::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.into()),
     }
 }
@@ -106,8 +108,8 @@ pub fn get_session_tool_calls(
 
     let calls = stmt.query_map([session_id], |row| {
         let request_str: String = row.get(5)?;
-        let request = serde_json::from_str(&request_str).map_err(|_| {
-            rusqlite::Error::InvalidColumnType(5, request_str.clone(), rusqlite::types::Type::Text)
+        let request = serde_json::from_str(&request_str).map_err(|e| {
+            duckdb::Error::FromSqlConversionFailure(5, duckdb::types::Type::Text, Box::new(e))
         })?;
 
         let response: Option<serde_json::Value> = row

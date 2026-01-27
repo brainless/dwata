@@ -22,9 +22,9 @@ config = "0.14"
 anyhow = "1.0"
 thiserror = "1.0"
 clap = { version = "4.0", features = ["derive"] }
-nocodo-llm-sdk = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
-nocodo-agents = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
-manager-tools = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
+# nocodo-llm-sdk = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
+# nocodo-agents = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
+# nocodo-tools = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
 
 [workspace.package]
 version = "0.1.0"

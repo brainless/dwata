@@ -6,8 +6,14 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "generate_api_types"
+path = "src/bin/generate_api_types.rs"
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
+ts-rs = "8.0"
+thiserror = "1.0"

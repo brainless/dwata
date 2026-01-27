@@ -8,22 +8,14 @@ use std::path::PathBuf;
 ///
 /// # Platform-specific paths
 ///
-/// - **macOS**: `~/Library/Application Support/dwata/db.sqlite3`
-/// - **Linux**: `~/.local/share/dwata/db.sqlite3`
-/// - **Windows**: `%LOCALAPPDATA%\dwata\db.sqlite3`
+/// - **macOS**: `~/Library/Application Support/dwata/db.duckdb`
+/// - **Linux**: `~/.local/share/dwata/db.duckdb`
+/// - **Windows**: `%LOCALAPPDATA%\dwata\db.duckdb`
 pub fn get_db_path() -> anyhow::Result<PathBuf> {
-    let home =
-        home::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let data_dir = dirs::data_local_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?;
 
-    let db_path = if cfg!(target_os = "macos") {
-        home.join("Library/Application Support/dwata/db.sqlite3")
-    } else if cfg!(target_os = "linux") {
-        home.join(".local/share/dwata/db.sqlite3")
-    } else if cfg!(windows) {
-        home.join("AppData/Local/dwata/db.sqlite3")
-    } else {
-        anyhow::bail!("Unsupported operating system");
-    };
+    let db_path = data_dir.join("dwata").join("db.duckdb");
 
     Ok(db_path)
 }
@@ -36,6 +28,10 @@ pub fn initialize_database() -> anyhow::Result<std::sync::Arc<crate::database::D
         std::fs::create_dir_all(parent)?;
     }
 
+    // If a previous DB file exists, remove it to avoid lock conflicts
+    if db_path.exists() {
+        std::fs::remove_file(&db_path).ok();
+    }
     let db = crate::database::Database::new(&db_path)?;
     Ok(std::sync::Arc::new(db))
 }

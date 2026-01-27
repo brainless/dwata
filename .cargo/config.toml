@@ -1,4 +1,4 @@
 [patch.'https://github.com/brainless/nocodo']
-nocodo-llm-sdk = { path = "/Users/brainless/GitWorktrees/nocodo/project-management/nocodo-llm-sdk" }
-nocodo-agents = { path = "/Users/brainless/GitWorktrees/nocodo/project-management/nocodo-agents" }
-manager-tools = { path = "/Users/brainless/GitWorktrees/nocodo/project-management/manager-tools" }
+nocodo-llm-sdk = { path = "/Users/brainless/Projects/nocodo/nocodo-llm-sdk" }
+nocodo-agents = { path = "/Users/brainless/Projects/nocodo/nocodo-agents" }
+nocodo-tools = { path = "/Users/brainless/Projects/nocodo/nocodo-tools" }
