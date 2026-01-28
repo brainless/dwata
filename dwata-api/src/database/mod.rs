@@ -1,3 +1,4 @@
+pub mod credentials;
 pub mod migrations;
 pub mod models;
 pub mod queries;

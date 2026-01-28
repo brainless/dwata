@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+pub mod credential;
 pub mod event;
 pub mod extraction; // NEW
 pub mod project;
@@ -7,6 +8,10 @@ pub mod session;
 pub mod settings;
 pub mod task;
 
+pub use credential::{
+    CreateCredentialRequest, CredentialListResponse, CredentialMetadata, CredentialType,
+    PasswordResponse, UpdateCredentialRequest,
+};
 pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,

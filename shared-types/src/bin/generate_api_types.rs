@@ -40,6 +40,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(SettingsResponse::export_to_string()?));
     types.push(clean_type(UpdateApiKeysRequest::export_to_string()?));
 
+    // Credential types
+    types.push(clean_type(CredentialType::export_to_string()?));
+    types.push(clean_type(CreateCredentialRequest::export_to_string()?));
+    types.push(clean_type(UpdateCredentialRequest::export_to_string()?));
+    types.push(clean_type(CredentialMetadata::export_to_string()?));
+    types.push(clean_type(PasswordResponse::export_to_string()?));
+    types.push(clean_type(CredentialListResponse::export_to_string()?));
+
     // Extraction types
     types.push(clean_type(DataType::export_to_string()?));
     types.push(clean_type(ExtractionMethod::export_to_string()?));

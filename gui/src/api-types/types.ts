@@ -127,6 +127,24 @@ export type SettingsResponse = { config_file_path: string, api_keys: Array<ApiKe
 export type UpdateApiKeysRequest = { gemini_api_key: string | null, };
 
 
+export type CredentialType = "imap" | "smtp" | "oauth" | "apikey" | "database" | "custom";
+
+
+export type CreateCredentialRequest = { credential_type: CredentialType, identifier: string, username: string, password: string, service_name: string | null, port: number | null, use_tls: boolean | null, notes: string | null, extra_metadata: string | null, };
+
+
+export type UpdateCredentialRequest = { username: string | null, password: string | null, service_name: string | null, port: number | null, use_tls: boolean | null, notes: string | null, extra_metadata: string | null, };
+
+
+export type CredentialMetadata = { id: string, credential_type: CredentialType, identifier: string, username: string, service_name: string | null, port: number | null, use_tls: boolean | null, notes: string | null, created_at: bigint, updated_at: bigint, last_accessed_at: bigint | null, is_active: boolean, extra_metadata: string | null, };
+
+
+export type PasswordResponse = { password: string, };
+
+
+export type CredentialListResponse = { credentials: Array<CredentialMetadata>, };
+
+
 export type DataType = "project" | "task" | "event" | "contact" | "location" | "date" | "priority" | "status";
 
 

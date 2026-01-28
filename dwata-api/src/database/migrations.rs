@@ -75,6 +75,33 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         [],
     )?;
 
+    // Create credentials_metadata table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS credentials_metadata (
+            id VARCHAR PRIMARY KEY,
+            credential_type VARCHAR NOT NULL,
+            identifier VARCHAR NOT NULL UNIQUE,
+            username VARCHAR NOT NULL,
+            service_name VARCHAR,
+            port INTEGER,
+            use_tls BOOLEAN DEFAULT TRUE,
+            notes VARCHAR,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            last_accessed_at BIGINT,
+            is_active BOOLEAN DEFAULT TRUE,
+            extra_metadata VARCHAR
+        )",
+        [],
+    )?;
+
+    // Index for efficient listing and filtering
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_credentials_type_active
+            ON credentials_metadata(credential_type, is_active)",
+        [],
+    )?;
+
     Ok(())
 }
 

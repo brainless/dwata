@@ -129,6 +129,12 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             .service(get_settings)
             .service(update_api_keys)
+            .route("/api/credentials", web::post().to(handlers::credentials::create_credential))
+            .route("/api/credentials", web::get().to(handlers::credentials::list_credentials))
+            .route("/api/credentials/{id}", web::get().to(handlers::credentials::get_credential))
+            .route("/api/credentials/{id}/password", web::get().to(handlers::credentials::get_password))
+            .route("/api/credentials/{id}", web::put().to(handlers::credentials::update_credential))
+            .route("/api/credentials/{id}", web::delete().to(handlers::credentials::delete_credential))
     })
     .bind(("127.0.0.1", 0))? // let OS assign free port
     .run()
