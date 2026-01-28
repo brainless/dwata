@@ -1,4 +1,5 @@
 pub mod credentials;
+pub mod downloads;
 pub mod migrations;
 pub mod models;
 pub mod queries;
@@ -6,11 +7,14 @@ pub mod queries;
 use duckdb::{params, Connection};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tokio::sync::Mutex as TokioMutex;
 
 pub type DbConnection = Arc<Mutex<Connection>>;
+pub type AsyncDbConnection = Arc<TokioMutex<Connection>>;
 
 pub struct Database {
     pub connection: DbConnection,
+    pub async_connection: AsyncDbConnection,
 }
 
 #[allow(dead_code)]
@@ -22,10 +26,13 @@ impl Database {
             std::fs::create_dir_all(parent)?;
         }
 
-        let conn = Connection::open(db_path)?;
+        // Create two separate connections - one for sync, one for async
+        let sync_conn = Connection::open(db_path)?;
+        let async_conn = Connection::open(db_path)?;
 
         let database = Database {
-            connection: Arc::new(Mutex::new(conn)),
+            connection: Arc::new(Mutex::new(sync_conn)),
+            async_connection: Arc::new(TokioMutex::new(async_conn)),
         };
 
         database.run_migrations()?;

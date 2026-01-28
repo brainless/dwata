@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod credential;
+pub mod download;
 pub mod event;
 pub mod extraction; // NEW
 pub mod project;
@@ -9,10 +10,14 @@ pub mod settings;
 pub mod task;
 
 pub use credential::{
-    ApiKeySettings, CreateCredentialRequest, CreateImapCredentialRequest,
-    CredentialListResponse, CredentialMetadata, CredentialType, ImapAccountSettings,
-    ImapAuthMethod, ImapCredentialMetadata, PasswordResponse, SmtpAccountSettings,
-    UpdateCredentialRequest,
+    ApiKeySettings, CreateCredentialRequest, CreateImapCredentialRequest, CredentialListResponse,
+    CredentialMetadata, CredentialType, ImapAccountSettings, ImapAuthMethod,
+    ImapCredentialMetadata, PasswordResponse, SmtpAccountSettings, UpdateCredentialRequest,
+};
+pub use download::{
+    CloudStorageDownloadState, CreateDownloadJobRequest, DirectoryStatus, DownloadItem,
+    DownloadItemStatus, DownloadJob, DownloadJobListResponse, DownloadJobStatus, DownloadProgress,
+    FileFilter, ImapDownloadState, ImapFolderStatus, ImapSyncStrategy, SourceType,
 };
 pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
 pub use project::{

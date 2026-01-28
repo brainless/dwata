@@ -1,8 +1,10 @@
 use duckdb::Connection;
 use shared_types::credential::{CredentialMetadata, CredentialType, CreateCredentialRequest};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub type DbConnection = Arc<std::sync::Mutex<Connection>>;
+pub type AsyncDbConnection = Arc<Mutex<Connection>>;
 
 #[derive(Debug)]
 pub enum CredentialDbError {
@@ -41,10 +43,10 @@ fn generate_credential_id() -> String {
 }
 
 pub async fn insert_credential(
-    conn: DbConnection,
+    conn: AsyncDbConnection,
     request: &CreateCredentialRequest,
 ) -> Result<CredentialMetadata, CredentialDbError> {
-    let conn = conn.lock().map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
+    let conn = conn.lock().await;
     let id = generate_credential_id();
     let now = chrono::Utc::now().timestamp_millis();
 
@@ -100,10 +102,10 @@ pub async fn insert_credential(
 }
 
 pub async fn list_credentials(
-    conn: DbConnection,
+    conn: AsyncDbConnection,
     include_inactive: bool,
 ) -> Result<Vec<CredentialMetadata>, CredentialDbError> {
-    let conn = conn.lock().map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
+    let conn = conn.lock().await;
 
     let query = if include_inactive {
         "SELECT id, credential_type, identifier, username, service_name, port, use_tls, notes,
@@ -161,10 +163,10 @@ pub async fn list_credentials(
 }
 
 pub async fn get_credential(
-    conn: DbConnection,
+    conn: AsyncDbConnection,
     id: &str,
 ) -> Result<CredentialMetadata, CredentialDbError> {
-    let conn = conn.lock().map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
+    let conn = conn.lock().await;
 
     let mut stmt = conn
         .prepare(
@@ -209,10 +211,10 @@ pub async fn get_credential(
 }
 
 pub async fn update_last_accessed(
-    conn: DbConnection,
+    conn: AsyncDbConnection,
     id: &str,
 ) -> Result<(), CredentialDbError> {
-    let conn = conn.lock().map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
+    let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
 
     conn.execute(
@@ -225,7 +227,7 @@ pub async fn update_last_accessed(
 }
 
 pub async fn update_credential(
-    conn: DbConnection,
+    conn: AsyncDbConnection,
     id: &str,
     username: Option<String>,
     service_name: Option<String>,
@@ -234,7 +236,7 @@ pub async fn update_credential(
     notes: Option<String>,
     extra_metadata: Option<String>,
 ) -> Result<CredentialMetadata, CredentialDbError> {
-    let conn = conn.lock().map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
+    let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
 
     let mut updates = vec!["updated_at = ?".to_string()];
@@ -323,10 +325,10 @@ pub async fn update_credential(
 }
 
 pub async fn soft_delete_credential(
-    conn: DbConnection,
+    conn: AsyncDbConnection,
     id: &str,
 ) -> Result<(), CredentialDbError> {
-    let conn = conn.lock().map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
+    let conn = conn.lock().await;
 
     let rows_affected = conn
         .execute(
@@ -343,10 +345,10 @@ pub async fn soft_delete_credential(
 }
 
 pub async fn hard_delete_credential(
-    conn: DbConnection,
+    conn: AsyncDbConnection,
     id: &str,
 ) -> Result<(), CredentialDbError> {
-    let conn = conn.lock().map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
+    let conn = conn.lock().await;
 
     let rows_affected = conn
         .execute("DELETE FROM credentials_metadata WHERE id = ?", [id])

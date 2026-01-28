@@ -8,6 +8,8 @@ mod config;
 mod database;
 mod handlers;
 mod helpers;
+mod integrations;
+mod jobs;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -102,6 +104,24 @@ async fn main() -> std::io::Result<()> {
         config: config_arc.clone(),
     };
 
+    // Initialize download manager
+    let download_manager = Arc::new(jobs::download_manager::DownloadManager::new(db.async_connection.clone()));
+
+    // Restore interrupted jobs on startup
+    let _ = download_manager.restore_interrupted_jobs().await;
+
+    // Spawn periodic sync task (every 5 minutes)
+    let manager_clone = download_manager.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            if let Err(e) = manager_clone.sync_all_jobs().await {
+                tracing::error!("Periodic sync failed: {}", e);
+            }
+        }
+    });
+
     // Get server config or use defaults
     let (host, port) = if let Some(server_config) = &config.server {
         (server_config.host.clone(), server_config.port)
@@ -134,6 +154,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(web::Data::new(db.clone()))
             .app_data(web::Data::new(settings_state.clone()))
+            .app_data(web::Data::new(download_manager.clone()))
             .service(hello)
             .service(health)
             .service(get_settings)
@@ -144,6 +165,12 @@ async fn main() -> std::io::Result<()> {
             .route("/api/credentials/{id}/password", web::get().to(handlers::credentials::get_password))
             .route("/api/credentials/{id}", web::put().to(handlers::credentials::update_credential))
             .route("/api/credentials/{id}", web::delete().to(handlers::credentials::delete_credential))
+            .route("/api/downloads", web::post().to(handlers::downloads::create_download_job))
+            .route("/api/downloads", web::get().to(handlers::downloads::list_download_jobs))
+            .route("/api/downloads/{id}", web::get().to(handlers::downloads::get_download_job))
+            .route("/api/downloads/{id}/start", web::post().to(handlers::downloads::start_download))
+            .route("/api/downloads/{id}/pause", web::post().to(handlers::downloads::pause_download))
+            .route("/api/downloads/{id}", web::delete().to(handlers::downloads::delete_download_job))
     })
     .bind((host.as_str(), port))?
     .run()

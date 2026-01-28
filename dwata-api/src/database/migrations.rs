@@ -102,6 +102,80 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         [],
     )?;
 
+    // Create download_jobs table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS download_jobs (
+            id VARCHAR PRIMARY KEY,
+            source_type VARCHAR NOT NULL,
+            credential_id VARCHAR NOT NULL,
+            status VARCHAR NOT NULL DEFAULT 'pending',
+            total_items BIGINT NOT NULL DEFAULT 0,
+            downloaded_items BIGINT NOT NULL DEFAULT 0,
+            failed_items BIGINT NOT NULL DEFAULT 0,
+            skipped_items BIGINT NOT NULL DEFAULT 0,
+            in_progress_items BIGINT NOT NULL DEFAULT 0,
+            bytes_downloaded BIGINT NOT NULL DEFAULT 0,
+            source_state VARCHAR NOT NULL,
+            error_message VARCHAR,
+            retry_count INTEGER DEFAULT 0,
+            created_at BIGINT NOT NULL,
+            started_at BIGINT,
+            updated_at BIGINT NOT NULL,
+            completed_at BIGINT,
+            last_sync_at BIGINT,
+            FOREIGN KEY (credential_id) REFERENCES credentials_metadata (id)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_download_jobs_status
+            ON download_jobs(status, updated_at)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_download_jobs_credential
+            ON download_jobs(credential_id)",
+        [],
+    )?;
+
+    // Create download_items table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS download_items (
+            id VARCHAR PRIMARY KEY,
+            job_id VARCHAR NOT NULL,
+            source_identifier VARCHAR NOT NULL,
+            source_folder VARCHAR,
+            item_type VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            size_bytes BIGINT,
+            mime_type VARCHAR,
+            metadata VARCHAR,
+            error_message VARCHAR,
+            retry_count INTEGER DEFAULT 0,
+            last_attempt_at BIGINT,
+            local_path VARCHAR,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            downloaded_at BIGINT,
+            FOREIGN KEY (job_id) REFERENCES download_jobs (id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_download_items_job_status
+            ON download_items(job_id, status)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_download_items_source_identifier
+            ON download_items(job_id, source_identifier)",
+        [],
+    )?;
+
     Ok(())
 }
 

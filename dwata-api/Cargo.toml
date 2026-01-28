@@ -29,3 +29,4 @@ tracing.workspace = true
   actix-cors = "0.6"
 keyring = { version = "2.3" }
 rand = "0.8"
+tempfile = "3.8"

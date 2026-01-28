@@ -106,7 +106,7 @@ pub async fn create_credential(
         _ => CredentialError::Internal(format!("Failed to store password: {}", e)),
     })?;
 
-    let metadata = db::insert_credential(db.connection.clone(), &req)
+    let metadata = db::insert_credential(db.async_connection.clone(), &req)
         .await
         .map_err(|e| {
             let _ = KeyringService::delete_password(
@@ -135,7 +135,7 @@ pub async fn list_credentials(
     db: web::Data<Arc<crate::database::Database>>,
     query: web::Query<ListQuery>,
 ) -> Result<HttpResponse> {
-    let credentials = db::list_credentials(db.connection.clone(), query.include_inactive)
+    let credentials = db::list_credentials(db.async_connection.clone(), query.include_inactive)
         .await
         .map_err(|e| CredentialError::Internal(e.to_string()))?;
 
@@ -149,7 +149,7 @@ pub async fn get_credential(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    let credential = db::get_credential(db.connection.clone(), &id)
+    let credential = db::get_credential(db.async_connection.clone(), &id)
         .await
         .map_err(|e| match e {
             db::CredentialDbError::NotFound => CredentialError::NotFound,
@@ -164,7 +164,7 @@ pub async fn get_password(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    let credential = db::get_credential(db.connection.clone(), &id)
+    let credential = db::get_credential(db.async_connection.clone(), &id)
         .await
         .map_err(|e| match e {
             db::CredentialDbError::NotFound => CredentialError::NotFound,
@@ -184,7 +184,7 @@ pub async fn get_password(
         KeyringError::OperationFailed(msg) => CredentialError::Internal(msg),
     })?;
 
-    let _ = db::update_last_accessed(db.connection.clone(), &id).await;
+    let _ = db::update_last_accessed(db.async_connection.clone(), &id).await;
 
     Ok(add_security_header(
         HttpResponse::Ok().json(PasswordResponse { password }),
@@ -199,7 +199,7 @@ pub async fn update_credential(
     let id = path.into_inner();
     let req = request.into_inner();
 
-    let existing = db::get_credential(db.connection.clone(), &id)
+    let existing = db::get_credential(db.async_connection.clone(), &id)
         .await
         .map_err(|e| match e {
             db::CredentialDbError::NotFound => CredentialError::NotFound,
@@ -220,7 +220,7 @@ pub async fn update_credential(
     }
 
     let updated = db::update_credential(
-        db.connection.clone(),
+        db.async_connection.clone(),
         &id,
         req.username,
         req.service_name,
@@ -247,7 +247,7 @@ pub async fn delete_credential(
     query: web::Query<DeleteQuery>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    let credential = db::get_credential(db.connection.clone(), &id)
+    let credential = db::get_credential(db.async_connection.clone(), &id)
         .await
         .map_err(|e| match e {
             db::CredentialDbError::NotFound => CredentialError::NotFound,
@@ -271,11 +271,11 @@ pub async fn delete_credential(
         })
         .ok();
 
-        db::hard_delete_credential(db.connection.clone(), &id)
+        db::hard_delete_credential(db.async_connection.clone(), &id)
             .await
             .map_err(|e| CredentialError::Internal(e.to_string()))?;
     } else {
-        db::soft_delete_credential(db.connection.clone(), &id)
+        db::soft_delete_credential(db.async_connection.clone(), &id)
             .await
             .map_err(|e| match e {
                 db::CredentialDbError::NotFound => CredentialError::NotFound,
