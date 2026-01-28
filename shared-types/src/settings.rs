@@ -3,7 +3,6 @@ use ts_rs::TS;
 
 /// Configuration for an API key
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ApiKeyConfig {
     pub name: String,
     pub key: Option<String>,
@@ -12,7 +11,6 @@ pub struct ApiKeyConfig {
 
 /// Response for settings endpoint
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct SettingsResponse {
     pub config_file_path: String,
     pub api_keys: Vec<ApiKeyConfig>,
@@ -21,7 +19,6 @@ pub struct SettingsResponse {
 
 /// Request to update API keys
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct UpdateApiKeysRequest {
     pub gemini_api_key: Option<String>,
 }

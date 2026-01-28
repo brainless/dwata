@@ -1,5 +1,3 @@
-use chrono;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use ts_rs::TS;
@@ -39,7 +37,6 @@ pub enum ExtractionError {
 
 /// Types of entities that can be extracted
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "kebab-case")]
 pub enum DataType {
     Project,
@@ -55,7 +52,6 @@ pub enum DataType {
 
 /// Extraction methods available
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExtractionMethod {
     AttachmentParsing, // ICS, VCF, PDF parsing
@@ -106,7 +102,6 @@ pub struct ExtractionInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct Attachment {
     pub filename: String,
     pub content_type: String,
@@ -114,14 +109,12 @@ pub struct Attachment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct EmailAddress {
     pub email: String,
     pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct UserPreferences {
     pub date_format: String,
     pub default_task_priority: crate::TaskPriority,
@@ -139,7 +132,6 @@ pub struct Contact {
 
 /// Result from an extraction
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ExtractionResult {
     // What was extracted
     pub entity: ExtractedEntity,
@@ -167,7 +159,6 @@ pub struct ExtractionResult {
 
 /// Extracted entity (can be any type)
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum ExtractedEntity {
     Project(ExtractedProject),
@@ -178,7 +169,6 @@ pub enum ExtractedEntity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ExtractedProject {
     pub name: String,
     pub description: Option<String>,
@@ -187,7 +177,6 @@ pub struct ExtractedProject {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ExtractedTask {
     pub title: String,
     pub description: Option<String>,
@@ -198,7 +187,6 @@ pub struct ExtractedTask {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ExtractedEvent {
     pub name: String,
     pub description: Option<String>,
@@ -210,7 +198,6 @@ pub struct ExtractedEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ExtractedContact {
     pub name: String,
     pub email: Option<String>,
@@ -219,7 +206,6 @@ pub struct ExtractedContact {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ExtractedLocation {
     pub name: String,
     pub address: Option<String>,
@@ -228,7 +214,6 @@ pub struct ExtractedLocation {
 
 /// Location of text in email
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct TextSpan {
     pub source: TextSource,
     pub start: usize,
@@ -237,7 +222,6 @@ pub struct TextSpan {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum TextSource {
     Subject,
@@ -247,7 +231,6 @@ pub enum TextSource {
 
 /// Relationship between entities
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct Relationship {
     pub relation_type: RelationType,
     pub target_entity: EntityRef,
@@ -255,7 +238,6 @@ pub struct Relationship {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "kebab-case")]
 pub enum RelationType {
     BelongsToProject, // Task -> Project
@@ -266,7 +248,6 @@ pub enum RelationType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct EntityRef {
     pub data_type: DataType,
     pub entity_id: Option<i32>,         // If already in DB
@@ -275,7 +256,6 @@ pub struct EntityRef {
 
 /// Ambiguity in extraction
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct Ambiguity {
     pub field: String,
     pub options: Vec<AmbiguityOption>,
@@ -283,7 +263,6 @@ pub struct Ambiguity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct AmbiguityOption {
     pub value: String,
     pub confidence: f32,

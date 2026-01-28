@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum CredentialType {
     Imap,
@@ -15,7 +14,6 @@ pub enum CredentialType {
 
 /// Authentication method for IMAP
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum ImapAuthMethod {
     Plain,
@@ -25,7 +23,6 @@ pub enum ImapAuthMethod {
 
 /// IMAP-specific account settings
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ImapAccountSettings {
     /// IMAP server host (e.g., "imap.gmail.com")
     pub host: String,
@@ -79,7 +76,6 @@ impl Default for ImapAccountSettings {
 
 /// SMTP-specific account settings
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct SmtpAccountSettings {
     /// SMTP server host (e.g., "smtp.gmail.com")
     pub host: String,
@@ -94,7 +90,6 @@ pub struct SmtpAccountSettings {
 
 /// API Key service settings
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ApiKeySettings {
     /// Base URL for the API (e.g., "https://api.stripe.com")
     pub base_url: String,
@@ -129,7 +124,6 @@ impl std::fmt::Display for CredentialType {
 }
 
 #[derive(Debug, Deserialize, TS)]
-#[ts(export)]
 pub struct CreateCredentialRequest {
     pub credential_type: CredentialType,
     pub identifier: String,
@@ -144,7 +138,6 @@ pub struct CreateCredentialRequest {
 
 /// Type-safe request for creating IMAP credentials
 #[derive(Debug, Deserialize, TS)]
-#[ts(export)]
 pub struct CreateImapCredentialRequest {
     pub identifier: String,
     pub username: String,
@@ -171,7 +164,6 @@ impl CreateImapCredentialRequest {
 }
 
 #[derive(Debug, Deserialize, TS)]
-#[ts(export)]
 pub struct UpdateCredentialRequest {
     pub username: Option<String>,
     pub password: Option<String>,
@@ -183,7 +175,6 @@ pub struct UpdateCredentialRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct CredentialMetadata {
     pub id: String,
     pub credential_type: CredentialType,
@@ -201,20 +192,17 @@ pub struct CredentialMetadata {
 }
 
 #[derive(Debug, Serialize, TS)]
-#[ts(export)]
 pub struct PasswordResponse {
     pub password: String,
 }
 
 #[derive(Debug, Serialize, TS)]
-#[ts(export)]
 pub struct CredentialListResponse {
     pub credentials: Vec<CredentialMetadata>,
 }
 
 /// Extended credential metadata with parsed IMAP settings
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct ImapCredentialMetadata {
     pub id: String,
     pub identifier: String,

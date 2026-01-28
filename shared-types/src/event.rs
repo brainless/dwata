@@ -3,7 +3,6 @@ use ts_rs::TS;
 
 /// Event entity for calendar events
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct Event {
     pub id: i32,
     pub name: String,
@@ -18,7 +17,6 @@ pub struct Event {
 
 /// Request to create a new event
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct CreateEventRequest {
     pub name: String,
     pub description: Option<String>,
@@ -30,7 +28,6 @@ pub struct CreateEventRequest {
 
 /// Request to update an event
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct UpdateEventRequest {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -42,7 +39,6 @@ pub struct UpdateEventRequest {
 
 /// Response containing a list of events
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct EventsResponse {
     pub events: Vec<Event>,
 }
