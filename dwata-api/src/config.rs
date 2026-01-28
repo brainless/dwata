@@ -6,6 +6,7 @@ use std::path::PathBuf;
 pub struct ApiConfig {
     pub api_keys: Option<ApiKeysConfig>,
     pub cors: Option<CorsConfig>,
+    pub server: Option<ServerConfig>,
 }
 
 impl Default for ApiConfig {
@@ -14,6 +15,10 @@ impl Default for ApiConfig {
             api_keys: None,
             cors: Some(CorsConfig {
                 allowed_origins: vec!["http://localhost:3000".to_string()],
+            }),
+            server: Some(ServerConfig {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
             }),
         }
     }
@@ -27,6 +32,12 @@ pub struct ApiKeysConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CorsConfig {
     pub allowed_origins: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ServerConfig {
+    pub host: String,
+    pub port: u16,
 }
 
 impl ApiConfig {
@@ -48,6 +59,10 @@ impl ApiConfig {
 
 [cors]
 allowed_origins = ["http://localhost:3030"]
+
+[server]
+host = "127.0.0.1"
+port = 8080
 "#;
             std::fs::write(&config_path, default_config).map_err(|e| {
                 ConfigError::Message(format!("Failed to write default config: {e}"))

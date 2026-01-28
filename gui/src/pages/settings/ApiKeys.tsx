@@ -1,4 +1,5 @@
 import { createSignal, onMount } from "solid-js";
+import { getApiUrl } from "../../config/api";
 
 interface ApiKeyConfig {
   name: string;
@@ -24,7 +25,7 @@ export default function SettingsApiKeys() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch("http://localhost:8080/settings");
+      const response = await fetch(getApiUrl("/settings"));
       if (response.ok) {
         const data: SettingsResponse = await response.json();
         setApiKeys(data.api_keys);
@@ -38,7 +39,7 @@ export default function SettingsApiKeys() {
     setIsLoading(true);
     setMessage("");
     try {
-      const response = await fetch("http://localhost:8080/settings/api-keys", {
+      const response = await fetch(getApiUrl("/settings/api-keys"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

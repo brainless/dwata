@@ -102,6 +102,15 @@ async fn main() -> std::io::Result<()> {
         config: config_arc.clone(),
     };
 
+    // Get server config or use defaults
+    let (host, port) = if let Some(server_config) = &config.server {
+        (server_config.host.clone(), server_config.port)
+    } else {
+        ("127.0.0.1".to_string(), 8080)
+    };
+
+    println!("Starting server on {}:{}", host, port);
+
     HttpServer::new(move || {
         // Configure CORS
         let cors = if let Some(cors_config) = &config.cors {
@@ -136,7 +145,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/credentials/{id}", web::put().to(handlers::credentials::update_credential))
             .route("/api/credentials/{id}", web::delete().to(handlers::credentials::delete_credential))
     })
-    .bind(("127.0.0.1", 0))? // let OS assign free port
+    .bind((host.as_str(), port))?
     .run()
     .await
 }

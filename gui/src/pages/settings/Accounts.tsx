@@ -13,6 +13,7 @@ import type {
   CredentialMetadata,
   CredentialListResponse,
 } from "../../api-types/types";
+import { getApiUrl } from "../../config/api";
 
 export default function SettingsAccounts() {
   // Form state
@@ -47,7 +48,7 @@ export default function SettingsAccounts() {
   const fetchCredentials = async () => {
     setIsLoadingList(true);
     try {
-      const response = await fetch("http://localhost:8080/api/credentials");
+      const response = await fetch(getApiUrl("/api/credentials"));
       if (response.ok) {
         const data: CredentialListResponse = await response.json();
         setCredentials(data.credentials);
@@ -66,7 +67,7 @@ export default function SettingsAccounts() {
 
     try {
       const response = await fetch(
-        `http://localhost:8080/api/credentials/${id}?hard=true`,
+        getApiUrl(`/api/credentials/${id}?hard=true`),
         {
           method: "DELETE",
         }
@@ -129,7 +130,7 @@ export default function SettingsAccounts() {
         }),
       };
 
-      const response = await fetch("http://localhost:8080/api/credentials", {
+      const response = await fetch(getApiUrl("/api/credentials"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
