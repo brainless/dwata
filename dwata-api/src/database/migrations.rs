@@ -78,7 +78,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create credentials_metadata table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS credentials_metadata (
-            id VARCHAR PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             credential_type VARCHAR NOT NULL,
             identifier VARCHAR NOT NULL UNIQUE,
             username VARCHAR NOT NULL,

@@ -27,27 +27,11 @@ impl std::fmt::Display for CredentialDbError {
 
 impl std::error::Error for CredentialDbError {}
 
-fn generate_credential_id() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let random_part: String = (0..12)
-        .map(|_| {
-            let idx = rng.gen_range(0..36);
-            "abcdefghijklmnopqrstuvwxyz0123456789"
-                .chars()
-                .nth(idx)
-                .unwrap()
-        })
-        .collect();
-    format!("cred_{}", random_part)
-}
-
 pub async fn insert_credential(
     conn: AsyncDbConnection,
     request: &CreateCredentialRequest,
 ) -> Result<CredentialMetadata, CredentialDbError> {
     let conn = conn.lock().await;
-    let id = generate_credential_id();
     let now = chrono::Utc::now().timestamp_millis();
 
     let mut stmt = conn
@@ -64,11 +48,10 @@ pub async fn insert_credential(
 
     conn.execute(
         "INSERT INTO credentials_metadata
-         (id, credential_type, identifier, username, service_name, port, use_tls, notes,
+         (credential_type, identifier, username, service_name, port, use_tls, notes,
           created_at, updated_at, is_active, extra_metadata)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         duckdb::params![
-            &id,
             request.credential_type.as_str(),
             &request.identifier,
             &request.username,
@@ -83,6 +66,11 @@ pub async fn insert_credential(
         ],
     )
     .map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
+
+    // Get the auto-generated ID
+    let id: i64 = conn
+        .query_row("SELECT last_insert_rowid()", [], |row| row.get(0))
+        .map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
 
     Ok(CredentialMetadata {
         id,
@@ -164,7 +152,7 @@ pub async fn list_credentials(
 
 pub async fn get_credential(
     conn: AsyncDbConnection,
-    id: &str,
+    id: i64,
 ) -> Result<CredentialMetadata, CredentialDbError> {
     let conn = conn.lock().await;
 
@@ -212,7 +200,7 @@ pub async fn get_credential(
 
 pub async fn update_last_accessed(
     conn: AsyncDbConnection,
-    id: &str,
+    id: i64,
 ) -> Result<(), CredentialDbError> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
@@ -228,7 +216,7 @@ pub async fn update_last_accessed(
 
 pub async fn update_credential(
     conn: AsyncDbConnection,
-    id: &str,
+    id: i64,
     username: Option<String>,
     service_name: Option<String>,
     port: Option<i32>,
@@ -267,7 +255,7 @@ pub async fn update_credential(
         params.push(Box::new(extra_metadata.clone()));
     }
 
-    params.push(Box::new(id.to_string()));
+    params.push(Box::new(id));
 
     let query = format!(
         "UPDATE credentials_metadata SET {} WHERE id = ?",
@@ -326,7 +314,7 @@ pub async fn update_credential(
 
 pub async fn soft_delete_credential(
     conn: AsyncDbConnection,
-    id: &str,
+    id: i64,
 ) -> Result<(), CredentialDbError> {
     let conn = conn.lock().await;
 
@@ -346,7 +334,7 @@ pub async fn soft_delete_credential(
 
 pub async fn hard_delete_credential(
     conn: AsyncDbConnection,
-    id: &str,
+    id: i64,
 ) -> Result<(), CredentialDbError> {
     let conn = conn.lock().await;
 

@@ -176,7 +176,7 @@ pub struct UpdateCredentialRequest {
 
 #[derive(Debug, Serialize, Deserialize, TS)]
 pub struct CredentialMetadata {
-    pub id: String,
+    pub id: i64,
     pub credential_type: CredentialType,
     pub identifier: String,
     pub username: String,
@@ -204,7 +204,7 @@ pub struct CredentialListResponse {
 /// Extended credential metadata with parsed IMAP settings
 #[derive(Debug, Serialize, Deserialize, TS)]
 pub struct ImapCredentialMetadata {
-    pub id: String,
+    pub id: i64,
     pub identifier: String,
     pub username: String,
     pub settings: ImapAccountSettings,

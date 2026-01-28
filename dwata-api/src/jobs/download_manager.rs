@@ -100,7 +100,7 @@ impl DownloadManager {
 
         let credential = get_credential(
             db_conn.clone(),
-            &job.credential_id,
+            job.credential_id,
         )
         .await?;
 

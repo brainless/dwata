@@ -6,7 +6,7 @@ use ts_rs::TS;
 pub struct DownloadJob {
     pub id: String,
     pub source_type: SourceType,
-    pub credential_id: String,
+    pub credential_id: i64,
     pub status: DownloadJobStatus,
     pub progress: DownloadProgress,
     #[ts(skip)]
@@ -112,7 +112,7 @@ pub struct FileFilter {
 /// Request to create a new download job
 #[derive(Debug, Deserialize, TS)]
 pub struct CreateDownloadJobRequest {
-    pub credential_id: String,
+    pub credential_id: i64,
     pub source_type: SourceType,
     #[ts(skip)]
     pub source_config: serde_json::Value,

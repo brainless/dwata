@@ -146,10 +146,10 @@ pub async fn list_credentials(
 
 pub async fn get_credential(
     db: web::Data<Arc<crate::database::Database>>,
-    path: web::Path<String>,
+    path: web::Path<i64>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    let credential = db::get_credential(db.async_connection.clone(), &id)
+    let credential = db::get_credential(db.async_connection.clone(), id)
         .await
         .map_err(|e| match e {
             db::CredentialDbError::NotFound => CredentialError::NotFound,
@@ -161,10 +161,10 @@ pub async fn get_credential(
 
 pub async fn get_password(
     db: web::Data<Arc<crate::database::Database>>,
-    path: web::Path<String>,
+    path: web::Path<i64>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    let credential = db::get_credential(db.async_connection.clone(), &id)
+    let credential = db::get_credential(db.async_connection.clone(), id)
         .await
         .map_err(|e| match e {
             db::CredentialDbError::NotFound => CredentialError::NotFound,
@@ -184,7 +184,7 @@ pub async fn get_password(
         KeyringError::OperationFailed(msg) => CredentialError::Internal(msg),
     })?;
 
-    let _ = db::update_last_accessed(db.async_connection.clone(), &id).await;
+    let _ = db::update_last_accessed(db.async_connection.clone(), id).await;
 
     Ok(add_security_header(
         HttpResponse::Ok().json(PasswordResponse { password }),
@@ -193,13 +193,13 @@ pub async fn get_password(
 
 pub async fn update_credential(
     db: web::Data<Arc<crate::database::Database>>,
-    path: web::Path<String>,
+    path: web::Path<i64>,
     request: web::Json<UpdateCredentialRequest>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
     let req = request.into_inner();
 
-    let existing = db::get_credential(db.async_connection.clone(), &id)
+    let existing = db::get_credential(db.async_connection.clone(), id)
         .await
         .map_err(|e| match e {
             db::CredentialDbError::NotFound => CredentialError::NotFound,
@@ -221,7 +221,7 @@ pub async fn update_credential(
 
     let updated = db::update_credential(
         db.async_connection.clone(),
-        &id,
+        id,
         req.username,
         req.service_name,
         req.port,
@@ -243,11 +243,11 @@ pub struct DeleteQuery {
 
 pub async fn delete_credential(
     db: web::Data<Arc<crate::database::Database>>,
-    path: web::Path<String>,
+    path: web::Path<i64>,
     query: web::Query<DeleteQuery>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    let credential = db::get_credential(db.async_connection.clone(), &id)
+    let credential = db::get_credential(db.async_connection.clone(), id)
         .await
         .map_err(|e| match e {
             db::CredentialDbError::NotFound => CredentialError::NotFound,
@@ -271,11 +271,11 @@ pub async fn delete_credential(
         })
         .ok();
 
-        db::hard_delete_credential(db.async_connection.clone(), &id)
+        db::hard_delete_credential(db.async_connection.clone(), id)
             .await
             .map_err(|e| CredentialError::Internal(e.to_string()))?;
     } else {
-        db::soft_delete_credential(db.async_connection.clone(), &id)
+        db::soft_delete_credential(db.async_connection.clone(), id)
             .await
             .map_err(|e| match e {
                 db::CredentialDbError::NotFound => CredentialError::NotFound,
