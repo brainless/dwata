@@ -9,8 +9,10 @@ pub mod settings;
 pub mod task;
 
 pub use credential::{
-    CreateCredentialRequest, CredentialListResponse, CredentialMetadata, CredentialType,
-    PasswordResponse, UpdateCredentialRequest,
+    ApiKeySettings, CreateCredentialRequest, CreateImapCredentialRequest,
+    CredentialListResponse, CredentialMetadata, CredentialType, ImapAccountSettings,
+    ImapAuthMethod, ImapCredentialMetadata, PasswordResponse, SmtpAccountSettings,
+    UpdateCredentialRequest,
 };
 pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
 pub use project::{

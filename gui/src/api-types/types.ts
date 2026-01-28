@@ -145,6 +145,95 @@ export type PasswordResponse = { password: string, };
 export type CredentialListResponse = { credentials: Array<CredentialMetadata>, };
 
 
+export type ImapAuthMethod = "plain" | "oauth2" | "xoauth2";
+
+
+/**
+ * IMAP-specific account settings
+ */
+export type ImapAccountSettings = { 
+/**
+ * IMAP server host (e.g., "imap.gmail.com")
+ */
+host: string, 
+/**
+ * IMAP server port (typically 993 for SSL, 143 for non-SSL)
+ */
+port: number, 
+/**
+ * Use TLS/SSL connection
+ */
+use_tls: boolean, 
+/**
+ * Authentication method
+ */
+auth_method: ImapAuthMethod, 
+/**
+ * Default mailbox/folder to monitor (default: "INBOX")
+ */
+default_mailbox: string, 
+/**
+ * Connection timeout in seconds
+ */
+connection_timeout_secs: number, 
+/**
+ * Whether to validate SSL certificates (should be true in production)
+ */
+validate_certs: boolean, };
+
+
+/**
+ * Type-safe request for creating IMAP credentials
+ */
+export type CreateImapCredentialRequest = { identifier: string, username: string, password: string, settings: ImapAccountSettings, notes: string | null, };
+
+
+/**
+ * Extended credential metadata with parsed IMAP settings
+ */
+export type ImapCredentialMetadata = { id: string, identifier: string, username: string, settings: ImapAccountSettings, notes: string | null, created_at: bigint, updated_at: bigint, last_accessed_at: bigint | null, is_active: boolean, };
+
+
+/**
+ * SMTP-specific account settings
+ */
+export type SmtpAccountSettings = { 
+/**
+ * SMTP server host (e.g., "smtp.gmail.com")
+ */
+host: string, 
+/**
+ * SMTP server port (typically 587 for STARTTLS, 465 for SSL)
+ */
+port: number, 
+/**
+ * Use TLS/SSL connection
+ */
+use_tls: boolean, 
+/**
+ * Connection timeout in seconds
+ */
+connection_timeout_secs: number, };
+
+
+/**
+ * API Key service settings
+ */
+export type ApiKeySettings = { 
+/**
+ * Base URL for the API (e.g., "https://api.stripe.com")
+ */
+base_url: string, 
+/**
+ * API version (if applicable)
+ */
+api_version: string | null, 
+/**
+ * Request timeout in seconds
+ */
+timeout_secs: number, };
+
+
 export type DataType = "project" | "task" | "event" | "contact" | "location" | "date" | "priority" | "status";
 
 

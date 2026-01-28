@@ -48,6 +48,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(PasswordResponse::export_to_string()?));
     types.push(clean_type(CredentialListResponse::export_to_string()?));
 
+    // IMAP credential types
+    types.push(clean_type(ImapAuthMethod::export_to_string()?));
+    types.push(clean_type(ImapAccountSettings::export_to_string()?));
+    types.push(clean_type(CreateImapCredentialRequest::export_to_string()?));
+    types.push(clean_type(ImapCredentialMetadata::export_to_string()?));
+
+    // SMTP credential types
+    types.push(clean_type(SmtpAccountSettings::export_to_string()?));
+
+    // API Key credential types
+    types.push(clean_type(ApiKeySettings::export_to_string()?));
+
     // Extraction types
     types.push(clean_type(DataType::export_to_string()?));
     types.push(clean_type(ExtractionMethod::export_to_string()?));
