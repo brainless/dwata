@@ -46,30 +46,28 @@ pub async fn insert_credential(
         return Err(CredentialDbError::DuplicateIdentifier);
     }
 
-    conn.execute(
-        "INSERT INTO credentials_metadata
-         (credential_type, identifier, username, service_name, port, use_tls, notes,
-          created_at, updated_at, is_active, extra_metadata)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        duckdb::params![
-            request.credential_type.as_str(),
-            &request.identifier,
-            &request.username,
-            &request.service_name,
-            &request.port,
-            &request.use_tls.unwrap_or(true),
-            &request.notes,
-            now,
-            now,
-            true,
-            &request.extra_metadata,
-        ],
-    )
-    .map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
-
-    // Get the auto-generated ID
     let id: i64 = conn
-        .query_row("SELECT last_insert_rowid()", [], |row| row.get(0))
+        .query_row(
+            "INSERT INTO credentials_metadata
+             (id, credential_type, identifier, username, service_name, port, use_tls, notes,
+              created_at, updated_at, is_active, extra_metadata)
+             VALUES (nextval('seq_credentials_metadata_id'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING id",
+            duckdb::params![
+                request.credential_type.as_str(),
+                &request.identifier,
+                &request.username,
+                &request.service_name,
+                &request.port,
+                &request.use_tls.unwrap_or(true),
+                &request.notes,
+                now,
+                now,
+                true,
+                &request.extra_metadata,
+            ],
+            |row| row.get(0),
+        )
         .map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
 
     Ok(CredentialMetadata {

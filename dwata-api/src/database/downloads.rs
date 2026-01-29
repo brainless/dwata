@@ -33,24 +33,22 @@ pub async fn insert_download_job(
     let source_state_json = serde_json::to_string(&request.source_config)
         .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize config: {}", e)))?;
 
-    conn.execute(
-        "INSERT INTO download_jobs
-         (source_type, credential_id, status, source_state, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)",
-        duckdb::params![
-            source_type_to_string(&request.source_type),
-            &request.credential_id,
-            "pending",
-            &source_state_json,
-            now,
-            now,
-        ],
-    )
-    .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
-
-    // Get the auto-generated ID
     let id: i64 = conn
-        .query_row("SELECT last_insert_rowid()", [], |row| row.get(0))
+        .query_row(
+            "INSERT INTO download_jobs
+             (id, source_type, credential_id, status, source_state, created_at, updated_at)
+             VALUES (nextval('seq_download_jobs_id'), ?, ?, ?, ?, ?, ?)
+             RETURNING id",
+            duckdb::params![
+                source_type_to_string(&request.source_type),
+                &request.credential_id,
+                "pending",
+                &source_state_json,
+                now,
+                now,
+            ],
+            |row| row.get(0),
+        )
         .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
     Ok(DownloadJob {

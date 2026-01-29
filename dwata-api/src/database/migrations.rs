@@ -3,10 +3,18 @@ use duckdb::Connection;
 /// Run all database migrations
 #[allow(dead_code)]
 pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
+    // Create sequences
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_agent_sessions_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_agent_messages_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_agent_tool_calls_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_credentials_metadata_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_download_jobs_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_download_items_id", [])?;
+
     // Create agent_sessions table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             agent_name VARCHAR NOT NULL,
             provider VARCHAR NOT NULL,
             model VARCHAR NOT NULL,
@@ -25,7 +33,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_messages table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             session_id INTEGER NOT NULL,
             role VARCHAR NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
             content VARCHAR NOT NULL,
@@ -38,7 +46,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_tool_calls table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_tool_calls (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             session_id INTEGER NOT NULL,
             message_id INTEGER,
             tool_call_id VARCHAR NOT NULL,
@@ -78,18 +86,18 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create credentials_metadata table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS credentials_metadata (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             credential_type VARCHAR NOT NULL,
             identifier VARCHAR NOT NULL UNIQUE,
             username VARCHAR NOT NULL,
             service_name VARCHAR,
             port INTEGER,
-            use_tls BOOLEAN DEFAULT TRUE,
+            use_tls BOOLEAN DEFAULT true,
             notes VARCHAR,
             created_at BIGINT NOT NULL,
             updated_at BIGINT NOT NULL,
             last_accessed_at BIGINT,
-            is_active BOOLEAN DEFAULT TRUE,
+            is_active BOOLEAN DEFAULT true,
             extra_metadata VARCHAR
         )",
         [],
@@ -105,7 +113,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create download_jobs table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS download_jobs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             source_type VARCHAR NOT NULL,
             credential_id INTEGER NOT NULL,
             status VARCHAR NOT NULL DEFAULT 'pending',
@@ -143,7 +151,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create download_items table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS download_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             job_id INTEGER NOT NULL,
             source_identifier VARCHAR NOT NULL,
             source_folder VARCHAR,
@@ -159,7 +167,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             created_at BIGINT NOT NULL,
             updated_at BIGINT NOT NULL,
             downloaded_at BIGINT,
-            FOREIGN KEY (job_id) REFERENCES download_jobs (id) ON DELETE CASCADE
+            FOREIGN KEY (job_id) REFERENCES download_jobs (id)
         )",
         [],
     )?;
