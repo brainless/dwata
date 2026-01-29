@@ -26,22 +26,25 @@ impl Database {
             std::fs::create_dir_all(parent)?;
         }
 
-        // Create two separate connections - one for sync, one for async
+        // Create sync connection first and run migrations
         let sync_conn = Connection::open(db_path)?;
+        let sync_mutex = Arc::new(Mutex::new(sync_conn));
+
+        // Run migrations on sync connection before opening async connection
+        {
+            let conn = sync_mutex.lock().unwrap();
+            migrations::run_migrations(&conn)?;
+        }
+
+        // Now open async connection - it will see the migrated schema
         let async_conn = Connection::open(db_path)?;
 
         let database = Database {
-            connection: Arc::new(Mutex::new(sync_conn)),
+            connection: sync_mutex,
             async_connection: Arc::new(TokioMutex::new(async_conn)),
         };
 
-        database.run_migrations()?;
         Ok(database)
-    }
-
-    fn run_migrations(&self) -> anyhow::Result<()> {
-        let conn = self.connection.lock().unwrap();
-        migrations::run_migrations(&conn)
     }
 
     // Session management
@@ -62,8 +65,8 @@ impl Database {
             .unwrap_or_else(|| "null".to_string());
 
         let id: i64 = conn.query_row(
-            "INSERT INTO agent_sessions (id, agent_name, provider, model, system_prompt, user_prompt, config, started_at, status)
-                VALUES (nextval('seq_agent_sessions_id'), ?1, ?2, ?3, ?4, ?5, ?6, ?7, 'running') RETURNING id",
+            "INSERT INTO agent_sessions (agent_name, provider, model, system_prompt, user_prompt, config, started_at, status)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'running') RETURNING id",
             params![agent_name, provider, model, system_prompt, user_prompt, config_json, now],
             |row| row.get(0),
         )?;
@@ -108,8 +111,8 @@ impl Database {
         let now = chrono::Utc::now().timestamp();
 
         let id: i64 = conn.query_row(
-            "INSERT INTO agent_messages (id, session_id, role, content, created_at)
-                VALUES (nextval('seq_agent_messages_id'), ?1, ?2, ?3, ?4) RETURNING id",
+            "INSERT INTO agent_messages (session_id, role, content, created_at)
+                VALUES (?1, ?2, ?3, ?4) RETURNING id",
             params![session_id, role, content, now],
             |row| row.get(0),
         )?;
@@ -131,8 +134,8 @@ impl Database {
         let request_json = serde_json::to_string(&request)?;
 
         let id: i64 = conn.query_row(
-            "INSERT INTO agent_tool_calls (id, session_id, message_id, tool_call_id, tool_name, request, created_at, status)
-                VALUES (nextval('seq_agent_tool_calls_id'), ?1, ?2, ?3, ?4, ?5, ?6, 'pending') RETURNING id",
+            "INSERT INTO agent_tool_calls (session_id, message_id, tool_call_id, tool_name, request, created_at, status)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending') RETURNING id",
             params![session_id, message_id, tool_call_id, tool_name, request_json, now],
             |row| row.get(0),
         )?;

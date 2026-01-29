@@ -36,8 +36,8 @@ pub async fn insert_download_job(
     let id: i64 = conn
         .query_row(
             "INSERT INTO download_jobs
-             (id, source_type, credential_id, status, source_state, created_at, updated_at)
-             VALUES (nextval('seq_download_jobs_id'), ?, ?, ?, ?, ?, ?)
+             (source_type, credential_id, status, source_state, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)
              RETURNING id",
             duckdb::params![
                 source_type_to_string(&request.source_type),

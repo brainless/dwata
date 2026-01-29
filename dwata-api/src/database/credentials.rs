@@ -49,9 +49,9 @@ pub async fn insert_credential(
     let id: i64 = conn
         .query_row(
             "INSERT INTO credentials_metadata
-             (id, credential_type, identifier, username, service_name, port, use_tls, notes,
+             (credential_type, identifier, username, service_name, port, use_tls, notes,
               created_at, updated_at, is_active, extra_metadata)
-             VALUES (nextval('seq_credentials_metadata_id'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING id",
             duckdb::params![
                 request.credential_type.as_str(),

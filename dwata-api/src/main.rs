@@ -108,7 +108,9 @@ async fn main() -> std::io::Result<()> {
     let download_manager = Arc::new(jobs::download_manager::DownloadManager::new(db.async_connection.clone()));
 
     // Restore interrupted jobs on startup
-    let _ = download_manager.restore_interrupted_jobs().await;
+    if let Err(e) = download_manager.restore_interrupted_jobs().await {
+        tracing::warn!("Failed to restore interrupted jobs: {}", e);
+    }
 
     // Spawn periodic sync task (every 5 minutes)
     let manager_clone = download_manager.clone();

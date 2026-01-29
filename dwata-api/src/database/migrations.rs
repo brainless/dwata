@@ -14,7 +14,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_sessions table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_sessions (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_agent_sessions_id'),
             agent_name VARCHAR NOT NULL,
             provider VARCHAR NOT NULL,
             model VARCHAR NOT NULL,
@@ -33,7 +33,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_messages table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_messages (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_agent_messages_id'),
             session_id INTEGER NOT NULL,
             role VARCHAR NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
             content VARCHAR NOT NULL,
@@ -46,7 +46,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_tool_calls table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_tool_calls (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_agent_tool_calls_id'),
             session_id INTEGER NOT NULL,
             message_id INTEGER,
             tool_call_id VARCHAR NOT NULL,
@@ -86,7 +86,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create credentials_metadata table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS credentials_metadata (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_credentials_metadata_id'),
             credential_type VARCHAR NOT NULL,
             identifier VARCHAR NOT NULL UNIQUE,
             username VARCHAR NOT NULL,
@@ -113,7 +113,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create download_jobs table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS download_jobs (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_download_jobs_id'),
             source_type VARCHAR NOT NULL,
             credential_id INTEGER NOT NULL,
             status VARCHAR NOT NULL DEFAULT 'pending',
@@ -151,7 +151,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create download_items table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS download_items (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_download_items_id'),
             job_id INTEGER NOT NULL,
             source_identifier VARCHAR NOT NULL,
             source_folder VARCHAR,
