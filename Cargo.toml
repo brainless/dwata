@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "dwata-api",
+    "dwata-api", "extractors",
     "shared-types",  # Add this
 ]
 exclude = [
