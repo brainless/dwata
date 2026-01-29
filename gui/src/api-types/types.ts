@@ -136,7 +136,7 @@ export type CreateCredentialRequest = { credential_type: CredentialType, identif
 export type UpdateCredentialRequest = { username: string | null, password: string | null, service_name: string | null, port: number | null, use_tls: boolean | null, notes: string | null, extra_metadata: string | null, };
 
 
-export type CredentialMetadata = { id: string, credential_type: CredentialType, identifier: string, username: string, service_name: string | null, port: number | null, use_tls: boolean | null, notes: string | null, created_at: bigint, updated_at: bigint, last_accessed_at: bigint | null, is_active: boolean, extra_metadata: string | null, };
+export type CredentialMetadata = { id: bigint, credential_type: CredentialType, identifier: string, username: string, service_name: string | null, port: number | null, use_tls: boolean | null, notes: string | null, created_at: bigint, updated_at: bigint, last_accessed_at: bigint | null, is_active: boolean, extra_metadata: string | null, };
 
 
 export type PasswordResponse = { password: string, };
@@ -191,7 +191,7 @@ export type CreateImapCredentialRequest = { identifier: string, username: string
 /**
  * Extended credential metadata with parsed IMAP settings
  */
-export type ImapCredentialMetadata = { id: string, identifier: string, username: string, settings: ImapAccountSettings, notes: string | null, created_at: bigint, updated_at: bigint, last_accessed_at: bigint | null, is_active: boolean, };
+export type ImapCredentialMetadata = { id: bigint, identifier: string, username: string, settings: ImapAccountSettings, notes: string | null, created_at: bigint, updated_at: bigint, last_accessed_at: bigint | null, is_active: boolean, };
 
 
 /**
@@ -232,6 +232,66 @@ api_version: string | null,
  * Request timeout in seconds
  */
 timeout_secs: number, };
+
+
+/**
+ * Represents a long-running download job
+ */
+export type DownloadJob = { id: bigint, source_type: SourceType, credential_id: bigint, status: DownloadJobStatus, progress: DownloadProgress, error_message: string | null, created_at: bigint, started_at: bigint | null, updated_at: bigint, completed_at: bigint | null, last_sync_at: bigint | null, };
+
+
+export type DownloadJobStatus = "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
+
+
+export type DownloadProgress = { total_items: bigint, downloaded_items: bigint, failed_items: bigint, skipped_items: bigint, in_progress_items: bigint, remaining_items: bigint, percent_complete: number, bytes_downloaded: bigint, items_per_second: number, estimated_completion_secs: bigint | null, };
+
+
+export type SourceType = "imap" | "google-drive" | "dropbox" | "one-drive";
+
+
+/**
+ * IMAP-specific download state
+ */
+export type ImapDownloadState = { folders: Array<ImapFolderStatus>, sync_strategy: ImapSyncStrategy, fetch_batch_size: number, };
+
+
+export type ImapFolderStatus = { name: string, total_messages: number, downloaded_messages: number, failed_messages: number, skipped_messages: number, last_synced_uid: number | null, is_complete: boolean, };
+
+
+export type ImapSyncStrategy = "full-sync" | "inbox-only" | { "selected-folders": Array<string> } | "new-only" | { "date-range": { from: string, to: string, } };
+
+
+/**
+ * Cloud storage-specific state (for future)
+ */
+export type CloudStorageDownloadState = { root_path: string, directories: Array<DirectoryStatus>, file_filter: FileFilter | null, };
+
+
+export type DirectoryStatus = { path: string, total_files: number, downloaded_files: number, failed_files: number, is_complete: boolean, };
+
+
+export type FileFilter = { extensions: Array<string> | null, pattern: string | null, min_size_bytes: bigint | null, max_size_bytes: bigint | null, };
+
+
+/**
+ * Request to create a new download job
+ */
+export type CreateDownloadJobRequest = { credential_id: bigint, source_type: SourceType, };
+
+
+/**
+ * Response for download job list
+ */
+export type DownloadJobListResponse = { jobs: Array<DownloadJob>, };
+
+
+/**
+ * Individual download item
+ */
+export type DownloadItem = { id: bigint, job_id: bigint, source_identifier: string, source_folder: string | null, item_type: string, status: DownloadItemStatus, size_bytes: bigint | null, error_message: string | null, created_at: bigint, downloaded_at: bigint | null, };
+
+
+export type DownloadItemStatus = "pending" | "downloading" | "completed" | "failed" | "skipped";
 
 
 export type DataType = "project" | "task" | "event" | "contact" | "location" | "date" | "priority" | "status";

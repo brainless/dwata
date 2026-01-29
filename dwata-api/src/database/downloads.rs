@@ -23,27 +23,11 @@ impl fmt::Display for DownloadDbError {
 
 impl std::error::Error for DownloadDbError {}
 
-fn generate_job_id() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let random_part: String = (0..12)
-        .map(|_| {
-            let idx = rng.gen_range(0..36);
-            "abcdefghijklmnopqrstuvwxyz0123456789"
-                .chars()
-                .nth(idx)
-                .unwrap()
-        })
-        .collect();
-    format!("job_{}", random_part)
-}
-
 pub async fn insert_download_job(
     conn: AsyncDbConnection,
     request: &CreateDownloadJobRequest,
 ) -> Result<DownloadJob, DownloadDbError> {
     let conn = conn.lock().await;
-    let id = generate_job_id();
     let now = chrono::Utc::now().timestamp_millis();
 
     let source_state_json = serde_json::to_string(&request.source_config)
@@ -51,10 +35,9 @@ pub async fn insert_download_job(
 
     conn.execute(
         "INSERT INTO download_jobs
-         (id, source_type, credential_id, status, source_state, created_at, updated_at)
+         (source_type, credential_id, status, source_state, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)",
         duckdb::params![
-            &id,
             source_type_to_string(&request.source_type),
             &request.credential_id,
             "pending",
@@ -65,10 +48,15 @@ pub async fn insert_download_job(
     )
     .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
+    // Get the auto-generated ID
+    let id: i64 = conn
+        .query_row("SELECT last_insert_rowid()", [], |row| row.get(0))
+        .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+
     Ok(DownloadJob {
         id,
         source_type: request.source_type.clone(),
-        credential_id: request.credential_id.clone(),
+        credential_id: request.credential_id,
         status: DownloadJobStatus::Pending,
         progress: DownloadProgress {
             total_items: 0,
@@ -94,7 +82,7 @@ pub async fn insert_download_job(
 
 pub async fn get_download_job(
     conn: AsyncDbConnection,
-    id: &str,
+    id: i64,
 ) -> Result<DownloadJob, DownloadDbError> {
     let conn = conn.lock().await;
 
@@ -202,8 +190,8 @@ pub async fn list_download_jobs(
             .prepare(&query)
             .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
-        let ids_result: Result<Vec<String>, duckdb::Error> = stmt
-            .query_map([], |row| row.get::<_, String>(0))
+        let ids_result: Result<Vec<i64>, duckdb::Error> = stmt
+            .query_map([], |row| row.get::<_, i64>(0))
             .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?
             .collect();
 
@@ -212,7 +200,7 @@ pub async fn list_download_jobs(
 
     let mut jobs = Vec::new();
     for id in ids {
-        if let Ok(job) = get_download_job(conn_ref.clone(), &id).await {
+        if let Ok(job) = get_download_job(conn_ref.clone(), id).await {
             jobs.push(job);
         }
     }
@@ -222,7 +210,7 @@ pub async fn list_download_jobs(
 
 pub async fn update_job_status(
     conn: AsyncDbConnection,
-    job_id: &str,
+    job_id: i64,
     status: DownloadJobStatus,
     error_message: Option<String>,
 ) -> Result<(), DownloadDbError> {
@@ -251,7 +239,7 @@ pub async fn update_job_status(
 
 pub async fn update_job_progress(
     conn: AsyncDbConnection,
-    job_id: &str,
+    job_id: i64,
     total_items: Option<u64>,
     downloaded_items: Option<u64>,
     failed_items: Option<u64>,
@@ -285,7 +273,7 @@ pub async fn update_job_progress(
         params.push(Box::new(bytes as i64));
     }
 
-    params.push(Box::new(job_id.to_string()));
+    params.push(Box::new(job_id));
 
     let query = format!(
         "UPDATE download_jobs SET {} WHERE id = ?",
@@ -302,7 +290,7 @@ pub async fn update_job_progress(
 
 pub async fn update_source_state(
     conn: AsyncDbConnection,
-    job_id: &str,
+    job_id: i64,
     source_state: serde_json::Value,
 ) -> Result<(), DownloadDbError> {
     let conn = conn.lock().await;
@@ -324,7 +312,7 @@ pub async fn update_source_state(
 
 pub async fn delete_download_job(
     conn: AsyncDbConnection,
-    job_id: &str,
+    job_id: i64,
 ) -> Result<(), DownloadDbError> {
     let conn = conn.lock().await;
 

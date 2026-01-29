@@ -48,11 +48,11 @@ pub async fn list_download_jobs(
 
 pub async fn get_download_job(
     db: web::Data<Arc<Database>>,
-    path: web::Path<String>,
+    path: web::Path<i64>,
 ) -> ActixResult<HttpResponse> {
     let job_id = path.into_inner();
 
-    let job = db::get_download_job(db.async_connection.clone(), &job_id)
+    let job = db::get_download_job(db.async_connection.clone(), job_id)
         .await
         .map_err(|e| match e {
             db::DownloadDbError::NotFound => actix_web::error::ErrorNotFound("Job not found"),
@@ -64,12 +64,12 @@ pub async fn get_download_job(
 
 pub async fn start_download(
     manager: web::Data<Arc<DownloadManager>>,
-    path: web::Path<String>,
+    path: web::Path<i64>,
 ) -> ActixResult<HttpResponse> {
     let job_id = path.into_inner();
 
     manager
-        .start_job(&job_id)
+        .start_job(job_id)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -78,12 +78,12 @@ pub async fn start_download(
 
 pub async fn pause_download(
     manager: web::Data<Arc<DownloadManager>>,
-    path: web::Path<String>,
+    path: web::Path<i64>,
 ) -> ActixResult<HttpResponse> {
     let job_id = path.into_inner();
 
     manager
-        .pause_job(&job_id)
+        .pause_job(job_id)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -93,15 +93,15 @@ pub async fn pause_download(
 pub async fn delete_download_job(
     db: web::Data<Arc<Database>>,
     manager: web::Data<Arc<DownloadManager>>,
-    path: web::Path<String>,
+    path: web::Path<i64>,
 ) -> ActixResult<HttpResponse> {
     let job_id = path.into_inner();
 
-    let _ = manager.pause_job(&job_id).await;
+    let _ = manager.pause_job(job_id).await;
 
     db::update_job_status(
         db.async_connection.clone(),
-        &job_id,
+        job_id,
         DownloadJobStatus::Cancelled,
         None,
     )

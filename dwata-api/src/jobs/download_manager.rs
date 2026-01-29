@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 
 pub struct DownloadManager {
     db_conn: AsyncDbConnection,
-    active_jobs: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
+    active_jobs: Arc<Mutex<HashMap<i64, JoinHandle<()>>>>,
 }
 
 impl DownloadManager {
@@ -23,11 +23,11 @@ impl DownloadManager {
         }
     }
 
-    pub async fn start_job(&self, job_id: &str) -> Result<()> {
+    pub async fn start_job(&self, job_id: i64) -> Result<()> {
         let job = db::get_download_job(self.db_conn.clone(), job_id).await?;
 
         let active_jobs = self.active_jobs.lock().await;
-        if active_jobs.contains_key(job_id) {
+        if active_jobs.contains_key(&job_id) {
             drop(active_jobs);
             return Err(anyhow::anyhow!("Job already running"));
         }
@@ -42,8 +42,7 @@ impl DownloadManager {
         .await?;
 
         let db_conn = self.db_conn.clone();
-        let job_id = job_id.to_string();
-        let job_id_for_spawn = job_id.clone();
+        let job_id_for_spawn = job_id;
 
         let handle = tokio::spawn(async move {
             match job.source_type {
@@ -52,7 +51,7 @@ impl DownloadManager {
                         tracing::error!("IMAP download failed for job {}: {}", job_id_for_spawn, e);
                         let _ = db::update_job_status(
                             db_conn,
-                            &job_id_for_spawn,
+                            job_id_for_spawn,
                             DownloadJobStatus::Failed,
                             Some(e.to_string()),
                         )
@@ -66,15 +65,15 @@ impl DownloadManager {
         });
 
         let mut active_jobs = self.active_jobs.lock().await;
-        active_jobs.insert(job_id.to_string(), handle);
+        active_jobs.insert(job_id, handle);
         drop(active_jobs);
 
         Ok(())
     }
 
-    pub async fn pause_job(&self, job_id: &str) -> Result<()> {
+    pub async fn pause_job(&self, job_id: i64) -> Result<()> {
         let mut active_jobs = self.active_jobs.lock().await;
-        let handle = active_jobs.remove(job_id);
+        let handle = active_jobs.remove(&job_id);
         drop(active_jobs);
 
         if let Some(handle) = handle {
@@ -151,7 +150,7 @@ impl DownloadManager {
 
                             db::update_job_progress(
                                 db_conn.clone(),
-                                &job.id,
+                                job.id,
                                 None,
                                 Some(1),
                                 None,
@@ -165,7 +164,7 @@ impl DownloadManager {
 
                             db::update_job_progress(
                                 db_conn.clone(),
-                                &job.id,
+                                job.id,
                                 None,
                                 None,
                                 Some(1),
@@ -181,7 +180,7 @@ impl DownloadManager {
 
         db::update_job_status(
             db_conn,
-            &job.id,
+            job.id,
             DownloadJobStatus::Completed,
             None,
         )
@@ -212,7 +211,7 @@ impl DownloadManager {
 
         for job in interrupted_jobs {
             tracing::info!("Resuming interrupted job: {}", job.id);
-            self.start_job(&job.id).await?;
+            self.start_job(job.id).await?;
         }
 
         Ok(())

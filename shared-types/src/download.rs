@@ -4,7 +4,7 @@ use ts_rs::TS;
 /// Represents a long-running download job
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct DownloadJob {
-    pub id: String,
+    pub id: i64,
     pub source_type: SourceType,
     pub credential_id: i64,
     pub status: DownloadJobStatus,
@@ -127,8 +127,8 @@ pub struct DownloadJobListResponse {
 /// Individual download item
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct DownloadItem {
-    pub id: String,
-    pub job_id: String,
+    pub id: i64,
+    pub job_id: i64,
     pub source_identifier: String,
     pub source_folder: Option<String>,
     pub item_type: String,

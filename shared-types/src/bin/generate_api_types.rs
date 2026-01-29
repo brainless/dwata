@@ -60,6 +60,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // API Key credential types
     types.push(clean_type(ApiKeySettings::export_to_string()?));
 
+    // Download types
+    types.push(clean_type(DownloadJob::export_to_string()?));
+    types.push(clean_type(DownloadJobStatus::export_to_string()?));
+    types.push(clean_type(DownloadProgress::export_to_string()?));
+    types.push(clean_type(SourceType::export_to_string()?));
+    types.push(clean_type(ImapDownloadState::export_to_string()?));
+    types.push(clean_type(ImapFolderStatus::export_to_string()?));
+    types.push(clean_type(ImapSyncStrategy::export_to_string()?));
+    types.push(clean_type(CloudStorageDownloadState::export_to_string()?));
+    types.push(clean_type(DirectoryStatus::export_to_string()?));
+    types.push(clean_type(FileFilter::export_to_string()?));
+    types.push(clean_type(CreateDownloadJobRequest::export_to_string()?));
+    types.push(clean_type(DownloadJobListResponse::export_to_string()?));
+    types.push(clean_type(DownloadItem::export_to_string()?));
+    types.push(clean_type(DownloadItemStatus::export_to_string()?));
+
     // Extraction types
     types.push(clean_type(DataType::export_to_string()?));
     types.push(clean_type(ExtractionMethod::export_to_string()?));
