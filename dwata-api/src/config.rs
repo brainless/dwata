@@ -7,6 +7,7 @@ pub struct ApiConfig {
     pub api_keys: Option<ApiKeysConfig>,
     pub cors: Option<CorsConfig>,
     pub server: Option<ServerConfig>,
+    pub google_oauth: Option<GoogleOAuthConfig>,
 }
 
 impl Default for ApiConfig {
@@ -20,6 +21,7 @@ impl Default for ApiConfig {
                 host: "127.0.0.1".to_string(),
                 port: 8080,
             }),
+            google_oauth: Some(GoogleOAuthConfig::default()),
         }
     }
 }
@@ -38,6 +40,21 @@ pub struct CorsConfig {
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GoogleOAuthConfig {
+    pub client_id: String,
+    pub redirect_uri: String,
+}
+
+impl Default for GoogleOAuthConfig {
+    fn default() -> Self {
+        Self {
+            client_id: "".to_string(),
+            redirect_uri: "http://localhost:8080/api/oauth/google/callback".to_string(),
+        }
+    }
 }
 
 impl ApiConfig {
@@ -63,6 +80,11 @@ allowed_origins = ["http://localhost:3030"]
 [server]
 host = "127.0.0.1"
 port = 8080
+
+[google_oauth]
+# Google Cloud Console OAuth2 client ID for Gmail
+# client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
+# redirect_uri = "http://localhost:8080/api/oauth/google/callback"
 "#;
             std::fs::write(&config_path, default_config).map_err(|e| {
                 ConfigError::Message(format!("Failed to write default config: {e}"))

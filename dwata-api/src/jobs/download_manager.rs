@@ -3,8 +3,10 @@ use crate::database::credentials::get_credential;
 use crate::database::AsyncDbConnection;
 use crate::helpers::keyring_service::KeyringService;
 use crate::integrations::nocodo::NocodoImapClient;
+use crate::integrations::imap_client;
 use anyhow::Result;
 use shared_types::download::{DownloadJob, DownloadJobStatus, ImapDownloadState, SourceType};
+use shared_types::credential::CredentialType;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -13,13 +15,21 @@ use tokio::sync::Mutex;
 pub struct DownloadManager {
     db_conn: AsyncDbConnection,
     active_jobs: Arc<Mutex<HashMap<i64, JoinHandle<()>>>>,
+    token_cache: Arc<crate::helpers::token_cache::TokenCache>,
+    oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
 }
 
 impl DownloadManager {
-    pub fn new(db_conn: AsyncDbConnection) -> Self {
+    pub fn new(
+        db_conn: AsyncDbConnection,
+        token_cache: Arc<crate::helpers::token_cache::TokenCache>,
+        oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
+    ) -> Self {
         Self {
             db_conn,
             active_jobs: Arc::new(Mutex::new(HashMap::new())),
+            token_cache,
+            oauth_client,
         }
     }
 
@@ -43,11 +53,14 @@ impl DownloadManager {
 
         let db_conn = self.db_conn.clone();
         let job_id_for_spawn = job_id;
+        let token_cache = self.token_cache.clone();
+        let oauth_client = self.oauth_client.clone();
+        let job_clone = job.clone();
 
         let handle = tokio::spawn(async move {
-            match job.source_type {
+            match job_clone.source_type {
                 SourceType::Imap => {
-                    if let Err(e) = Self::run_imap_download(db_conn.clone(), &job).await {
+                    if let Err(e) = Self::run_imap_download(db_conn.clone(), &job_clone, token_cache, oauth_client).await {
                         tracing::error!("IMAP download failed for job {}: {}", job_id_for_spawn, e);
                         let _ = db::update_job_status(
                             db_conn,
@@ -59,7 +72,7 @@ impl DownloadManager {
                     }
                 }
                 _ => {
-                    tracing::warn!("Unsupported source type: {:?}", job.source_type);
+                    tracing::warn!("Unsupported source type: {:?}", job_clone.source_type);
                 }
             }
         });
@@ -94,6 +107,8 @@ impl DownloadManager {
     async fn run_imap_download(
         db_conn: Arc<Mutex<duckdb::Connection>>,
         job: &DownloadJob,
+        token_cache: Arc<crate::helpers::token_cache::TokenCache>,
+        oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
     ) -> Result<()> {
         tracing::info!("Starting IMAP download for job {}", job.id);
 
@@ -103,19 +118,31 @@ impl DownloadManager {
         )
         .await?;
 
-        let password = KeyringService::get_password(
-            &credential.credential_type,
-            &credential.identifier,
-            &credential.username,
-        )?;
+        let imap_client = if credential.credential_type == CredentialType::OAuth {
+            let _session = imap_client::connect_gmail_oauth(
+                &credential.username,
+                credential.id,
+                &credential,
+                &token_cache,
+                &oauth_client,
+            ).await?;
 
-        let imap_client = NocodoImapClient::new(
-            &credential.service_name.unwrap_or_default(),
-            credential.port.unwrap_or(993) as u16,
-            &credential.username,
-            &password,
-        )
-        .await?;
+            return Err(anyhow::anyhow!("OAuth2 IMAP client not fully implemented yet"));
+        } else {
+            let password = KeyringService::get_password(
+                &credential.credential_type,
+                &credential.identifier,
+                &credential.username,
+            )?;
+
+            NocodoImapClient::new(
+                &credential.service_name.unwrap_or_default(),
+                credential.port.unwrap_or(993) as u16,
+                &credential.username,
+                &password,
+            )
+            .await?
+        };
 
         let state: ImapDownloadState = serde_json::from_value(job.source_state.clone())?;
 

@@ -104,8 +104,24 @@ async fn main() -> std::io::Result<()> {
         config: config_arc.clone(),
     };
 
+    // Initialize OAuth components
+    let google_oauth_config = config.google_oauth.unwrap_or_default();
+    let oauth_client = Arc::new(
+        crate::helpers::google_oauth::GoogleOAuthClient::new(
+            &google_oauth_config.client_id,
+            &google_oauth_config.redirect_uri,
+        )
+        .expect("Failed to initialize OAuth client"),
+    );
+    let state_manager = Arc::new(crate::helpers::oauth_state::OAuthStateManager::new());
+    let token_cache = Arc::new(crate::helpers::token_cache::TokenCache::new());
+
     // Initialize download manager
-    let download_manager = Arc::new(jobs::download_manager::DownloadManager::new(db.async_connection.clone()));
+    let download_manager = Arc::new(jobs::download_manager::DownloadManager::new(
+        db.async_connection.clone(),
+        token_cache.clone(),
+        oauth_client.clone(),
+    ));
 
     // Restore interrupted jobs on startup
     if let Err(e) = download_manager.restore_interrupted_jobs().await {
@@ -157,6 +173,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(db.clone()))
             .app_data(web::Data::new(settings_state.clone()))
             .app_data(web::Data::new(download_manager.clone()))
+            .app_data(web::Data::new(oauth_client.clone()))
+            .app_data(web::Data::new(state_manager.clone()))
+            .app_data(web::Data::new(token_cache.clone()))
             .service(hello)
             .service(health)
             .service(get_settings)
@@ -167,6 +186,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/credentials/{id}/password", web::get().to(handlers::credentials::get_password))
             .route("/api/credentials/{id}", web::put().to(handlers::credentials::update_credential))
             .route("/api/credentials/{id}", web::delete().to(handlers::credentials::delete_credential))
+            .route("/api/credentials/gmail/initiate", web::post().to(handlers::oauth::initiate_gmail_oauth))
+            .route("/api/oauth/google/callback", web::get().to(handlers::oauth::google_oauth_callback))
             .route("/api/downloads", web::post().to(handlers::downloads::create_download_job))
             .route("/api/downloads", web::get().to(handlers::downloads::list_download_jobs))
             .route("/api/downloads/{id}", web::get().to(handlers::downloads::get_download_job))
