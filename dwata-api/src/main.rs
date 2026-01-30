@@ -8,6 +8,8 @@ mod config;
 mod database;
 mod handlers;
 mod helpers;
+mod integrations;
+mod jobs;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -102,6 +104,62 @@ async fn main() -> std::io::Result<()> {
         config: config_arc.clone(),
     };
 
+    // Initialize OAuth components
+    let google_oauth_config = config.google_oauth.unwrap_or_default();
+    let oauth_client = Arc::new(
+        crate::helpers::google_oauth::GoogleOAuthClient::new(
+            &google_oauth_config.client_id,
+            google_oauth_config.client_secret.as_deref(),
+            &google_oauth_config.redirect_uri,
+        )
+        .expect("Failed to initialize OAuth client"),
+    );
+    let state_manager = Arc::new(crate::helpers::oauth_state::OAuthStateManager::new());
+    let token_cache = Arc::new(crate::helpers::token_cache::TokenCache::new());
+
+    // Initialize download manager
+    let download_manager = Arc::new(jobs::download_manager::DownloadManager::new(
+        db.async_connection.clone(),
+        token_cache.clone(),
+        oauth_client.clone(),
+    ));
+
+    // Restore interrupted jobs on startup
+    if let Err(e) = download_manager.restore_interrupted_jobs().await {
+        tracing::warn!("Failed to restore interrupted jobs: {}", e);
+    }
+
+    // Ensure all credentials have download jobs (auto-create if missing)
+    if let Err(e) = download_manager.ensure_jobs_for_all_credentials().await {
+        tracing::warn!("Failed to ensure jobs for all credentials: {}", e);
+    }
+
+    // Run initial sync on startup to check for new emails
+    if let Err(e) = download_manager.sync_all_jobs().await {
+        tracing::warn!("Failed to run initial sync: {}", e);
+    }
+
+    // Spawn periodic sync task (every 5 minutes)
+    let manager_clone = download_manager.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            if let Err(e) = manager_clone.sync_all_jobs().await {
+                tracing::error!("Periodic sync failed: {}", e);
+            }
+        }
+    });
+
+    // Get server config or use defaults
+    let (host, port) = if let Some(server_config) = &config.server {
+        (server_config.host.clone(), server_config.port)
+    } else {
+        ("127.0.0.1".to_string(), 8080)
+    };
+
+    println!("Starting server on {}:{}", host, port);
+
     HttpServer::new(move || {
         // Configure CORS
         let cors = if let Some(cors_config) = &config.cors {
@@ -125,12 +183,30 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(web::Data::new(db.clone()))
             .app_data(web::Data::new(settings_state.clone()))
+            .app_data(web::Data::new(download_manager.clone()))
+            .app_data(web::Data::new(oauth_client.clone()))
+            .app_data(web::Data::new(state_manager.clone()))
+            .app_data(web::Data::new(token_cache.clone()))
             .service(hello)
             .service(health)
             .service(get_settings)
             .service(update_api_keys)
+            .route("/api/credentials", web::post().to(handlers::credentials::create_credential))
+            .route("/api/credentials", web::get().to(handlers::credentials::list_credentials))
+            .route("/api/credentials/{id}", web::get().to(handlers::credentials::get_credential))
+            .route("/api/credentials/{id}/password", web::get().to(handlers::credentials::get_password))
+            .route("/api/credentials/{id}", web::put().to(handlers::credentials::update_credential))
+            .route("/api/credentials/{id}", web::delete().to(handlers::credentials::delete_credential))
+            .route("/api/credentials/gmail/initiate", web::post().to(handlers::oauth::initiate_gmail_oauth))
+            .route("/api/oauth/google/callback", web::get().to(handlers::oauth::google_oauth_callback))
+            .route("/api/downloads", web::post().to(handlers::downloads::create_download_job))
+            .route("/api/downloads", web::get().to(handlers::downloads::list_download_jobs))
+            .route("/api/downloads/{id}", web::get().to(handlers::downloads::get_download_job))
+            .route("/api/downloads/{id}/start", web::post().to(handlers::downloads::start_download))
+            .route("/api/downloads/{id}/pause", web::post().to(handlers::downloads::pause_download))
+            .route("/api/downloads/{id}", web::delete().to(handlers::downloads::delete_download_job))
     })
-    .bind(("127.0.0.1", 0))? // let OS assign free port
+    .bind((host.as_str(), port))?
     .run()
     .await
 }

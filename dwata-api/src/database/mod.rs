@@ -1,3 +1,6 @@
+pub mod credentials;
+pub mod downloads;
+pub mod emails;
 pub mod migrations;
 pub mod models;
 pub mod queries;
@@ -5,11 +8,14 @@ pub mod queries;
 use duckdb::{params, Connection};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tokio::sync::Mutex as TokioMutex;
 
 pub type DbConnection = Arc<Mutex<Connection>>;
+pub type AsyncDbConnection = Arc<TokioMutex<Connection>>;
 
 pub struct Database {
     pub connection: DbConnection,
+    pub async_connection: AsyncDbConnection,
 }
 
 #[allow(dead_code)]
@@ -21,19 +27,25 @@ impl Database {
             std::fs::create_dir_all(parent)?;
         }
 
-        let conn = Connection::open(db_path)?;
+        // Create sync connection first and run migrations
+        let sync_conn = Connection::open(db_path)?;
+        let sync_mutex = Arc::new(Mutex::new(sync_conn));
+
+        // Run migrations on sync connection before opening async connection
+        {
+            let conn = sync_mutex.lock().unwrap();
+            migrations::run_migrations(&conn)?;
+        }
+
+        // Now open async connection - it will see the migrated schema
+        let async_conn = Connection::open(db_path)?;
 
         let database = Database {
-            connection: Arc::new(Mutex::new(conn)),
+            connection: sync_mutex,
+            async_connection: Arc::new(TokioMutex::new(async_conn)),
         };
 
-        database.run_migrations()?;
         Ok(database)
-    }
-
-    fn run_migrations(&self) -> anyhow::Result<()> {
-        let conn = self.connection.lock().unwrap();
-        migrations::run_migrations(&conn)
     }
 
     // Session management

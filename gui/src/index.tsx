@@ -23,6 +23,7 @@ render(
       <Route path="/tasks" component={Tasks} />
       <Route path="/calendar" component={Calendar} />
       <Route path="/settings" component={Settings} />
+      <Route path="/settings/:tab" component={Settings} />
     </Router>
   ),
   document.getElementById("root") as HTMLElement,

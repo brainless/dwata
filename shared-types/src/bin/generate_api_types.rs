@@ -40,11 +40,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(SettingsResponse::export_to_string()?));
     types.push(clean_type(UpdateApiKeysRequest::export_to_string()?));
 
+    // Credential types
+    types.push(clean_type(CredentialType::export_to_string()?));
+    types.push(clean_type(CreateCredentialRequest::export_to_string()?));
+    types.push(clean_type(UpdateCredentialRequest::export_to_string()?));
+    types.push(clean_type(CredentialMetadata::export_to_string()?));
+    types.push(clean_type(PasswordResponse::export_to_string()?));
+    types.push(clean_type(CredentialListResponse::export_to_string()?));
+
+    // IMAP credential types
+    types.push(clean_type(ImapAuthMethod::export_to_string()?));
+    types.push(clean_type(ImapAccountSettings::export_to_string()?));
+    types.push(clean_type(CreateImapCredentialRequest::export_to_string()?));
+    types.push(clean_type(ImapCredentialMetadata::export_to_string()?));
+
+    // SMTP credential types
+    types.push(clean_type(SmtpAccountSettings::export_to_string()?));
+
+    // API Key credential types
+    types.push(clean_type(ApiKeySettings::export_to_string()?));
+
+    // Download types
+    types.push(clean_type(DownloadJob::export_to_string()?));
+    types.push(clean_type(DownloadJobStatus::export_to_string()?));
+    types.push(clean_type(DownloadProgress::export_to_string()?));
+    types.push(clean_type(SourceType::export_to_string()?));
+    types.push(clean_type(ImapDownloadState::export_to_string()?));
+    types.push(clean_type(ImapFolderStatus::export_to_string()?));
+    types.push(clean_type(ImapSyncStrategy::export_to_string()?));
+    types.push(clean_type(CloudStorageDownloadState::export_to_string()?));
+    types.push(clean_type(DirectoryStatus::export_to_string()?));
+    types.push(clean_type(FileFilter::export_to_string()?));
+    types.push(clean_type(CreateDownloadJobRequest::export_to_string()?));
+    types.push(clean_type(DownloadJobListResponse::export_to_string()?));
+    types.push(clean_type(DownloadItem::export_to_string()?));
+    types.push(clean_type(DownloadItemStatus::export_to_string()?));
+
+    // Email types
+    types.push(clean_type(Email::export_to_string()?));
+    types.push(clean_type(EmailAddress::export_to_string()?));
+    types.push(clean_type(EmailAttachment::export_to_string()?));
+    types.push(clean_type(AttachmentExtractionStatus::export_to_string()?));
+    types.push(clean_type(ListEmailsRequest::export_to_string()?));
+    types.push(clean_type(ListEmailsResponse::export_to_string()?));
+
     // Extraction types
     types.push(clean_type(DataType::export_to_string()?));
     types.push(clean_type(ExtractionMethod::export_to_string()?));
     types.push(clean_type(Attachment::export_to_string()?));
-    types.push(clean_type(EmailAddress::export_to_string()?));
     types.push(clean_type(UserPreferences::export_to_string()?));
     types.push(clean_type(ExtractedEntity::export_to_string()?));
     types.push(clean_type(ExtractedProject::export_to_string()?));
@@ -74,13 +117,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn clean_type(mut type_def: String) -> String {
     type_def.retain(|c| c != '\r');
+
+    // Check if the type definition includes imports (like Email which imports EmailAddress)
     let lines: Vec<&str> = type_def.lines().collect();
+    let has_import = lines
+        .iter()
+        .any(|line| line.trim().starts_with("import type"));
+
     let filtered: Vec<&str> = lines
         .iter()
         .filter(|line| {
             let trimmed = line.trim();
-            !trimmed.starts_with("import type")
-                && !trimmed.starts_with("// This file was generated")
+            // Keep import lines if they're part of a type definition (Email type imports EmailAddress)
+            if trimmed.starts_with("import type") {
+                return has_import;
+            }
+            // Filter out the generated comment line
+            !trimmed.starts_with("// This file was generated")
+                && !trimmed.starts_with("/* This file was generated")
         })
         .cloned()
         .collect();

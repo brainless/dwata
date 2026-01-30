@@ -6,6 +6,8 @@ use std::path::PathBuf;
 pub struct ApiConfig {
     pub api_keys: Option<ApiKeysConfig>,
     pub cors: Option<CorsConfig>,
+    pub server: Option<ServerConfig>,
+    pub google_oauth: Option<GoogleOAuthConfig>,
 }
 
 impl Default for ApiConfig {
@@ -15,6 +17,11 @@ impl Default for ApiConfig {
             cors: Some(CorsConfig {
                 allowed_origins: vec!["http://localhost:3000".to_string()],
             }),
+            server: Some(ServerConfig {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+            }),
+            google_oauth: Some(GoogleOAuthConfig::default()),
         }
     }
 }
@@ -27,6 +34,29 @@ pub struct ApiKeysConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CorsConfig {
     pub allowed_origins: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ServerConfig {
+    pub host: String,
+    pub port: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GoogleOAuthConfig {
+    pub client_id: String,
+    pub client_secret: Option<String>,
+    pub redirect_uri: String,
+}
+
+impl Default for GoogleOAuthConfig {
+    fn default() -> Self {
+        Self {
+            client_id: "".to_string(),
+            client_secret: None,
+            redirect_uri: "http://localhost:8000/api/oauth/google/callback".to_string(),
+        }
+    }
 }
 
 impl ApiConfig {
@@ -48,6 +78,16 @@ impl ApiConfig {
 
 [cors]
 allowed_origins = ["http://localhost:3030"]
+
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[google_oauth]
+# Google Cloud Console OAuth2 client ID for Gmail
+# client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
+# client_secret = "YOUR_CLIENT_SECRET" # Optional, for Desktop apps
+# redirect_uri = "http://localhost:8080/api/oauth/google/callback"
 "#;
             std::fs::write(&config_path, default_config).map_err(|e| {
                 ConfigError::Message(format!("Failed to write default config: {e}"))

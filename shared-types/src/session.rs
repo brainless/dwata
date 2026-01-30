@@ -64,7 +64,6 @@ impl AgentToolCall {
 
 /// Simplified session info for list views
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct SessionListItem {
     pub id: i64,
     pub agent_name: String,
@@ -75,14 +74,12 @@ pub struct SessionListItem {
 
 /// List of sessions response
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct SessionListResponse {
     pub sessions: Vec<SessionListItem>,
 }
 
 /// Detailed session with messages and tool calls
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct SessionResponse {
     pub id: i64,
     pub agent_name: String,
@@ -102,7 +99,6 @@ pub struct SessionResponse {
 
 /// Message in session response
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct SessionMessage {
     pub role: String,
     pub content: String,
@@ -111,7 +107,6 @@ pub struct SessionMessage {
 
 /// Tool call in session response
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct SessionToolCall {
     pub tool_name: String,
     #[ts(type = "any")]

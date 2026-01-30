@@ -3,7 +3,6 @@ use ts_rs::TS;
 
 /// Task status
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "kebab-case")]
 pub enum TaskStatus {
     Todo,
@@ -15,7 +14,6 @@ pub enum TaskStatus {
 
 /// Task priority
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "kebab-case")]
 pub enum TaskPriority {
     Low,
@@ -26,7 +24,6 @@ pub enum TaskPriority {
 
 /// Task entity for managing individual tasks
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct Task {
     pub id: i32,
     pub project_id: Option<i32>,
@@ -42,7 +39,6 @@ pub struct Task {
 
 /// Request to create a new task
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct CreateTaskRequest {
     pub project_id: Option<i32>,
     pub title: String,
@@ -53,7 +49,6 @@ pub struct CreateTaskRequest {
 
 /// Request to update a task
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct UpdateTaskRequest {
     pub project_id: Option<i32>,
     pub title: Option<String>,
@@ -65,7 +60,6 @@ pub struct UpdateTaskRequest {
 
 /// Response containing a list of tasks
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 pub struct TasksResponse {
     pub tasks: Vec<Task>,
 }
