@@ -129,6 +129,11 @@ async fn main() -> std::io::Result<()> {
         tracing::warn!("Failed to restore interrupted jobs: {}", e);
     }
 
+    // Run initial sync on startup to check for new emails
+    if let Err(e) = download_manager.sync_all_jobs().await {
+        tracing::warn!("Failed to run initial sync: {}", e);
+    }
+
     // Spawn periodic sync task (every 5 minutes)
     let manager_clone = download_manager.clone();
     tokio::spawn(async move {

@@ -276,10 +276,23 @@ impl DownloadManager {
     }
 
     pub async fn sync_all_jobs(&self) -> Result<()> {
+        tracing::info!("Starting sync for all jobs");
         let jobs = db::list_download_jobs(self.db_conn.clone(), None, 100).await?;
 
         for job in jobs {
-            if job.status == DownloadJobStatus::Running || job.status == DownloadJobStatus::Completed {
+            // Sync jobs that are completed or paused (but not failed or cancelled)
+            if job.status == DownloadJobStatus::Completed || job.status == DownloadJobStatus::Paused {
+                // Check if job is already running
+                let active_jobs = self.active_jobs.lock().await;
+                let is_running = active_jobs.contains_key(&job.id);
+                drop(active_jobs);
+
+                if !is_running {
+                    tracing::info!("Starting sync for job {}", job.id);
+                    if let Err(e) = self.start_job(job.id).await {
+                        tracing::error!("Failed to start job {} during sync: {}", job.id, e);
+                    }
+                }
             }
         }
 
