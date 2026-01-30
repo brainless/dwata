@@ -9,7 +9,7 @@ use anyhow::Result;
 use shared_types::download::{DownloadJob, DownloadJobStatus, ImapDownloadState, SourceType};
 use shared_types::credential::CredentialType;
 use shared_types::email::EmailAddress;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tokio::sync::Mutex;
@@ -63,7 +63,19 @@ impl DownloadManager {
             match job_clone.source_type {
                 SourceType::Imap => {
                     if let Err(e) = Self::run_imap_download(db_conn.clone(), &job_clone, token_cache, oauth_client).await {
-                        tracing::error!("IMAP download failed for job {}: {}", job_id_for_spawn, e);
+                        // Get credential info for better error logging
+                        let credential_info = match get_credential(db_conn.clone(), job_clone.credential_id).await {
+                            Ok(cred) => format!("{} ({})", cred.username, cred.identifier),
+                            Err(_) => format!("credential_id {}", job_clone.credential_id),
+                        };
+
+                        tracing::error!(
+                            "IMAP download failed for job {} [Account: {}]: {}",
+                            job_id_for_spawn,
+                            credential_info,
+                            e
+                        );
+
                         let _ = db::update_job_status(
                             db_conn,
                             job_id_for_spawn,
@@ -112,13 +124,20 @@ impl DownloadManager {
         token_cache: Arc<crate::helpers::token_cache::TokenCache>,
         oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
     ) -> Result<()> {
-        tracing::info!("Starting IMAP download for job {}", job.id);
-
         let credential = get_credential(
             db_conn.clone(),
             job.credential_id,
         )
         .await?;
+
+        tracing::info!(
+            "Starting IMAP download for job {} - Account: {} ({}), Type: {:?}, Server: {}",
+            job.id,
+            credential.username,
+            credential.identifier,
+            credential.credential_type,
+            credential.service_name.as_deref().unwrap_or("unknown")
+        );
 
         let mut imap_client = if credential.credential_type == CredentialType::OAuth {
             let access_token = get_access_token_for_imap(
@@ -300,16 +319,127 @@ impl DownloadManager {
     }
 
     pub async fn restore_interrupted_jobs(&self) -> Result<()> {
-        let interrupted_jobs = db::list_download_jobs(
+        // Don't try to restore interrupted jobs - we'll rely on ensure_jobs_for_all_credentials
+        // and sync_all_jobs instead. Each job tracks its state (last_synced_uid) so it will
+        // continue from where it left off.
+        tracing::info!("Skipping interrupted job restoration - relying on auto-creation and sync");
+        Ok(())
+    }
+
+    pub async fn ensure_jobs_for_all_credentials(&self) -> Result<()> {
+        tracing::info!("Ensuring download jobs exist for all credentials");
+
+        // Get all active credentials
+        let credentials = crate::database::credentials::list_credentials(
             self.db_conn.clone(),
-            Some("running"),
-            100,
+            false, // only active credentials
         )
         .await?;
 
-        for job in interrupted_jobs {
-            tracing::info!("Resuming interrupted job: {}", job.id);
-            self.start_job(job.id).await?;
+        // Get all existing jobs
+        let all_jobs = db::list_download_jobs(self.db_conn.clone(), None, 1000).await?;
+
+        // Build a map of credential IDs to their jobs
+        let mut jobs_by_credential: std::collections::HashMap<i64, Vec<&shared_types::download::DownloadJob>> =
+            std::collections::HashMap::new();
+        for job in &all_jobs {
+            jobs_by_credential
+                .entry(job.credential_id)
+                .or_insert_with(Vec::new)
+                .push(job);
+        }
+
+        for credential in credentials {
+            // Only create jobs for IMAP and OAuth credentials (email accounts)
+            if credential.credential_type != CredentialType::Imap
+                && credential.credential_type != CredentialType::OAuth {
+                continue;
+            }
+
+            // Check if this credential has any jobs
+            if let Some(existing_jobs) = jobs_by_credential.get(&credential.id) {
+                // If there are jobs, reset any that are in "running" or "failed" state to "completed"
+                // so they'll be picked up by sync_all_jobs
+                for job in existing_jobs {
+                    if job.status == DownloadJobStatus::Running || job.status == DownloadJobStatus::Failed {
+                        tracing::info!(
+                            "Resetting job {} (credential {}) from {:?} to completed",
+                            job.id,
+                            credential.id,
+                            job.status
+                        );
+                        let _ = db::update_job_status(
+                            self.db_conn.clone(),
+                            job.id,
+                            DownloadJobStatus::Completed,
+                            None,
+                        )
+                        .await;
+                    }
+                }
+
+                tracing::debug!(
+                    "Credential {} already has {} job(s), skipping creation",
+                    credential.id,
+                    existing_jobs.len()
+                );
+                continue;
+            }
+
+            // Create default IMAP download job
+            tracing::info!(
+                "Creating default download job for credential {} ({})",
+                credential.id,
+                credential.username
+            );
+
+            let default_config = serde_json::json!({
+                "folders": [{
+                    "name": "INBOX",
+                    "total_messages": 0,
+                    "downloaded_messages": 0,
+                    "failed_messages": 0,
+                    "skipped_messages": 0,
+                    "last_synced_uid": null,
+                    "is_complete": false
+                }],
+                "sync_strategy": "inbox-only",
+                "last_highest_uid": {},
+                "fetch_batch_size": 50,
+                "max_age_months": 12
+            });
+
+            let request = shared_types::download::CreateDownloadJobRequest {
+                credential_id: credential.id,
+                source_type: SourceType::Imap,
+                source_config: default_config,
+            };
+
+            match db::insert_download_job(self.db_conn.clone(), &request).await {
+                Ok(job) => {
+                    tracing::info!(
+                        "Created download job {} for credential {}",
+                        job.id,
+                        credential.id
+                    );
+
+                    // Start the job immediately
+                    if let Err(e) = self.start_job(job.id).await {
+                        tracing::error!(
+                            "Failed to start auto-created job {}: {}",
+                            job.id,
+                            e
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to create job for credential {}: {}",
+                        credential.id,
+                        e
+                    );
+                }
+            }
         }
 
         Ok(())

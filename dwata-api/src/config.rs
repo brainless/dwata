@@ -54,7 +54,7 @@ impl Default for GoogleOAuthConfig {
         Self {
             client_id: "".to_string(),
             client_secret: None,
-            redirect_uri: "http://localhost:8080/api/oauth/google/callback".to_string(),
+            redirect_uri: "http://localhost:8000/api/oauth/google/callback".to_string(),
         }
     }
 }

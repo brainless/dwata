@@ -97,16 +97,13 @@ pub async fn delete_download_job(
 ) -> ActixResult<HttpResponse> {
     let job_id = path.into_inner();
 
+    // First pause the job if it's running
     let _ = manager.pause_job(job_id).await;
 
-    db::update_job_status(
-        db.async_connection.clone(),
-        job_id,
-        DownloadJobStatus::Cancelled,
-        None,
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    // Then actually delete it (this will cascade delete download_items)
+    db::delete_download_job(db.async_connection.clone(), job_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::NoContent().finish())
 }

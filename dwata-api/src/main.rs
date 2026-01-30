@@ -129,6 +129,11 @@ async fn main() -> std::io::Result<()> {
         tracing::warn!("Failed to restore interrupted jobs: {}", e);
     }
 
+    // Ensure all credentials have download jobs (auto-create if missing)
+    if let Err(e) = download_manager.ensure_jobs_for_all_credentials().await {
+        tracing::warn!("Failed to ensure jobs for all credentials: {}", e);
+    }
+
     // Run initial sync on startup to check for new emails
     if let Err(e) = download_manager.sync_all_jobs().await {
         tracing::warn!("Failed to run initial sync: {}", e);

@@ -37,24 +37,20 @@ pub async fn insert_email(
     let bcc_json = serde_json::to_string(bcc_addresses)?;
     let labels_json = serde_json::to_string(labels)?;
 
-    conn.execute(
+    let email_id: i64 = conn.query_row(
         "INSERT INTO emails
          (download_item_id, uid, folder, message_id, subject, from_address, from_name,
           to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
           body_text, body_html, is_read, is_flagged, is_draft, is_answered,
           has_attachments, attachment_count, size_bytes, labels, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id",
         duckdb::params![
             download_item_id, uid as i32, folder, message_id, subject, from_address, from_name,
             &to_json, &cc_json, &bcc_json, reply_to, date_sent, date_received,
             body_text, body_html, is_read, is_flagged, is_draft, is_answered,
             has_attachments, attachment_count, size_bytes, &labels_json, now, now
         ],
-    )?;
-
-    let email_id: i64 = conn.query_row(
-        "SELECT last_insert_rowid()",
-        [],
         |row| row.get(0)
     )?;
 
@@ -171,20 +167,16 @@ pub async fn insert_attachment(
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
 
-    conn.execute(
+    let attachment_id: i64 = conn.query_row(
         "INSERT INTO email_attachments
          (email_id, filename, content_type, size_bytes, content_id, file_path, checksum,
           is_inline, extraction_status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id",
         duckdb::params![
             email_id, filename, content_type, size_bytes, content_id, file_path, checksum,
             is_inline, "pending", now, now
         ],
-    )?;
-
-    let attachment_id: i64 = conn.query_row(
-        "SELECT last_insert_rowid()",
-        [],
         |row| row.get(0)
     )?;
 

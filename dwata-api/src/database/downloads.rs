@@ -314,6 +314,14 @@ pub async fn delete_download_job(
 ) -> Result<(), DownloadDbError> {
     let conn = conn.lock().await;
 
+    // First delete all download_items for this job
+    conn.execute(
+        "DELETE FROM download_items WHERE job_id = ?",
+        [job_id],
+    )
+    .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+
+    // Then delete the job itself
     conn.execute(
         "DELETE FROM download_jobs WHERE id = ?",
         [job_id],
@@ -340,11 +348,12 @@ pub async fn insert_download_item(
 
     let metadata_json = metadata.map(|m| serde_json::to_string(&m).ok()).flatten();
 
-    conn.execute(
+    let item_id: i64 = conn.query_row(
         "INSERT INTO download_items
          (job_id, source_identifier, source_folder, item_type, status, size_bytes,
           mime_type, metadata, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id",
         duckdb::params![
             job_id as i32,
             source_identifier,
@@ -357,11 +366,6 @@ pub async fn insert_download_item(
             now,
             now
         ],
-    ).map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
-
-    let item_id: i64 = conn.query_row(
-        "SELECT last_insert_rowid()",
-        [],
         |row| row.get(0)
     ).map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 

@@ -116,6 +116,8 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     )?;
 
     // Create download_jobs table
+    // Note: Foreign keys removed due to DuckDB constraint bugs with UPDATE operations
+    // Referential integrity maintained through application logic
     conn.execute(
         "CREATE TABLE IF NOT EXISTS download_jobs (
             id INTEGER PRIMARY KEY DEFAULT nextval('seq_download_jobs_id'),
@@ -135,8 +137,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             started_at BIGINT,
             updated_at BIGINT NOT NULL,
             completed_at BIGINT,
-            last_sync_at BIGINT,
-            FOREIGN KEY (credential_id) REFERENCES credentials_metadata (id)
+            last_sync_at BIGINT
         )",
         [],
     )?;
@@ -154,6 +155,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     )?;
 
     // Create download_items table
+    // Note: Foreign keys removed due to DuckDB constraint bugs with UPDATE operations
     conn.execute(
         "CREATE TABLE IF NOT EXISTS download_items (
             id INTEGER PRIMARY KEY DEFAULT nextval('seq_download_items_id'),
@@ -171,8 +173,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             local_path VARCHAR,
             created_at BIGINT NOT NULL,
             updated_at BIGINT NOT NULL,
-            downloaded_at BIGINT,
-            FOREIGN KEY (job_id) REFERENCES download_jobs (id)
+            downloaded_at BIGINT
         )",
         [],
     )?;
@@ -249,6 +250,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     )?;
 
     // Create email_attachments table
+    // Note: Foreign keys removed due to DuckDB constraint bugs with UPDATE operations
     conn.execute(
         "CREATE TABLE IF NOT EXISTS email_attachments (
             id INTEGER PRIMARY KEY DEFAULT nextval('seq_email_attachments_id'),
@@ -263,8 +265,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             extraction_status VARCHAR DEFAULT 'pending',
             extracted_text VARCHAR,
             created_at BIGINT NOT NULL,
-            updated_at BIGINT NOT NULL,
-            FOREIGN KEY (email_id) REFERENCES emails (id)
+            updated_at BIGINT NOT NULL
         )",
         [],
     )?;
@@ -278,6 +279,12 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_attachments_checksum ON email_attachments(checksum)",
         [],
     )?;
+
+    // Migration: Drop foreign key constraints that cause DuckDB issues
+    // Note: DuckDB doesn't support ALTER TABLE DROP CONSTRAINT directly
+    // So we need to recreate tables without foreign keys if they exist with them
+    // For now, just log a warning - user should delete db.duckdb to get fresh schema
+    tracing::info!("Foreign key constraints removed from schema for new installations");
 
     Ok(())
 }
