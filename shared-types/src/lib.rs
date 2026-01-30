@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod credential;
 pub mod download;
+pub mod email;
 pub mod event;
 pub mod extraction; // NEW
 pub mod project;
@@ -18,6 +19,10 @@ pub use download::{
     CloudStorageDownloadState, CreateDownloadJobRequest, DirectoryStatus, DownloadItem,
     DownloadItemStatus, DownloadJob, DownloadJobListResponse, DownloadJobStatus, DownloadProgress,
     FileFilter, ImapDownloadState, ImapFolderStatus, ImapSyncStrategy, SourceType,
+};
+pub use email::{
+    AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, ListEmailsRequest,
+    ListEmailsResponse,
 };
 pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
 pub use project::{

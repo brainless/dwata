@@ -1,12 +1,14 @@
 use crate::database::downloads as db;
 use crate::database::credentials::get_credential;
 use crate::database::AsyncDbConnection;
+use crate::database::emails as emails_db;
 use crate::helpers::keyring_service::KeyringService;
-use crate::integrations::nocodo::NocodoImapClient;
-use crate::integrations::imap_client;
+use crate::integrations::real_imap_client::RealImapClient;
+use crate::helpers::imap_oauth::get_access_token_for_imap;
 use anyhow::Result;
 use shared_types::download::{DownloadJob, DownloadJobStatus, ImapDownloadState, SourceType};
 use shared_types::credential::CredentialType;
+use shared_types::email::EmailAddress;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -118,16 +120,22 @@ impl DownloadManager {
         )
         .await?;
 
-        let imap_client = if credential.credential_type == CredentialType::OAuth {
-            let _session = imap_client::connect_gmail_oauth(
-                &credential.username,
+        let mut imap_client = if credential.credential_type == CredentialType::OAuth {
+            let access_token = get_access_token_for_imap(
                 credential.id,
                 &credential,
                 &token_cache,
                 &oauth_client,
-            ).await?;
+            )
+            .await?;
 
-            return Err(anyhow::anyhow!("OAuth2 IMAP client not fully implemented yet"));
+            RealImapClient::connect_with_oauth(
+                &credential.service_name.unwrap_or("imap.gmail.com".to_string()),
+                credential.port.unwrap_or(993) as u16,
+                &credential.username,
+                &access_token,
+            )
+            .await?
         } else {
             let password = KeyringService::get_password(
                 &credential.credential_type,
@@ -135,7 +143,7 @@ impl DownloadManager {
                 &credential.username,
             )?;
 
-            NocodoImapClient::new(
+            RealImapClient::connect_with_password(
                 &credential.service_name.unwrap_or_default(),
                 credential.port.unwrap_or(993) as u16,
                 &credential.username,
@@ -145,11 +153,12 @@ impl DownloadManager {
         };
 
         let state: ImapDownloadState = serde_json::from_value(job.source_state.clone())?;
+        let max_age_months = state.max_age_months.or(Some(12));
 
         for folder in &state.folders {
             tracing::info!("Processing folder: {}", folder.name);
 
-            let mailbox_status = imap_client.mailbox_status(&folder.name).await?;
+            let mailbox_status = imap_client.mailbox_status(&folder.name)?;
 
             if mailbox_status != folder.total_messages {
                 tracing::info!(
@@ -162,44 +171,93 @@ impl DownloadManager {
 
             let resume_uid = folder.last_synced_uid;
             let uids = imap_client
-                .search_emails(&folder.name, resume_uid, Some(state.fetch_batch_size))
-                .await?;
+                .search_emails(
+                    &folder.name,
+                    resume_uid,
+                    max_age_months,
+                    Some(state.fetch_batch_size)
+                )?;
 
             tracing::info!("Found {} emails to download in {}", uids.len(), folder.name);
 
-            for batch in uids.chunks(state.fetch_batch_size) {
-                let headers = imap_client.fetch_headers(&folder.name, batch).await?;
+            for uid in uids {
+                match imap_client.fetch_email(&folder.name, uid) {
+                    Ok(parsed_email) => {
+                        let download_item_id = db::insert_download_item(
+                            db_conn.clone(),
+                            job.id,
+                            &uid.to_string(),
+                            Some(&folder.name),
+                            "email",
+                            "completed",
+                            parsed_email.size_bytes.map(|s| s as i64),
+                            Some("message/rfc822"),
+                            None,
+                        ).await?;
 
-                for header in headers {
-                    match imap_client.fetch_email(&folder.name, header.uid).await {
-                        Ok(_) => {
-                            tracing::info!("Downloaded email UID {}", header.uid);
+                        let to_addresses: Vec<EmailAddress> = parsed_email.to_addresses
+                            .iter()
+                            .filter_map(|(addr, name)| {
+                                addr.as_ref().map(|a| EmailAddress {
+                                    email: a.clone(),
+                                    name: name.clone(),
+                                })
+                            })
+                            .collect();
 
-                            db::update_job_progress(
-                                db_conn.clone(),
-                                job.id,
-                                None,
-                                Some(1),
-                                None,
-                                None,
-                                Some(1024),
-                            )
-                            .await?;
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to download email UID {}: {}", header.uid, e);
+                        let email_id = emails_db::insert_email(
+                            db_conn.clone(),
+                            Some(download_item_id),
+                            parsed_email.uid,
+                            &folder.name,
+                            parsed_email.message_id.as_deref(),
+                            parsed_email.subject.as_deref(),
+                            &parsed_email.from_address.unwrap_or_default(),
+                            parsed_email.from_name.as_deref(),
+                            &to_addresses,
+                            &[],
+                            &[],
+                            parsed_email.reply_to.as_deref(),
+                            parsed_email.date_sent,
+                            parsed_email.date_received,
+                            parsed_email.body_text.as_deref(),
+                            parsed_email.body_html.as_deref(),
+                            parsed_email.is_read,
+                            parsed_email.is_flagged,
+                            parsed_email.is_draft,
+                            parsed_email.is_answered,
+                            parsed_email.has_attachments,
+                            parsed_email.attachment_count,
+                            parsed_email.size_bytes,
+                            &parsed_email.labels,
+                        ).await?;
 
-                            db::update_job_progress(
-                                db_conn.clone(),
-                                job.id,
-                                None,
-                                None,
-                                Some(1),
-                                None,
-                                None,
-                            )
-                            .await?;
-                        }
+                        tracing::info!("Downloaded and stored email UID {} (id: {})", uid, email_id);
+
+                        db::update_job_progress(
+                            db_conn.clone(),
+                            job.id,
+                            None,
+                            Some(1),
+                            None,
+                            None,
+                            parsed_email.size_bytes.map(|s| s as u64),
+                        )
+                        .await?;
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to download email UID {}: {}", uid, e);
+
+                        db::update_job_progress(
+                            db_conn.clone(),
+                            job.id,
+                            None,
+                            None,
+                            Some(1),
+                            None,
+                            None,
+                        )
+                        .await?;
                     }
                 }
             }

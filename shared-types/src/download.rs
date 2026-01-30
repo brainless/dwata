@@ -61,6 +61,13 @@ pub struct ImapDownloadState {
     #[ts(skip)]
     pub last_highest_uid: serde_json::Value,
     pub fetch_batch_size: usize,
+
+    #[serde(default = "default_max_age_months")]
+    pub max_age_months: Option<u32>,
+}
+
+fn default_max_age_months() -> Option<u32> {
+    Some(12)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

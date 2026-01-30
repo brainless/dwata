@@ -1,0 +1,237 @@
+use shared_types::email::{Email, EmailAddress, EmailAttachment, AttachmentExtractionStatus};
+use crate::database::AsyncDbConnection;
+use anyhow::Result;
+
+/// Insert email into database
+pub async fn insert_email(
+    conn: AsyncDbConnection,
+    download_item_id: Option<i64>,
+    uid: u32,
+    folder: &str,
+    message_id: Option<&str>,
+    subject: Option<&str>,
+    from_address: &str,
+    from_name: Option<&str>,
+    to_addresses: &[EmailAddress],
+    cc_addresses: &[EmailAddress],
+    bcc_addresses: &[EmailAddress],
+    reply_to: Option<&str>,
+    date_sent: Option<i64>,
+    date_received: i64,
+    body_text: Option<&str>,
+    body_html: Option<&str>,
+    is_read: bool,
+    is_flagged: bool,
+    is_draft: bool,
+    is_answered: bool,
+    has_attachments: bool,
+    attachment_count: i32,
+    size_bytes: Option<i32>,
+    labels: &[String],
+) -> Result<i64> {
+    let conn = conn.lock().await;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let to_json = serde_json::to_string(to_addresses)?;
+    let cc_json = serde_json::to_string(cc_addresses)?;
+    let bcc_json = serde_json::to_string(bcc_addresses)?;
+    let labels_json = serde_json::to_string(labels)?;
+
+    conn.execute(
+        "INSERT INTO emails
+         (download_item_id, uid, folder, message_id, subject, from_address, from_name,
+          to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+          body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+          has_attachments, attachment_count, size_bytes, labels, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        duckdb::params![
+            download_item_id, uid as i32, folder, message_id, subject, from_address, from_name,
+            &to_json, &cc_json, &bcc_json, reply_to, date_sent, date_received,
+            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+            has_attachments, attachment_count, size_bytes, &labels_json, now, now
+        ],
+    )?;
+
+    let email_id: i64 = conn.query_row(
+        "SELECT last_insert_rowid()",
+        [],
+        |row| row.get(0)
+    )?;
+
+    Ok(email_id)
+}
+
+/// Get email by ID
+pub async fn get_email(
+    conn: AsyncDbConnection,
+    email_id: i64,
+) -> Result<Email> {
+    let conn = conn.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, download_item_id, uid, folder, message_id, subject, from_address, from_name,
+                to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                has_attachments, attachment_count, size_bytes, thread_id, labels,
+                created_at, updated_at
+         FROM emails WHERE id = ?"
+    )?;
+
+    let email = stmt.query_row([email_id], |row| {
+        let to_json: String = row.get(8)?;
+        let cc_json: String = row.get(9)?;
+        let bcc_json: String = row.get(10)?;
+        let labels_json: String = row.get(24)?;
+
+        Ok(Email {
+            id: row.get(0)?,
+            download_item_id: row.get(1)?,
+            uid: row.get::<_, i32>(2)? as u32,
+            folder: row.get(3)?,
+            message_id: row.get(4)?,
+            subject: row.get(5)?,
+            from_address: row.get(6)?,
+            from_name: row.get(7)?,
+            to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
+            cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
+            bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
+            reply_to: row.get(11)?,
+            date_sent: row.get(12)?,
+            date_received: row.get(13)?,
+            body_text: row.get(14)?,
+            body_html: row.get(15)?,
+            is_read: row.get(16)?,
+            is_flagged: row.get(17)?,
+            is_draft: row.get(18)?,
+            is_answered: row.get(19)?,
+            has_attachments: row.get(20)?,
+            attachment_count: row.get(21)?,
+            size_bytes: row.get(22)?,
+            thread_id: row.get(23)?,
+            labels: serde_json::from_str(&labels_json).unwrap_or_default(),
+            created_at: row.get(25)?,
+            updated_at: row.get(26)?,
+        })
+    })?;
+
+    Ok(email)
+}
+
+/// List emails with pagination
+pub async fn list_emails(
+    conn: AsyncDbConnection,
+    folder: Option<&str>,
+    limit: usize,
+    offset: usize,
+) -> Result<Vec<Email>> {
+    let ids = {
+        let conn_guard = conn.lock().await;
+        let query = if let Some(f) = folder {
+            format!(
+                "SELECT id FROM emails WHERE folder = '{}'
+                 ORDER BY date_received DESC LIMIT {} OFFSET {}",
+                f, limit, offset
+            )
+        } else {
+            format!(
+                "SELECT id FROM emails ORDER BY date_received DESC
+                 LIMIT {} OFFSET {}",
+                limit, offset
+            )
+        };
+
+        let mut stmt = conn_guard.prepare(&query)?;
+        stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+
+    let mut emails = Vec::new();
+    for id in ids {
+        if let Ok(email) = get_email(conn.clone(), id).await {
+            emails.push(email);
+        }
+    }
+
+    Ok(emails)
+}
+
+/// Insert attachment
+pub async fn insert_attachment(
+    conn: AsyncDbConnection,
+    email_id: i64,
+    filename: &str,
+    content_type: Option<&str>,
+    size_bytes: Option<i32>,
+    content_id: Option<&str>,
+    file_path: &str,
+    checksum: Option<&str>,
+    is_inline: bool,
+) -> Result<i64> {
+    let conn = conn.lock().await;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    conn.execute(
+        "INSERT INTO email_attachments
+         (email_id, filename, content_type, size_bytes, content_id, file_path, checksum,
+          is_inline, extraction_status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        duckdb::params![
+            email_id, filename, content_type, size_bytes, content_id, file_path, checksum,
+            is_inline, "pending", now, now
+        ],
+    )?;
+
+    let attachment_id: i64 = conn.query_row(
+        "SELECT last_insert_rowid()",
+        [],
+        |row| row.get(0)
+    )?;
+
+    Ok(attachment_id)
+}
+
+/// Get attachments for an email
+pub async fn get_email_attachments(
+    conn: AsyncDbConnection,
+    email_id: i64,
+) -> Result<Vec<EmailAttachment>> {
+    let conn = conn.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, email_id, filename, content_type, size_bytes, content_id,
+                file_path, checksum, is_inline, extraction_status, extracted_text,
+                created_at, updated_at
+         FROM email_attachments WHERE email_id = ?"
+    )?;
+
+    let attachments = stmt.query_map([email_id], |row| {
+        let extraction_status_str: String = row.get(9)?;
+        let extraction_status = match extraction_status_str.as_str() {
+            "pending" => AttachmentExtractionStatus::Pending,
+            "completed" => AttachmentExtractionStatus::Completed,
+            "failed" => AttachmentExtractionStatus::Failed,
+            "skipped" => AttachmentExtractionStatus::Skipped,
+            _ => AttachmentExtractionStatus::Pending,
+        };
+
+        Ok(EmailAttachment {
+            id: row.get(0)?,
+            email_id: row.get(1)?,
+            filename: row.get(2)?,
+            content_type: row.get(3)?,
+            size_bytes: row.get(4)?,
+            content_id: row.get(5)?,
+            file_path: row.get(6)?,
+            checksum: row.get(7)?,
+            is_inline: row.get(8)?,
+            extraction_status,
+            extracted_text: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
+        })
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(attachments)
+}

@@ -1,5 +1,6 @@
 pub mod credentials;
 pub mod downloads;
+pub mod emails;
 pub mod migrations;
 pub mod models;
 pub mod queries;

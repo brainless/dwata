@@ -7,9 +7,14 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_agent_sessions_id", [])?;
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_agent_messages_id", [])?;
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_agent_tool_calls_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_credentials_metadata_id", [])?;
+    conn.execute(
+        "CREATE SEQUENCE IF NOT EXISTS seq_credentials_metadata_id",
+        [],
+    )?;
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_download_jobs_id", [])?;
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_download_items_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_emails_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_email_attachments_id", [])?;
 
     // Create agent_sessions table
     conn.execute(
@@ -181,6 +186,96 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_download_items_source_identifier
             ON download_items(job_id, source_identifier)",
+        [],
+    )?;
+
+    // Create emails table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS emails (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_emails_id'),
+            download_item_id INTEGER,
+            uid INTEGER NOT NULL,
+            folder VARCHAR NOT NULL,
+            message_id VARCHAR,
+            subject VARCHAR,
+            from_address VARCHAR NOT NULL,
+            from_name VARCHAR,
+            to_addresses VARCHAR,
+            cc_addresses VARCHAR,
+            bcc_addresses VARCHAR,
+            reply_to VARCHAR,
+            date_sent BIGINT,
+            date_received BIGINT NOT NULL,
+            body_text VARCHAR,
+            body_html VARCHAR,
+            is_read BOOLEAN DEFAULT false,
+            is_flagged BOOLEAN DEFAULT false,
+            is_draft BOOLEAN DEFAULT false,
+            is_answered BOOLEAN DEFAULT false,
+            has_attachments BOOLEAN DEFAULT false,
+            attachment_count INTEGER DEFAULT 0,
+            size_bytes INTEGER,
+            thread_id VARCHAR,
+            labels VARCHAR,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_download_item ON emails(download_item_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_folder_date ON emails(folder, date_received DESC)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_message_id ON emails(message_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_from ON emails(from_address)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_date_sent ON emails(date_sent DESC)",
+        [],
+    )?;
+
+    // Create email_attachments table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS email_attachments (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_email_attachments_id'),
+            email_id INTEGER NOT NULL,
+            filename VARCHAR NOT NULL,
+            content_type VARCHAR,
+            size_bytes INTEGER,
+            content_id VARCHAR,
+            file_path VARCHAR NOT NULL,
+            checksum VARCHAR,
+            is_inline BOOLEAN DEFAULT false,
+            extraction_status VARCHAR DEFAULT 'pending',
+            extracted_text VARCHAR,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            FOREIGN KEY (email_id) REFERENCES emails (id)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_attachments_email ON email_attachments(email_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_attachments_checksum ON email_attachments(checksum)",
         [],
     )?;
 

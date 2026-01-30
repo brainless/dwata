@@ -76,11 +76,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(DownloadItem::export_to_string()?));
     types.push(clean_type(DownloadItemStatus::export_to_string()?));
 
+    // Email types
+    types.push(clean_type(Email::export_to_string()?));
+    types.push(clean_type(EmailAddress::export_to_string()?));
+    types.push(clean_type(EmailAttachment::export_to_string()?));
+    types.push(clean_type(AttachmentExtractionStatus::export_to_string()?));
+    types.push(clean_type(ListEmailsRequest::export_to_string()?));
+    types.push(clean_type(ListEmailsResponse::export_to_string()?));
+
     // Extraction types
     types.push(clean_type(DataType::export_to_string()?));
     types.push(clean_type(ExtractionMethod::export_to_string()?));
     types.push(clean_type(Attachment::export_to_string()?));
-    types.push(clean_type(EmailAddress::export_to_string()?));
     types.push(clean_type(UserPreferences::export_to_string()?));
     types.push(clean_type(ExtractedEntity::export_to_string()?));
     types.push(clean_type(ExtractedProject::export_to_string()?));
@@ -110,13 +117,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn clean_type(mut type_def: String) -> String {
     type_def.retain(|c| c != '\r');
+
+    // Check if the type definition includes imports (like Email which imports EmailAddress)
     let lines: Vec<&str> = type_def.lines().collect();
+    let has_import = lines
+        .iter()
+        .any(|line| line.trim().starts_with("import type"));
+
     let filtered: Vec<&str> = lines
         .iter()
         .filter(|line| {
             let trimmed = line.trim();
-            !trimmed.starts_with("import type")
-                && !trimmed.starts_with("// This file was generated")
+            // Keep import lines if they're part of a type definition (Email type imports EmailAddress)
+            if trimmed.starts_with("import type") {
+                return has_import;
+            }
+            // Filter out the generated comment line
+            !trimmed.starts_with("// This file was generated")
+                && !trimmed.starts_with("/* This file was generated")
         })
         .cloned()
         .collect();

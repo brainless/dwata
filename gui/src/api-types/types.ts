@@ -252,7 +252,7 @@ export type SourceType = "imap" | "google-drive" | "dropbox" | "one-drive";
 /**
  * IMAP-specific download state
  */
-export type ImapDownloadState = { folders: Array<ImapFolderStatus>, sync_strategy: ImapSyncStrategy, fetch_batch_size: number, };
+export type ImapDownloadState = { folders: Array<ImapFolderStatus>, sync_strategy: ImapSyncStrategy, fetch_batch_size: number, max_age_months: number | null, };
 
 
 export type ImapFolderStatus = { name: string, total_messages: number, downloaded_messages: number, failed_messages: number, skipped_messages: number, last_synced_uid: number | null, is_complete: boolean, };
@@ -355,3 +355,14 @@ export type Ambiguity = { field: string, options: Array<AmbiguityOption>, reason
 
 
 export type AmbiguityOption = { value: string, confidence: number, };
+
+/**
+ * Represents a stored email
+ */
+export type Email = { id: bigint, download_item_id: bigint | null, uid: number, folder: string, message_id: string | null, subject: string | null, from_address: string, from_name: string | null, to_addresses: Array<EmailAddress>, cc_addresses: Array<EmailAddress>, bcc_addresses: Array<EmailAddress>, reply_to: string | null, date_sent: bigint | null, date_received: bigint, body_text: string | null, body_html: string | null, is_read: boolean, is_flagged: boolean, is_draft: boolean, is_answered: boolean, has_attachments: boolean, attachment_count: number, size_bytes: number | null, thread_id: string | null, labels: Array<string>, created_at: bigint, updated_at: bigint, };
+
+export type EmailAttachment = { id: bigint, email_id: bigint, filename: string, content_type: string | null, size_bytes: number | null, content_id: string | null, file_path: string, checksum: string | null, is_inline: boolean, extraction_status: AttachmentExtractionStatus, extracted_text: string | null, created_at: bigint, updated_at: bigint, };
+
+export type ListEmailsRequest = { folder: string | null, limit: number | null, offset: number | null, search_query: string | null, };
+
+export type ListEmailsResponse = { emails: Array<Email>, total_count: bigint, has_more: boolean, };

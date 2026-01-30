@@ -323,6 +323,51 @@ pub async fn delete_download_job(
     Ok(())
 }
 
+/// Insert download item
+pub async fn insert_download_item(
+    conn: AsyncDbConnection,
+    job_id: i64,
+    source_identifier: &str,
+    source_folder: Option<&str>,
+    item_type: &str,
+    status: &str,
+    size_bytes: Option<i64>,
+    mime_type: Option<&str>,
+    metadata: Option<serde_json::Value>,
+) -> Result<i64, DownloadDbError> {
+    let conn = conn.lock().await;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let metadata_json = metadata.map(|m| serde_json::to_string(&m).ok()).flatten();
+
+    conn.execute(
+        "INSERT INTO download_items
+         (job_id, source_identifier, source_folder, item_type, status, size_bytes,
+          mime_type, metadata, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        duckdb::params![
+            job_id as i32,
+            source_identifier,
+            source_folder,
+            item_type,
+            status,
+            size_bytes.map(|s| s as i32),
+            mime_type,
+            metadata_json.as_deref(),
+            now,
+            now
+        ],
+    ).map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+
+    let item_id: i64 = conn.query_row(
+        "SELECT last_insert_rowid()",
+        [],
+        |row| row.get(0)
+    ).map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+
+    Ok(item_id)
+}
+
 fn source_type_to_string(source_type: &SourceType) -> &'static str {
     match source_type {
         SourceType::Imap => "imap",
