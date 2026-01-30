@@ -1,5 +1,5 @@
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
     RedirectUrl, Scope, TokenUrl,
 };
 use oauth2::basic::BasicClient;
@@ -13,10 +13,10 @@ pub struct GoogleOAuthClient {
 }
 
 impl GoogleOAuthClient {
-    pub fn new(client_id: &str, redirect_uri: &str) -> Result<Self> {
+    pub fn new(client_id: &str, client_secret: Option<&str>, redirect_uri: &str) -> Result<Self> {
         let client = BasicClient::new(
             ClientId::new(client_id.to_string()),
-            None,
+            client_secret.map(|s| ClientSecret::new(s.to_string())),
             AuthUrl::new(GOOGLE_AUTH_URL.to_string())?,
             Some(TokenUrl::new(GOOGLE_TOKEN_URL.to_string())?),
         )
@@ -28,12 +28,18 @@ impl GoogleOAuthClient {
     pub fn authorize_url(&self) -> (String, CsrfToken, PkceCodeVerifier) {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-        let (auth_url, csrf_token) = self
+        let (mut auth_url, csrf_token) = self
             .client
             .authorize_url(CsrfToken::new_random)
             .add_scope(Scope::new("https://mail.google.com/".to_string()))
+            .add_scope(Scope::new("https://www.googleapis.com/auth/userinfo.email".to_string()))
             .set_pkce_challenge(pkce_challenge)
             .url();
+
+        // Add access_type=offline to get refresh token
+        auth_url.query_pairs_mut()
+            .append_pair("access_type", "offline")
+            .append_pair("prompt", "consent");
 
         (auth_url.to_string(), csrf_token, pkce_verifier)
     }

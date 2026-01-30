@@ -109,6 +109,7 @@ async fn main() -> std::io::Result<()> {
     let oauth_client = Arc::new(
         crate::helpers::google_oauth::GoogleOAuthClient::new(
             &google_oauth_config.client_id,
+            google_oauth_config.client_secret.as_deref(),
             &google_oauth_config.redirect_uri,
         )
         .expect("Failed to initialize OAuth client"),

@@ -36,6 +36,13 @@ export default function SettingsAccounts() {
     "success"
   );
 
+  // Gmail OAuth state
+  const [isGmailLoading, setIsGmailLoading] = createSignal(false);
+  const [gmailMessage, setGmailMessage] = createSignal("");
+  const [gmailMessageType, setGmailMessageType] = createSignal<"success" | "error">(
+    "success"
+  );
+
   // Credentials list state
   const [credentials, setCredentials] = createSignal<CredentialMetadata[]>([]);
   const [isLoadingList, setIsLoadingList] = createSignal(true);
@@ -85,6 +92,66 @@ export default function SettingsAccounts() {
       console.error("Failed to delete credential:", error);
       setMessageType("error");
       setMessage("Failed to delete credential. Please try again.");
+    }
+  };
+
+  const handleGmailSignIn = async () => {
+    setIsGmailLoading(true);
+    setGmailMessage("");
+
+    try {
+      // Call initiate endpoint to get authorization URL
+      const response = await fetch(getApiUrl("/api/credentials/gmail/initiate"), {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const { authorization_url } = data;
+
+        // Open authorization URL in new window
+        const authWindow = window.open(
+          authorization_url,
+          "_blank",
+          "width=600,height=700,menubar=no,toolbar=no,location=no,status=no"
+        );
+
+        if (authWindow) {
+          setGmailMessageType("success");
+          setGmailMessage("Please complete the sign-in in the popup window. It will close automatically when done.");
+
+          // Poll for new credentials after OAuth flow completes
+          const pollInterval = setInterval(async () => {
+            if (authWindow.closed) {
+              clearInterval(pollInterval);
+              setGmailMessage("");
+              await fetchCredentials();
+            }
+          }, 1000);
+
+          // Stop polling after 5 minutes
+          setTimeout(() => {
+            clearInterval(pollInterval);
+            if (!authWindow.closed) {
+              setGmailMessageType("error");
+              setGmailMessage("Sign-in timed out. Please try again.");
+            }
+          }, 300000);
+        } else {
+          setGmailMessageType("error");
+          setGmailMessage("Failed to open sign-in window. Please allow popups for this site.");
+        }
+      } else {
+        const error = await response.json();
+        setGmailMessageType("error");
+        setGmailMessage(error.error || "Failed to initiate Gmail sign-in.");
+      }
+    } catch (error) {
+      console.error("Failed to initiate Gmail OAuth:", error);
+      setGmailMessageType("error");
+      setGmailMessage("Failed to connect to server. Please try again.");
+    } finally {
+      setIsGmailLoading(false);
     }
   };
 
@@ -311,12 +378,84 @@ export default function SettingsAccounts() {
         </div>
       </div>
 
-      {/* Add New Account Form */}
+      {/* Add Gmail Account */}
       <div class="card bg-base-100 shadow-xl">
         <div class="card-body">
-          <h2 class="card-title">Add New Email Account</h2>
+          <h2 class="card-title">Add Gmail Account</h2>
           <p class="text-sm text-base-content/70 mb-4">
-            Add your IMAP email accounts to enable email ingestion and monitoring.
+            Connect your Gmail account using secure OAuth2 authentication. No password required!
+          </p>
+
+          <div class="flex flex-col items-center justify-center py-8 space-y-4">
+            <div class="text-center max-w-md">
+              <p class="text-sm mb-6">
+                Click the button below to sign in with your Google account.
+                You'll be redirected to Google's secure login page to authorize dwata to access your Gmail.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-lg bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 shadow-md gap-3"
+              onClick={handleGmailSignIn}
+              disabled={isGmailLoading()}
+            >
+              {isGmailLoading() ? (
+                <>
+                  <span class="loading loading-spinner loading-md"></span>
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <svg class="w-6 h-6" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    />
+                  </svg>
+                  Sign in with Google
+                </>
+              )}
+            </button>
+
+            {/* Gmail Message Display */}
+            {gmailMessage() && (
+              <div
+                class={`alert ${gmailMessageType() === "success" ? "alert-info" : "alert-error"} max-w-md`}
+              >
+                <span class="text-sm">{gmailMessage()}</span>
+              </div>
+            )}
+
+            <div class="text-xs text-base-content/60 max-w-md text-center mt-4">
+              <p>
+                ✓ Secure OAuth2 authentication<br/>
+                ✓ No password storage required<br/>
+                ✓ Easily revoke access anytime from your Google Account settings
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Add IMAP Account Form */}
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body">
+          <h2 class="card-title">Add Other IMAP Account</h2>
+          <p class="text-sm text-base-content/70 mb-4">
+            Add IMAP email accounts from other providers (e.g., Outlook, Yahoo, custom servers).
           </p>
 
         {/* IMAP Email Form */}

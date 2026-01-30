@@ -57,7 +57,10 @@ pub async fn google_oauth_callback(
     let token_response = oauth_client
         .exchange_code(query.code.clone(), pkce_verifier)
         .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Token exchange failed: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!("Token exchange failed: {:?}", e);
+            actix_web::error::ErrorInternalServerError(format!("Token exchange failed: {}", e))
+        })?;
 
     let access_token = token_response.access_token().secret();
     let refresh_token = token_response
