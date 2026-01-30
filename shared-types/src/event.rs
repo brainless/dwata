@@ -1,44 +1,50 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Event entity for calendar events
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Event {
-    pub id: i32,
+    pub id: i64,
+    pub extraction_job_id: Option<i64>,
+    pub email_id: Option<i64>,
     pub name: String,
     pub description: Option<String>,
-    pub project_id: Option<i32>,
-    pub task_id: Option<i32>,
-    pub date: String,
-    pub attendee_user_ids: Option<Vec<i32>>,
+    pub event_date: i64, // Unix timestamp
+    pub location: Option<String>,
+    #[ts(skip)]
+    pub attendees: serde_json::Value, // Array of email addresses
+    pub confidence: Option<f32>,
+    pub requires_review: bool,
+    pub is_confirmed: bool,
+    pub project_id: Option<i64>,
+    pub task_id: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
 
-/// Request to create a new event
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
 pub struct CreateEventRequest {
     pub name: String,
     pub description: Option<String>,
-    pub project_id: Option<i32>,
-    pub task_id: Option<i32>,
-    pub date: String,
-    pub attendee_user_ids: Option<Vec<i32>>,
+    pub event_date: i64,
+    pub location: Option<String>,
+    pub attendees: Vec<String>,
 }
 
-/// Request to update an event
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
 pub struct UpdateEventRequest {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub project_id: Option<i32>,
-    pub task_id: Option<i32>,
-    pub date: Option<String>,
-    pub attendee_user_ids: Option<Vec<i32>>,
+    pub event_date: Option<i64>,
+    pub location: Option<String>,
+    pub attendees: Option<Vec<String>>,
+    pub is_confirmed: Option<bool>,
 }
 
-/// Response containing a list of events
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct EventsResponse {
     pub events: Vec<Event>,
 }

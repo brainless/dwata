@@ -227,3 +227,66 @@ pub async fn get_email_attachments(
 
     Ok(attachments)
 }
+
+pub async fn list_pending_attachments(
+    conn: AsyncDbConnection,
+    limit: usize,
+) -> Result<Vec<EmailAttachment>> {
+    let conn = conn.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, email_id, filename, content_type, size_bytes, content_id,
+                file_path, checksum, is_inline, extraction_status, extracted_text,
+                created_at, updated_at
+         FROM email_attachments
+         WHERE extraction_status = 'pending'
+         ORDER BY created_at ASC
+         LIMIT ?"
+    )?;
+
+    let attachments = stmt.query_map([limit], |row| {
+        let extraction_status_str: String = row.get(9)?;
+        let extraction_status = match extraction_status_str.as_str() {
+            "pending" => AttachmentExtractionStatus::Pending,
+            "completed" => AttachmentExtractionStatus::Completed,
+            "failed" => AttachmentExtractionStatus::Failed,
+            "skipped" => AttachmentExtractionStatus::Skipped,
+            _ => AttachmentExtractionStatus::Pending,
+        };
+
+        Ok(EmailAttachment {
+            id: row.get(0)?,
+            email_id: row.get(1)?,
+            filename: row.get(2)?,
+            content_type: row.get(3)?,
+            size_bytes: row.get(4)?,
+            content_id: row.get(5)?,
+            file_path: row.get(6)?,
+            checksum: row.get(7)?,
+            is_inline: row.get(8)?,
+            extraction_status,
+            extracted_text: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
+        })
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(attachments)
+}
+
+pub async fn update_attachment_extraction_status(
+    conn: AsyncDbConnection,
+    attachment_id: i64,
+    status: &str,
+) -> Result<()> {
+    let conn = conn.lock().await;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    conn.execute(
+        "UPDATE email_attachments SET extraction_status = ?, updated_at = ? WHERE id = ?",
+        duckdb::params![status, now, attachment_id],
+    )?;
+
+    Ok(())
+}

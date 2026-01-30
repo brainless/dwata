@@ -90,7 +90,7 @@ impl Extractor for AttachmentParserExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared_types::{Attachment, EmailAddress, UserPreferences};
+    use shared_types::{extraction::{Attachment, EmailAddress, UserPreferences}};
 
     #[test]
     fn test_attachment_parser_integration() {

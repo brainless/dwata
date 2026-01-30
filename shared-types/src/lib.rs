@@ -1,15 +1,18 @@
 use serde::{Deserialize, Serialize};
 
+pub mod contact;
 pub mod credential;
 pub mod download;
 pub mod email;
 pub mod event;
-pub mod extraction; // NEW
+pub mod extraction;
+pub mod extraction_job;
 pub mod project;
 pub mod session;
 pub mod settings;
 pub mod task;
 
+pub use contact::{Contact, ContactsResponse, CreateContactRequest, UpdateContactRequest};
 pub use credential::{
     ApiKeySettings, CreateCredentialRequest, CreateImapCredentialRequest, CredentialListResponse,
     CredentialMetadata, CredentialType, ImapAccountSettings, ImapAuthMethod,
@@ -25,6 +28,11 @@ pub use email::{
     ListEmailsResponse,
 };
 pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
+pub use extraction_job::{
+    AttachmentExtractionFilter, CreateExtractionJobRequest, ExtractionJob,
+    ExtractionJobListResponse, ExtractionJobStatus, ExtractionProgress, ExtractionSourceConfig,
+    ExtractionSourceType, ExtractorType,
+};
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
 };

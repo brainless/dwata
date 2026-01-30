@@ -15,6 +15,9 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_download_items_id", [])?;
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_emails_id", [])?;
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_email_attachments_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_extraction_jobs_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_events_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_contacts_id", [])?;
 
     // Create agent_sessions table
     conn.execute(
@@ -277,6 +280,115 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_attachments_checksum ON email_attachments(checksum)",
+        [],
+    )?;
+
+    // Create extraction_jobs table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS extraction_jobs (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_extraction_jobs_id'),
+            source_type VARCHAR NOT NULL,
+            extractor_type VARCHAR NOT NULL,
+            status VARCHAR NOT NULL DEFAULT 'pending',
+            total_items INTEGER NOT NULL DEFAULT 0,
+            processed_items INTEGER NOT NULL DEFAULT 0,
+            extracted_entities INTEGER NOT NULL DEFAULT 0,
+            failed_items INTEGER NOT NULL DEFAULT 0,
+            source_config VARCHAR NOT NULL,
+            events_extracted INTEGER NOT NULL DEFAULT 0,
+            contacts_extracted INTEGER NOT NULL DEFAULT 0,
+            error_message VARCHAR,
+            created_at BIGINT NOT NULL,
+            started_at BIGINT,
+            updated_at BIGINT NOT NULL,
+            completed_at BIGINT
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_extraction_jobs_status
+            ON extraction_jobs(status, updated_at)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_extraction_jobs_extractor
+            ON extraction_jobs(extractor_type)",
+        [],
+    )?;
+
+    // Create events table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_events_id'),
+            extraction_job_id INTEGER,
+            email_id INTEGER,
+            name VARCHAR NOT NULL,
+            description VARCHAR,
+            event_date BIGINT NOT NULL,
+            location VARCHAR,
+            attendees VARCHAR,
+            confidence FLOAT,
+            requires_review BOOLEAN DEFAULT false,
+            is_confirmed BOOLEAN DEFAULT false,
+            project_id INTEGER,
+            task_id INTEGER,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date DESC)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_events_extraction_job ON events(extraction_job_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_events_email ON events(email_id)",
+        [],
+    )?;
+
+    // Create contacts table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS contacts (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_contacts_id'),
+            extraction_job_id INTEGER,
+            email_id INTEGER,
+            name VARCHAR NOT NULL,
+            email VARCHAR,
+            phone VARCHAR,
+            organization VARCHAR,
+            confidence FLOAT,
+            requires_review BOOLEAN DEFAULT false,
+            is_confirmed BOOLEAN DEFAULT false,
+            is_duplicate BOOLEAN DEFAULT false,
+            merged_into_contact_id INTEGER,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            UNIQUE(email)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_contacts_extraction_job ON contacts(extraction_job_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)",
         [],
     )?;
 

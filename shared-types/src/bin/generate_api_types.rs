@@ -103,6 +103,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(Ambiguity::export_to_string()?));
     types.push(clean_type(AmbiguityOption::export_to_string()?));
 
+    // Extraction Job types
+    types.push(clean_type(ExtractionJob::export_to_string()?));
+    types.push(clean_type(ExtractionJobStatus::export_to_string()?));
+    types.push(clean_type(ExtractionSourceType::export_to_string()?));
+    types.push(clean_type(ExtractorType::export_to_string()?));
+    types.push(clean_type(ExtractionProgress::export_to_string()?));
+    types.push(clean_type(ExtractionSourceConfig::export_to_string()?));
+    types.push(clean_type(AttachmentExtractionFilter::export_to_string()?));
+    types.push(clean_type(CreateExtractionJobRequest::export_to_string()?));
+    types.push(clean_type(ExtractionJobListResponse::export_to_string()?));
+
+    // Contact types
+    types.push(clean_type(Contact::export_to_string()?));
+    types.push(clean_type(CreateContactRequest::export_to_string()?));
+    types.push(clean_type(UpdateContactRequest::export_to_string()?));
+    types.push(clean_type(ContactsResponse::export_to_string()?));
+
     let output_dir = Path::new("../gui/src/api-types");
     fs::create_dir_all(output_dir)?;
 

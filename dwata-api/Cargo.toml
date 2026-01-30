@@ -15,6 +15,7 @@ tokio.workspace = true
 # nocodo-agents.workspace = true
 # manager-tools.workspace = true
 shared-types = { path = "../shared-types" }
+extractors = { path = "../extractors" }
 duckdb = { version = "1.1", features = ["bundled"] }
 chrono.workspace = true
 uuid.workspace = true
