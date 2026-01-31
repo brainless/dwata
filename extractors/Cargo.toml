@@ -16,3 +16,4 @@ thiserror.workspace = true
 
 # Attachment parsing
 ical = "0.10"
+csv = "1.3"

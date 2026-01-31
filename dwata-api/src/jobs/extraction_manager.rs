@@ -1,12 +1,17 @@
-use crate::database::extraction_jobs as jobs_db;
-use crate::database::events as events_db;
+use crate::database::companies as companies_db;
+use crate::database::contact_links as contact_links_db;
 use crate::database::contacts as contacts_db;
 use crate::database::emails as emails_db;
+use crate::database::extraction_jobs as jobs_db;
+use crate::database::events as events_db;
+use crate::database::linkedin_connections as linkedin_connections_db;
+use crate::database::positions as positions_db;
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
-use extractors::{AttachmentParserExtractor, Extractor};
-use shared_types::extraction::{DataType, ExtractionInput, ExtractedEntity};
-use shared_types::extraction_job::{ExtractionJob, ExtractionJobStatus, ExtractionSourceConfig};
+use chrono::{Datelike, NaiveDate};
+use extractors::{AttachmentParserExtractor, Extractor, LinkedInArchiveExtractor};
+use shared_types::extraction::{DataType, ExtractedEntity};
+use shared_types::extraction_job::{ArchiveType, ExtractionJob, ExtractionJobStatus, ExtractionSourceConfig};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -89,6 +94,20 @@ impl ExtractionManager {
                 content_type,
             } => {
                 Self::extract_from_local_file(db_conn.clone(), job.id, file_path, content_type).await?;
+            }
+            ExtractionSourceConfig::LocalArchive {
+                archive_path,
+                archive_type,
+                files_to_process,
+            } => {
+                Self::extract_from_local_archive(
+                    db_conn.clone(),
+                    job.id,
+                    archive_path,
+                    archive_type,
+                    files_to_process,
+                )
+                .await?;
             }
         }
 
@@ -284,5 +303,271 @@ impl ExtractionManager {
     ) -> Result<()> {
         tracing::warn!("Local file extraction not yet implemented");
         Ok(())
+    }
+
+    async fn extract_from_local_archive(
+        db_conn: AsyncDbConnection,
+        job_id: i64,
+        archive_path: String,
+        archive_type: ArchiveType,
+        files_to_process: Vec<String>,
+    ) -> Result<()> {
+        tracing::info!("Extracting from local archive: {} ({:?})", archive_path, archive_type);
+
+        if !matches!(archive_type, ArchiveType::LinkedIn) {
+            return Err(anyhow::anyhow!("Unsupported archive type: {:?}", archive_type));
+        }
+
+        let extractor = LinkedInArchiveExtractor::new();
+
+        let results = extractor.process_archive(&archive_path, &files_to_process)?;
+
+        let total_items = results.len() as u64;
+
+        jobs_db::update_job_progress(
+            db_conn.clone(),
+            job_id,
+            Some(total_items),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
+
+        let mut processed = 0;
+        let mut contacts_count = 0;
+        let mut companies_count = 0;
+        let mut positions_count = 0;
+
+        let mut contact_map: HashMap<String, i64> = HashMap::new();
+        let mut company_map: HashMap<String, i64> = HashMap::new();
+
+        for result in results {
+            match result.entity {
+                ExtractedEntity::Contact(extracted_contact) => {
+                    let contact_id = match contacts_db::insert_contact_from_extraction(
+                        db_conn.clone(),
+                        job_id,
+                        None,
+                        extracted_contact.name.clone(),
+                        extracted_contact.email,
+                        extracted_contact.phone,
+                        extracted_contact.organization,
+                        result.confidence,
+                        result.requires_review,
+                    )
+                    .await
+                    {
+                        Ok(id) => {
+                            contacts_count += 1;
+                            id
+                        }
+                        Err(e) => {
+                            tracing::warn!("Skipping duplicate contact: {}", e);
+                            if let Some(email) = &extracted_contact.email {
+                                if let Ok(id) = Self::get_contact_id_by_email(db_conn.clone(), email).await {
+                                    id
+                                } else {
+                                    continue;
+                                }
+                            } else {
+                                continue;
+                            }
+                        }
+                    };
+
+                    contact_map.insert(extracted_contact.name.clone(), contact_id);
+
+                    for profile_url in extracted_contact.profile_urls {
+                        let link_type = match profile_url.link_type.as_str() {
+                            "linkedin" => shared_types::ContactLinkType::Linkedin,
+                            "github" => shared_types::ContactLinkType::Github,
+                            "twitter" => shared_types::ContactLinkType::Twitter,
+                            "personal" => shared_types::ContactLinkType::Personal,
+                            _ => shared_types::ContactLinkType::Other,
+                        };
+
+                        let _ = contact_links_db::insert_contact_link(
+                            db_conn.clone(),
+                            contact_id,
+                            link_type,
+                            profile_url.url,
+                            None,
+                            false,
+                        )
+                        .await;
+                    }
+                }
+                ExtractedEntity::Company(extracted_company) => {
+                    let company_id = companies_db::get_or_create_company(
+                        db_conn.clone(),
+                        Some(job_id),
+                        extracted_company.name.clone(),
+                        extracted_company.location,
+                    )
+                    .await?;
+
+                    company_map.insert(extracted_company.name.clone(), company_id);
+                    companies_count += 1;
+                }
+                ExtractedEntity::Position(extracted_position) => {
+                    let company_id = *company_map
+                        .get(&extracted_position.company_name)
+                        .ok_or_else(|| anyhow::anyhow!("Company not found: {}", extracted_position.company_name))?;
+
+                    let contact_id = *contact_map
+                        .get(&extracted_position.contact_name)
+                        .unwrap_or(&0);
+
+                    if contact_id == 0 {
+                        continue;
+                    }
+
+                    let started_date = extracted_position.started_on.as_ref().and_then(|d| Self::parse_linkedin_date(d));
+                    let finished_date = extracted_position.finished_on.as_ref().and_then(|d| Self::parse_linkedin_date(d));
+
+                    let _ = positions_db::insert_position(
+                        db_conn.clone(),
+                        Some(job_id),
+                        contact_id,
+                        company_id,
+                        extracted_position.title,
+                        extracted_position.description,
+                        extracted_position.location,
+                        extracted_position.started_on,
+                        extracted_position.finished_on,
+                        started_date,
+                        finished_date,
+                        extracted_position.is_current,
+                        None,
+                        false,
+                    )
+                    .await;
+
+                    positions_count += 1;
+                }
+                _ => {}
+            }
+
+            processed += 1;
+
+            jobs_db::update_job_progress(
+                db_conn.clone(),
+                job_id,
+                None,
+                Some(processed),
+                Some(companies_count),
+                Some(positions_count),
+                Some(contacts_count),
+            )
+            .await?;
+        }
+
+        let connections_metadata = extractor.extract_connections_metadata(&archive_path)?;
+
+        for metadata in connections_metadata {
+            let full_name = format!("{} {}", metadata.first_name, metadata.last_name);
+            let contact_id = if let Some(id) = contact_map.get(&full_name) {
+                *id
+            } else if let Some(email) = &metadata.email_address {
+                if let Ok(id) = Self::get_contact_id_by_email(db_conn.clone(), email).await {
+                    id
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            };
+
+            let connected_date = Self::parse_linkedin_date(&metadata.connected_on);
+
+            let _ = linkedin_connections_db::insert_linkedin_connection(
+                db_conn.clone(),
+                job_id,
+                contact_id,
+                Some(metadata.connected_on),
+                connected_date,
+                "connections".to_string(),
+                None,
+                None,
+                metadata.company_at_connection,
+                metadata.position_at_connection,
+            )
+            .await;
+        }
+
+        let invitations_metadata = extractor.extract_invitations_metadata(&archive_path)?;
+
+        for metadata in invitations_metadata {
+            let (contact_name, contact_url, invitation_message, invitation_sent_at) =
+                if metadata.direction == "OUTGOING" {
+                    (metadata.to.clone(), metadata.invitee_profile_url.clone(), metadata.message.clone(), Some(metadata.sent_at.clone()))
+                } else {
+                    (metadata.from.clone(), metadata.inviter_profile_url.clone(), metadata.message.clone(), Some(metadata.sent_at.clone()))
+                };
+
+            let contact_id = if let Some(id) = contact_map.get(&contact_name) {
+                *id
+            } else {
+                continue;
+            };
+
+            let _ = linkedin_connections_db::insert_linkedin_connection(
+                db_conn.clone(),
+                job_id,
+                contact_id,
+                None,
+                None,
+                "invitations".to_string(),
+                Some(metadata.direction.clone()),
+                invitation_message,
+                invitation_sent_at,
+                None,
+                None,
+            )
+            .await;
+
+            if let Some(url) = contact_url {
+                let link_type = shared_types::ContactLinkType::Linkedin;
+                let _ = contact_links_db::insert_contact_link(
+                    db_conn.clone(),
+                    contact_id,
+                    link_type,
+                    url,
+                    None,
+                    false,
+                )
+                .await;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn get_contact_id_by_email(db_conn: AsyncDbConnection, email: &str) -> Result<i64> {
+        let conn = db_conn.lock().await;
+        let id: i64 = conn.query_row(
+            "SELECT id FROM contacts WHERE email = ? LIMIT 1",
+            [email],
+            |row| row.get(0),
+        )?;
+        Ok(id)
+    }
+
+    fn parse_linkedin_date(date_str: &str) -> Option<i64> {
+        if date_str.trim().is_empty() {
+            return None;
+        }
+
+        if let Ok(date) = NaiveDate::parse_from_str(date_str, "%d %b %Y") {
+            return Some(date.and_hms_opt(0, 0, 0)?.and_utc().timestamp());
+        }
+
+        if let Ok(date) = NaiveDate::parse_from_str(&format!("01 {}", date_str), "%d %b %Y") {
+            return Some(date.and_hms_opt(0, 0, 0)?.and_utc().timestamp());
+        }
+
+        None
     }
 }

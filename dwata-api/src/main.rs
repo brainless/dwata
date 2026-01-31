@@ -219,6 +219,12 @@ async fn main() -> std::io::Result<()> {
             .route("/api/events/{id}", web::get().to(handlers::events::get_event))
             .route("/api/contacts", web::get().to(handlers::contacts::list_contacts))
             .route("/api/contacts/{id}", web::get().to(handlers::contacts::get_contact))
+            .route("/api/contacts/{id}/links", web::get().to(handlers::contacts::get_contact_links))
+            .route("/api/companies", web::get().to(handlers::companies::list_companies))
+            .route("/api/companies/{id}", web::get().to(handlers::companies::get_company))
+            .route("/api/positions", web::get().to(handlers::positions::list_positions))
+            .route("/api/positions/{id}", web::get().to(handlers::positions::get_position))
+            .route("/api/contacts/{id}/positions", web::get().to(handlers::positions::list_contact_positions))
     })
     .bind((host.as_str(), port))?
     .run()

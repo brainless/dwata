@@ -1,6 +1,6 @@
 use chrono::Utc;
 use shared_types::{
-    DataType, ExtractionMethod, ExtractionResult, ExtractedContact, ExtractedEntity, TextSource,
+    DataType, ExtractedContact, ExtractedEntity, ExtractionMethod, ExtractionResult, TextSource,
     TextSpan,
 };
 use std::collections::HashMap;
@@ -60,6 +60,7 @@ impl VcfParser {
             email,
             phone,
             organization,
+            profile_urls: vec![],
         });
 
         let mut confidence_breakdown = HashMap::new();

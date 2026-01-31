@@ -18,6 +18,13 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_extraction_jobs_id", [])?;
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_events_id", [])?;
     conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_contacts_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_companies_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_contact_links_id", [])?;
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_positions_id", [])?;
+    conn.execute(
+        "CREATE SEQUENCE IF NOT EXISTS seq_linkedin_connections_id",
+        [],
+    )?;
 
     // Create agent_sessions table
     conn.execute(
@@ -297,6 +304,8 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             source_config VARCHAR NOT NULL,
             events_extracted INTEGER NOT NULL DEFAULT 0,
             contacts_extracted INTEGER NOT NULL DEFAULT 0,
+            companies_extracted INTEGER NOT NULL DEFAULT 0,
+            positions_extracted INTEGER NOT NULL DEFAULT 0,
             error_message VARCHAR,
             created_at BIGINT NOT NULL,
             started_at BIGINT,
@@ -391,6 +400,130 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)",
         [],
     )?;
+
+    // Create companies table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS companies (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_companies_id'),
+            extraction_job_id INTEGER,
+            name VARCHAR NOT NULL,
+            description VARCHAR,
+            industry VARCHAR,
+            location VARCHAR,
+            website VARCHAR,
+            linkedin_url VARCHAR,
+            is_duplicate BOOLEAN DEFAULT false,
+            merged_into_company_id INTEGER,
+            confidence FLOAT,
+            requires_review BOOLEAN DEFAULT false,
+            is_confirmed BOOLEAN DEFAULT false,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            UNIQUE(name, location)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_companies_name ON companies(name)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_companies_extraction_job ON companies(extraction_job_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_companies_linkedin_url ON companies(linkedin_url)",
+        [],
+    )?;
+
+    // Create contact_links table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS contact_links (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_contact_links_id'),
+            contact_id INTEGER NOT NULL,
+            link_type VARCHAR NOT NULL,
+            url VARCHAR NOT NULL,
+            label VARCHAR,
+            is_primary BOOLEAN DEFAULT false,
+            is_verified BOOLEAN DEFAULT false,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            UNIQUE(contact_id, link_type, url)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_contact_links_contact ON contact_links(contact_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_contact_links_type ON contact_links(link_type)",
+        [],
+    )?;
+
+    // Create positions table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS positions (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_positions_id'),
+            extraction_job_id INTEGER,
+            contact_id INTEGER NOT NULL,
+            company_id INTEGER NOT NULL,
+            title VARCHAR NOT NULL,
+            description VARCHAR,
+            location VARCHAR,
+            started_on VARCHAR,
+            finished_on VARCHAR,
+            started_date BIGINT,
+            finished_date BIGINT,
+            is_current BOOLEAN DEFAULT false,
+            confidence FLOAT,
+            requires_review BOOLEAN DEFAULT false,
+            is_confirmed BOOLEAN DEFAULT false,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_positions_contact ON positions(contact_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_positions_company ON positions(company_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_positions_extraction_job ON positions(extraction_job_id)",
+        [],
+    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_positions_dates ON positions(started_date DESC, finished_date DESC)", [])?;
+
+    // Create linkedin_connections table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS linkedin_connections (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_linkedin_connections_id'),
+            extraction_job_id INTEGER NOT NULL,
+            contact_id INTEGER NOT NULL,
+            connected_on VARCHAR,
+            connected_date BIGINT,
+            connection_source VARCHAR,
+            direction VARCHAR,
+            invitation_message VARCHAR,
+            invitation_sent_at VARCHAR,
+            company_at_connection VARCHAR,
+            position_at_connection VARCHAR,
+            created_at BIGINT NOT NULL,
+            UNIQUE(contact_id, extraction_job_id)
+        )",
+        [],
+    )?;
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_linkedin_connections_contact ON linkedin_connections(contact_id)", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_linkedin_connections_extraction_job ON linkedin_connections(extraction_job_id)", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_linkedin_connections_date ON linkedin_connections(connected_date DESC)", [])?;
 
     // Migration: Drop foreign key constraints that cause DuckDB issues
     // Note: DuckDB doesn't support ALTER TABLE DROP CONSTRAINT directly

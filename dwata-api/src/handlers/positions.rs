@@ -1,42 +1,41 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use shared_types::{ContactsResponse, ContactLinksResponse};
+use shared_types::PositionsResponse;
 
-use crate::database::contacts as contacts_db;
-use crate::database::contact_links as links_db;
+use crate::database::positions as db;
 use crate::database::AsyncDbConnection;
 
-pub async fn list_contacts(
+pub async fn list_positions(
     db_conn: web::Data<AsyncDbConnection>,
 ) -> ActixResult<HttpResponse> {
-    let contacts = contacts_db::list_contacts(db_conn.as_ref().clone(), 100)
+    let positions = db::list_positions(db_conn.as_ref().clone(), 100)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(ContactsResponse { contacts }))
+    Ok(HttpResponse::Ok().json(PositionsResponse { positions }))
 }
 
-pub async fn get_contact(
+pub async fn get_position(
     db_conn: web::Data<AsyncDbConnection>,
     path: web::Path<i64>,
 ) -> ActixResult<HttpResponse> {
-    let contact_id = path.into_inner();
+    let position_id = path.into_inner();
 
-    let contact = contacts_db::get_contact(db_conn.as_ref().clone(), contact_id)
+    let position = db::get_position(db_conn.as_ref().clone(), position_id)
         .await
         .map_err(|e| actix_web::error::ErrorNotFound(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(contact))
+    Ok(HttpResponse::Ok().json(position))
 }
 
-pub async fn get_contact_links(
+pub async fn list_contact_positions(
     db_conn: web::Data<AsyncDbConnection>,
     path: web::Path<i64>,
 ) -> ActixResult<HttpResponse> {
     let contact_id = path.into_inner();
 
-    let links = links_db::get_contact_links(db_conn.as_ref().clone(), contact_id)
+    let positions = db::list_contact_positions(db_conn.as_ref().clone(), contact_id)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(ContactLinksResponse { links }))
+    Ok(HttpResponse::Ok().json(PositionsResponse { positions }))
 }

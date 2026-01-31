@@ -1,7 +1,9 @@
+pub mod companies;
 pub mod contacts;
 pub mod credentials;
 pub mod downloads;
 pub mod events;
 pub mod extraction_jobs;
 pub mod oauth;
+pub mod positions;
 pub mod settings;

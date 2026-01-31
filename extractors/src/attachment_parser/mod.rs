@@ -30,10 +30,7 @@ impl AttachmentParserExtractor {
 }
 
 impl Extractor for AttachmentParserExtractor {
-    fn extract(
-        &self,
-        input: &ExtractionInput,
-    ) -> Result<Vec<ExtractionResult>, ExtractionError> {
+    fn extract(&self, input: &ExtractionInput) -> Result<Vec<ExtractionResult>, ExtractionError> {
         let mut results = Vec::new();
 
         for attachment in &input.attachments {
@@ -59,7 +56,10 @@ impl Extractor for AttachmentParserExtractor {
                 || attachment.filename.ends_with(".vcf")
             {
                 // Parse VCF file
-                match self.vcf_parser.parse(&attachment.content, &attachment.filename) {
+                match self
+                    .vcf_parser
+                    .parse(&attachment.content, &attachment.filename)
+                {
                     Ok(mut extracted) => results.append(&mut extracted),
                     Err(e) => {
                         eprintln!(
@@ -90,7 +90,7 @@ impl Extractor for AttachmentParserExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared_types::{extraction::{Attachment, EmailAddress, UserPreferences}};
+    use shared_types::extraction::{Attachment, EmailAddress, UserPreferences};
 
     #[test]
     fn test_attachment_parser_integration() {

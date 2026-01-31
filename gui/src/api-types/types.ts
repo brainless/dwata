@@ -368,7 +368,7 @@ import type { Email } from "./Email";
 export type ListEmailsResponse = { emails: Array<Email>, total_count: bigint, has_more: boolean, };
 
 
-export type DataType = "project" | "task" | "event" | "contact" | "location" | "date" | "priority" | "status";
+export type DataType = "project" | "task" | "event" | "contact" | "location" | "date" | "priority" | "status" | "company" | "position";
 
 
 export type ExtractionMethod = "attachment-parsing" | "pattern-based" | "gliner-ner" | "bert-ner" | "llm-based" | "hybrid";
@@ -383,13 +383,15 @@ import type { TaskPriority } from "./TaskPriority";
 export type UserPreferences = { date_format: string, default_task_priority: TaskPriority, default_project_status: ProjectStatus, auto_link_threshold: number, };
 
 
+import type { ExtractedCompany } from "./ExtractedCompany";
 import type { ExtractedContact } from "./ExtractedContact";
 import type { ExtractedEvent } from "./ExtractedEvent";
 import type { ExtractedLocation } from "./ExtractedLocation";
+import type { ExtractedPosition } from "./ExtractedPosition";
 import type { ExtractedProject } from "./ExtractedProject";
 import type { ExtractedTask } from "./ExtractedTask";
 
-export type ExtractedEntity = { "type": "Project", "data": ExtractedProject } | { "type": "Task", "data": ExtractedTask } | { "type": "Event", "data": ExtractedEvent } | { "type": "Contact", "data": ExtractedContact } | { "type": "Location", "data": ExtractedLocation };
+export type ExtractedEntity = { "type": "Project", "data": ExtractedProject } | { "type": "Task", "data": ExtractedTask } | { "type": "Event", "data": ExtractedEvent } | { "type": "Contact", "data": ExtractedContact } | { "type": "Location", "data": ExtractedLocation } | { "type": "Company", "data": ExtractedCompany } | { "type": "Position", "data": ExtractedPosition };
 
 
 import type { ProjectStatus } from "./ProjectStatus";
@@ -405,7 +407,9 @@ export type ExtractedTask = { title: string, description: string | null, priorit
 export type ExtractedEvent = { name: string, description: string | null, date: string, location: string | null, attendees: Array<string>, project_id: number | null, task_id: number | null, };
 
 
-export type ExtractedContact = { name: string, email: string | null, phone: string | null, organization: string | null, };
+import type { ProfileUrl } from "./ProfileUrl";
+
+export type ExtractedContact = { name: string, email: string | null, phone: string | null, organization: string | null, profile_urls: Array<ProfileUrl>, };
 
 
 export type ExtractedLocation = { name: string, address: string | null, coordinates: [number, number] | null, };
@@ -464,18 +468,19 @@ export type ExtractionJob = { id: bigint, source_type: ExtractionSourceType, ext
 export type ExtractionJobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 
-export type ExtractionSourceType = "email-attachment" | "local-file" | "email-body";
+export type ExtractionSourceType = "email-attachment" | "local-file" | "local-archive" | "email-body";
 
 
-export type ExtractorType = "attachment-parser" | "gliner-ner" | "llm-based";
+export type ExtractorType = "attachment-parser" | "linked-in-archive" | "gliner-ner" | "llm-based";
 
 
-export type ExtractionProgress = { total_items: bigint, processed_items: bigint, extracted_entities: bigint, failed_items: bigint, events_extracted: bigint, contacts_extracted: bigint, percent_complete: number, };
+export type ExtractionProgress = { total_items: bigint, processed_items: bigint, extracted_entities: bigint, failed_items: bigint, events_extracted: bigint, contacts_extracted: bigint, companies_extracted: bigint, positions_extracted: bigint, percent_complete: number, };
 
 
+import type { ArchiveType } from "./ArchiveType";
 import type { AttachmentExtractionFilter } from "./AttachmentExtractionFilter";
 
-export type ExtractionSourceConfig = { "type": "EmailAttachments", "config": { email_ids: Array<bigint> | null, attachment_types: Array<string>, status_filter: AttachmentExtractionFilter, } } | { "type": "LocalFile", "config": { file_path: string, content_type: string, } };
+export type ExtractionSourceConfig = { "type": "EmailAttachments", "config": { email_ids: Array<bigint> | null, attachment_types: Array<string>, status_filter: AttachmentExtractionFilter, } } | { "type": "LocalFile", "config": { file_path: string, content_type: string, } } | { "type": "LocalArchive", "config": { archive_path: string, archive_type: ArchiveType, files_to_process: Array<string>, } };
 
 
 export type AttachmentExtractionFilter = "pending" | "pending-and-failed" | "all";

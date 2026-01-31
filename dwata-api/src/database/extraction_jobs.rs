@@ -2,7 +2,7 @@ use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use shared_types::extraction_job::{
     CreateExtractionJobRequest, ExtractionJob, ExtractionJobStatus, ExtractionProgress,
-    ExtractionSourceType, ExtractorType,
+    ExtractionSourceType, ExtractorType, ArchiveType,
 };
 
 pub async fn insert_extraction_job(
@@ -17,11 +17,13 @@ pub async fn insert_extraction_job(
     let source_type_str = match request.source_type {
         ExtractionSourceType::EmailAttachment => "email-attachment",
         ExtractionSourceType::LocalFile => "local-file",
+        ExtractionSourceType::LocalArchive => "local-archive",
         ExtractionSourceType::EmailBody => "email-body",
     };
 
     let extractor_type_str = match request.extractor_type {
         ExtractorType::AttachmentParser => "attachment-parser",
+        ExtractorType::LinkedInArchive => "linkedin-archive",
         ExtractorType::GlinerNER => "gliner-ner",
         ExtractorType::LLMBased => "llm-based",
     };
@@ -74,6 +76,7 @@ pub async fn get_extraction_job(conn: AsyncDbConnection, id: i64) -> Result<Extr
         let source_type = match source_type_str.as_str() {
             "email-attachment" => ExtractionSourceType::EmailAttachment,
             "local-file" => ExtractionSourceType::LocalFile,
+            "local-archive" => ExtractionSourceType::LocalArchive,
             "email-body" => ExtractionSourceType::EmailBody,
             _ => ExtractionSourceType::EmailAttachment,
         };
@@ -81,6 +84,7 @@ pub async fn get_extraction_job(conn: AsyncDbConnection, id: i64) -> Result<Extr
         let extractor_type_str: String = row.get(2)?;
         let extractor_type = match extractor_type_str.as_str() {
             "attachment-parser" => ExtractorType::AttachmentParser,
+            "linkedin-archive" => ExtractorType::LinkedInArchive,
             "gliner-ner" => ExtractorType::GlinerNER,
             "llm-based" => ExtractorType::LLMBased,
             _ => ExtractorType::AttachmentParser,
@@ -125,6 +129,8 @@ pub async fn get_extraction_job(conn: AsyncDbConnection, id: i64) -> Result<Extr
                 failed_items: failed_items as u64,
                 events_extracted: events_extracted as u64,
                 contacts_extracted: contacts_extracted as u64,
+                companies_extracted: 0,
+                positions_extracted: 0,
                 percent_complete: percent,
             },
             source_config,
@@ -196,9 +202,9 @@ pub async fn update_job_progress(
     job_id: i64,
     total_items: Option<u64>,
     processed_items: Option<u64>,
-    events_extracted: Option<u64>,
+    companies_extracted: Option<u64>,
+    positions_extracted: Option<u64>,
     contacts_extracted: Option<u64>,
-    failed_items: Option<u64>,
 ) -> Result<()> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp();
@@ -214,21 +220,21 @@ pub async fn update_job_progress(
         updates.push("processed_items = ?");
         params.push(Box::new(processed as i64));
     }
-    if let Some(events) = events_extracted {
-        updates.push("events_extracted = ?");
-        params.push(Box::new(events as i64));
+    if let Some(companies) = companies_extracted {
+        updates.push("companies_extracted = ?");
+        params.push(Box::new(companies as i64));
+    }
+    if let Some(positions) = positions_extracted {
+        updates.push("positions_extracted = ?");
+        params.push(Box::new(positions as i64));
     }
     if let Some(contacts) = contacts_extracted {
         updates.push("contacts_extracted = ?");
         params.push(Box::new(contacts as i64));
     }
-    if let Some(failed) = failed_items {
-        updates.push("failed_items = ?");
-        params.push(Box::new(failed as i64));
-    }
 
-    if events_extracted.is_some() || contacts_extracted.is_some() {
-        updates.push("extracted_entities = events_extracted + contacts_extracted");
+    if companies_extracted.is_some() || positions_extracted.is_some() || contacts_extracted.is_some() {
+        updates.push("extracted_entities = COALESCE(companies_extracted, 0) + COALESCE(positions_extracted, 0) + COALESCE(contacts_extracted, 0)");
     }
 
     params.push(Box::new(job_id));

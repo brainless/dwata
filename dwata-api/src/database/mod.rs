@@ -1,11 +1,15 @@
+pub mod companies;
+pub mod contact_links;
 pub mod contacts;
 pub mod credentials;
 pub mod downloads;
 pub mod emails;
 pub mod events;
 pub mod extraction_jobs;
+pub mod linkedin_connections;
 pub mod migrations;
 pub mod models;
+pub mod positions;
 pub mod queries;
 
 use duckdb::{params, Connection};

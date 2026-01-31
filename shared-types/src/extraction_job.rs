@@ -23,18 +23,20 @@ pub struct ExtractionJob {
 #[ts(export)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExtractionSourceType {
-    EmailAttachment, // Extract from email attachments table
-    LocalFile,       // Extract from uploaded file
-    EmailBody,       // Extract from email body text (future)
+    EmailAttachment,
+    LocalFile,
+    LocalArchive,
+    EmailBody,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExtractorType {
-    AttachmentParser, // ICS, VCF parsing
-    GlinerNER,        // Named entity recognition (future)
-    LLMBased,         // LLM reasoning (future)
+    AttachmentParser,
+    LinkedInArchive,
+    GlinerNER,
+    LLMBased,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq)]
@@ -51,12 +53,14 @@ pub enum ExtractionJobStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ExtractionProgress {
-    pub total_items: u64,        // Total attachments/sources to process
-    pub processed_items: u64,    // Processed so far
-    pub extracted_entities: u64, // Total entities extracted
-    pub failed_items: u64,       // Failed to process
-    pub events_extracted: u64,   // Events found
-    pub contacts_extracted: u64, // Contacts found
+    pub total_items: u64,
+    pub processed_items: u64,
+    pub extracted_entities: u64,
+    pub failed_items: u64,
+    pub events_extracted: u64,
+    pub contacts_extracted: u64,
+    pub companies_extracted: u64,
+    pub positions_extracted: u64,
     pub percent_complete: f32,
 }
 
@@ -66,14 +70,26 @@ pub struct ExtractionProgress {
 #[serde(tag = "type", content = "config")]
 pub enum ExtractionSourceConfig {
     EmailAttachments {
-        email_ids: Option<Vec<i64>>,   // Specific emails, or None for all pending
-        attachment_types: Vec<String>, // ["text/calendar", "text/vcard"]
+        email_ids: Option<Vec<i64>>,
+        attachment_types: Vec<String>,
         status_filter: AttachmentExtractionFilter,
     },
     LocalFile {
         file_path: String,
         content_type: String,
     },
+    LocalArchive {
+        archive_path: String,
+        archive_type: ArchiveType,
+        files_to_process: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArchiveType {
+    LinkedIn,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
