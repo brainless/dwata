@@ -48,19 +48,19 @@ pub async fn get_or_create_company(
     name: String,
     location: Option<String>,
 ) -> Result<i64> {
-    let conn = conn.lock().await;
+    {
+        let locked_conn = conn.lock().await;
+        let result: Result<i64, _> = locked_conn.query_row(
+            "SELECT id FROM companies WHERE name = ? AND (location = ? OR location IS NULL AND ? IS NULL)",
+            duckdb::params![&name, location.as_ref(), location.as_ref()],
+            |row| row.get(0),
+        );
 
-    let result: Result<i64, _> = conn.query_row(
-        "SELECT id FROM companies WHERE name = ? AND (location = ? OR location IS NULL AND ? IS NULL)",
-        duckdb::params![&name, location.as_ref(), location.as_ref()],
-        |row| row.get(0),
-    );
-
-    if let Ok(id) = result {
-        return Ok(id);
+        if let Ok(id) = result {
+            return Ok(id);
+        }
     }
 
-    drop(conn);
     insert_company(
         conn,
         extraction_job_id,

@@ -49,6 +49,8 @@ pub async fn insert_extraction_job(
             failed_items: 0,
             events_extracted: 0,
             contacts_extracted: 0,
+            companies_extracted: 0,
+            positions_extracted: 0,
             percent_complete: 0.0,
         },
         source_config: serde_json::to_value(&request.source_config)?,
