@@ -7,6 +7,7 @@ use ts_rs::TS;
 pub struct Email {
     pub id: i64,
     pub download_item_id: Option<i64>,
+    pub credential_id: i64,
 
     // IMAP Metadata
     pub uid: u32,
@@ -87,6 +88,7 @@ pub enum AttachmentExtractionStatus {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct ListEmailsRequest {
+    pub credential_id: Option<i64>,
     pub folder: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,

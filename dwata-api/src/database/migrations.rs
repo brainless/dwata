@@ -205,6 +205,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         "CREATE TABLE IF NOT EXISTS emails (
             id INTEGER PRIMARY KEY DEFAULT nextval('seq_emails_id'),
             download_item_id INTEGER,
+            credential_id INTEGER NOT NULL,
             uid INTEGER NOT NULL,
             folder VARCHAR NOT NULL,
             message_id VARCHAR,
@@ -236,6 +237,11 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_emails_download_item ON emails(download_item_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_credential ON emails(credential_id)",
         [],
     )?;
 

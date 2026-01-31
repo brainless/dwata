@@ -10,6 +10,7 @@ pub async fn list_emails(
     query: web::Query<ListEmailsRequest>,
 ) -> ActixResult<HttpResponse> {
     let ListEmailsRequest {
+        credential_id,
         folder,
         limit,
         offset,
@@ -19,7 +20,7 @@ pub async fn list_emails(
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
 
-    let emails = emails_db::list_emails(db.async_connection.clone(), folder.as_deref(), limit, offset)
+    let emails = emails_db::list_emails(db.async_connection.clone(), credential_id, folder.as_deref(), limit, offset)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 

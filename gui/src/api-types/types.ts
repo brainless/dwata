@@ -340,7 +340,7 @@ import type { EmailAddress } from "./EmailAddress";
 /**
  * Represents a stored email
  */
-export type Email = { id: bigint, download_item_id: bigint | null, uid: number, folder: string, message_id: string | null, subject: string | null, from_address: string, from_name: string | null, to_addresses: Array<EmailAddress>, cc_addresses: Array<EmailAddress>, bcc_addresses: Array<EmailAddress>, reply_to: string | null, date_sent: bigint | null, date_received: bigint, body_text: string | null, body_html: string | null, is_read: boolean, is_flagged: boolean, is_draft: boolean, is_answered: boolean, has_attachments: boolean, attachment_count: number, size_bytes: number | null, thread_id: string | null, labels: Array<string>, created_at: bigint, updated_at: bigint, };
+export type Email = { id: bigint, download_item_id: bigint | null, credential_id: bigint, uid: number, folder: string, message_id: string | null, subject: string | null, from_address: string, from_name: string | null, to_addresses: Array<EmailAddress>, cc_addresses: Array<EmailAddress>, bcc_addresses: Array<EmailAddress>, reply_to: string | null, date_sent: bigint | null, date_received: bigint, body_text: string | null, body_html: string | null, is_read: boolean, is_flagged: boolean, is_draft: boolean, is_answered: boolean, has_attachments: boolean, attachment_count: number, size_bytes: number | null, thread_id: string | null, labels: Array<string>, created_at: bigint, updated_at: bigint, };
 
 
 export type EmailAddress = { email: string, name: string | null, };
@@ -357,7 +357,7 @@ export type AttachmentExtractionStatus = "pending" | "completed" | "failed" | "s
 /**
  * Request to list emails
  */
-export type ListEmailsRequest = { folder: string | null, limit: number | null, offset: number | null, search_query: string | null, };
+export type ListEmailsRequest = { credential_id: bigint | null, folder: string | null, limit: number | null, offset: number | null, search_query: string | null, };
 
 
 import type { Email } from "./Email";

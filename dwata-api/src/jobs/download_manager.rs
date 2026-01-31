@@ -226,6 +226,7 @@ impl DownloadManager {
 
                         let email_id = emails_db::insert_email(
                             db_conn.clone(),
+                            job.credential_id,
                             Some(download_item_id),
                             parsed_email.uid,
                             &folder.name,
