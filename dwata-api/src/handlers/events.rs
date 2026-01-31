@@ -1,13 +1,14 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use shared_types::EventsResponse;
+use std::sync::Arc;
 
 use crate::database::events as db;
-use crate::database::AsyncDbConnection;
+use crate::database::Database;
 
 pub async fn list_events(
-    db_conn: web::Data<AsyncDbConnection>,
+    database: web::Data<Arc<Database>>,
 ) -> ActixResult<HttpResponse> {
-    let events = db::list_events(db_conn.as_ref().clone(), 100)
+    let events = db::list_events(database.async_connection.clone(), 100)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -15,12 +16,12 @@ pub async fn list_events(
 }
 
 pub async fn get_event(
-    db_conn: web::Data<AsyncDbConnection>,
+    database: web::Data<Arc<Database>>,
     path: web::Path<i64>,
 ) -> ActixResult<HttpResponse> {
     let event_id = path.into_inner();
 
-    let event = db::get_event(db_conn.as_ref().clone(), event_id)
+    let event = db::get_event(database.async_connection.clone(), event_id)
         .await
         .map_err(|e| actix_web::error::ErrorNotFound(e.to_string()))?;
 

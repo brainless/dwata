@@ -7,13 +7,13 @@ use shared_types::extraction_job::{
 
 use crate::database::extraction_jobs as db;
 use crate::jobs::extraction_manager::ExtractionManager;
-use crate::database::AsyncDbConnection;
+use crate::database::Database;
 
 pub async fn create_extraction_job(
-    db_conn: web::Data<AsyncDbConnection>,
+    database: web::Data<Arc<Database>>,
     request: web::Json<CreateExtractionJobRequest>,
 ) -> ActixResult<HttpResponse> {
-    let job = db::insert_extraction_job(db_conn.as_ref().clone(), &request)
+    let job = db::insert_extraction_job(database.async_connection.clone(), &request)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -21,9 +21,9 @@ pub async fn create_extraction_job(
 }
 
 pub async fn list_extraction_jobs(
-    db_conn: web::Data<AsyncDbConnection>,
+    database: web::Data<Arc<Database>>,
 ) -> ActixResult<HttpResponse> {
-    let jobs = db::list_extraction_jobs(db_conn.as_ref().clone(), 50)
+    let jobs = db::list_extraction_jobs(database.async_connection.clone(), 50)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -31,12 +31,12 @@ pub async fn list_extraction_jobs(
 }
 
 pub async fn get_extraction_job(
-    db_conn: web::Data<AsyncDbConnection>,
+    database: web::Data<Arc<Database>>,
     path: web::Path<i64>,
 ) -> ActixResult<HttpResponse> {
     let job_id = path.into_inner();
 
-    let job = db::get_extraction_job(db_conn.as_ref().clone(), job_id)
+    let job = db::get_extraction_job(database.async_connection.clone(), job_id)
         .await
         .map_err(|e| actix_web::error::ErrorNotFound(e.to_string()))?;
 

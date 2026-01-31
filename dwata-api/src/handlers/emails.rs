@@ -1,11 +1,12 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use shared_types::{ListEmailsRequest, ListEmailsResponse};
+use std::sync::Arc;
 
 use crate::database::emails as emails_db;
-use crate::database::AsyncDbConnection;
+use crate::database::Database;
 
 pub async fn list_emails(
-    db_conn: web::Data<AsyncDbConnection>,
+    db: web::Data<Arc<Database>>,
     query: web::Query<ListEmailsRequest>,
 ) -> ActixResult<HttpResponse> {
     let ListEmailsRequest {
@@ -18,7 +19,7 @@ pub async fn list_emails(
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
 
-    let emails = emails_db::list_emails(db_conn.as_ref().clone(), folder.as_deref(), limit, offset)
+    let emails = emails_db::list_emails(db.async_connection.clone(), folder.as_deref(), limit, offset)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -33,12 +34,12 @@ pub async fn list_emails(
 }
 
 pub async fn get_email(
-    db_conn: web::Data<AsyncDbConnection>,
+    db: web::Data<Arc<Database>>,
     path: web::Path<i64>,
 ) -> ActixResult<HttpResponse> {
     let email_id = path.into_inner();
 
-    let email = emails_db::get_email(db_conn.as_ref().clone(), email_id)
+    let email = emails_db::get_email(db.async_connection.clone(), email_id)
         .await
         .map_err(|e| actix_web::error::ErrorNotFound(e.to_string()))?;
 
