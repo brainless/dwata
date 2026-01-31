@@ -215,6 +215,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/extractions", web::get().to(handlers::extraction_jobs::list_extraction_jobs))
             .route("/api/extractions/{id}", web::get().to(handlers::extraction_jobs::get_extraction_job))
             .route("/api/extractions/{id}/start", web::post().to(handlers::extraction_jobs::start_extraction))
+            .route("/api/emails", web::get().to(handlers::emails::list_emails))
+            .route("/api/emails/{id}", web::get().to(handlers::emails::get_email))
             .route("/api/events", web::get().to(handlers::events::list_events))
             .route("/api/events/{id}", web::get().to(handlers::events::get_event))
             .route("/api/contacts", web::get().to(handlers::contacts::list_contacts))
