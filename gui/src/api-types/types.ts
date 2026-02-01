@@ -140,12 +140,16 @@ export type SettingsResponse = { config_file_path: string, api_keys: Array<ApiKe
 export type UpdateApiKeysRequest = { gemini_api_key: string | null, };
 
 
-export type CredentialType = "imap" | "smtp" | "oauth" | "apikey" | "database" | "custom";
+export type CredentialType = "imap" | "smtp" | "oauth" | "apikey" | "database" | "localfile" | "custom";
 
 
 import type { CredentialType } from "./CredentialType";
 
-export type CreateCredentialRequest = { credential_type: CredentialType, identifier: string, username: string, password: string, service_name: string | null, port: number | null, use_tls: boolean | null, notes: string | null, extra_metadata: string | null, };
+export type CreateCredentialRequest = { credential_type: CredentialType, identifier: string, username: string, 
+/**
+ * Password is optional for credential types that don't require keychain storage (e.g., LocalFile)
+ */
+password: string | null, service_name: string | null, port: number | null, use_tls: boolean | null, notes: string | null, extra_metadata: string | null, };
 
 
 export type UpdateCredentialRequest = { username: string | null, password: string | null, service_name: string | null, port: number | null, use_tls: boolean | null, notes: string | null, extra_metadata: string | null, };
@@ -257,6 +261,32 @@ api_version: string | null,
  * Request timeout in seconds
  */
 timeout_secs: number, };
+
+
+/**
+ * Local file path settings
+ */
+export type LocalFileSettings = { 
+/**
+ * Absolute path to the file or directory
+ */
+file_path: string, 
+/**
+ * Optional description of what this file contains
+ */
+description: string | null, 
+/**
+ * File type hint (e.g., "linkedin-archive", "email-export")
+ */
+file_type: string | null, };
+
+
+import type { LocalFileSettings } from "./LocalFileSettings";
+
+/**
+ * Type-safe request for creating local file credentials
+ */
+export type CreateLocalFileCredentialRequest = { identifier: string, settings: LocalFileSettings, notes: string | null, };
 
 
 import type { DownloadJobStatus } from "./DownloadJobStatus";

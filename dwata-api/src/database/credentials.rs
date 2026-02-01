@@ -119,6 +119,7 @@ pub async fn list_credentials(
                 "oauth" => CredentialType::OAuth,
                 "apikey" => CredentialType::ApiKey,
                 "database" => CredentialType::Database,
+                "localfile" => CredentialType::LocalFile,
                 _ => CredentialType::Custom,
             };
 

@@ -1,4 +1,5 @@
 use shared_types::*;
+use shared_types::credential::{LocalFileSettings, CreateLocalFileCredentialRequest};
 use std::fs;
 use std::path::Path;
 use ts_rs::TS;
@@ -59,6 +60,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // API Key credential types
     types.push(clean_type(ApiKeySettings::export_to_string()?));
+
+    // Local File credential types
+    types.push(clean_type(LocalFileSettings::export_to_string()?));
+    types.push(clean_type(CreateLocalFileCredentialRequest::export_to_string()?));
 
     // Download types
     types.push(clean_type(DownloadJob::export_to_string()?));

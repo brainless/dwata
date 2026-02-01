@@ -79,7 +79,7 @@ pub async fn google_oauth_callback(
         credential_type: CredentialType::OAuth,
         identifier: format!("gmail_{}", email.replace('@', "_at_")),
         username: email.clone(),
-        password: refresh_token.clone(),
+        password: Some(refresh_token.clone()),
         service_name: Some("imap.gmail.com".to_string()),
         port: Some(993),
         use_tls: Some(true),
