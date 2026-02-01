@@ -46,7 +46,6 @@ pub struct ServerConfig {
 pub struct GoogleOAuthConfig {
     pub client_id: String,
     pub client_secret: Option<String>,
-    pub redirect_uri: String,
 }
 
 impl Default for GoogleOAuthConfig {
@@ -54,7 +53,6 @@ impl Default for GoogleOAuthConfig {
         Self {
             client_id: "".to_string(),
             client_secret: None,
-            redirect_uri: "http://localhost:8000/api/oauth/google/callback".to_string(),
         }
     }
 }
@@ -87,7 +85,7 @@ port = 8080
 # Google Cloud Console OAuth2 client ID for Gmail
 # client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 # client_secret = "YOUR_CLIENT_SECRET" # Optional, for Desktop apps
-# redirect_uri = "http://localhost:8080/api/oauth/google/callback"
+# Redirect URI is automatically constructed from server host and port
 "#;
             std::fs::write(&config_path, default_config).map_err(|e| {
                 ConfigError::Message(format!("Failed to write default config: {e}"))

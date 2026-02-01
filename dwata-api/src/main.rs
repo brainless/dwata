@@ -104,13 +104,21 @@ async fn main() -> std::io::Result<()> {
         config: config_arc.clone(),
     };
 
+    // Get server config or use defaults
+    let (host, port) = if let Some(server_config) = &config.server {
+        (server_config.host.clone(), server_config.port)
+    } else {
+        ("127.0.0.1".to_string(), 8080)
+    };
+
     // Initialize OAuth components
     let google_oauth_config = config.google_oauth.unwrap_or_default();
+    let redirect_uri = format!("http://{}:{}/api/oauth/google/callback", host, port);
     let oauth_client = Arc::new(
         crate::helpers::google_oauth::GoogleOAuthClient::new(
             &google_oauth_config.client_id,
             google_oauth_config.client_secret.as_deref(),
-            &google_oauth_config.redirect_uri,
+            &redirect_uri,
         )
         .expect("Failed to initialize OAuth client"),
     );
@@ -155,13 +163,6 @@ async fn main() -> std::io::Result<()> {
             }
         }
     });
-
-    // Get server config or use defaults
-    let (host, port) = if let Some(server_config) = &config.server {
-        (server_config.host.clone(), server_config.port)
-    } else {
-        ("127.0.0.1".to_string(), 8080)
-    };
 
     println!("Starting server on {}:{}", host, port);
 
