@@ -33,15 +33,15 @@ export default function SettingsAccounts() {
   const [isLoading, setIsLoading] = createSignal(false);
   const [message, setMessage] = createSignal("");
   const [messageType, setMessageType] = createSignal<"success" | "error">(
-    "success"
+    "success",
   );
 
   // Gmail OAuth state
   const [isGmailLoading, setIsGmailLoading] = createSignal(false);
   const [gmailMessage, setGmailMessage] = createSignal("");
-  const [gmailMessageType, setGmailMessageType] = createSignal<"success" | "error">(
-    "success"
-  );
+  const [gmailMessageType, setGmailMessageType] = createSignal<
+    "success" | "error"
+  >("success");
 
   // Credentials list state
   const [credentials, setCredentials] = createSignal<CredentialMetadata[]>([]);
@@ -77,7 +77,7 @@ export default function SettingsAccounts() {
         getApiUrl(`/api/credentials/${id}?hard=true`),
         {
           method: "DELETE",
-        }
+        },
       );
 
       if (response.ok) {
@@ -101,9 +101,12 @@ export default function SettingsAccounts() {
 
     try {
       // Call initiate endpoint to get authorization URL
-      const response = await fetch(getApiUrl("/api/credentials/gmail/initiate"), {
-        method: "POST",
-      });
+      const response = await fetch(
+        getApiUrl("/api/credentials/gmail/initiate"),
+        {
+          method: "POST",
+        },
+      );
 
       if (response.ok) {
         const data = await response.json();
@@ -113,12 +116,14 @@ export default function SettingsAccounts() {
         const authWindow = window.open(
           authorization_url,
           "_blank",
-          "width=600,height=700,menubar=no,toolbar=no,location=no,status=no"
+          "width=600,height=700,menubar=no,toolbar=no,location=no,status=no",
         );
 
         if (authWindow) {
           setGmailMessageType("success");
-          setGmailMessage("Please complete the sign-in in the popup window. It will close automatically when done.");
+          setGmailMessage(
+            "Please complete the sign-in in the popup window. It will close automatically when done.",
+          );
 
           // Poll for new credentials after OAuth flow completes
           const pollInterval = setInterval(async () => {
@@ -139,7 +144,9 @@ export default function SettingsAccounts() {
           }, 300000);
         } else {
           setGmailMessageType("error");
-          setGmailMessage("Failed to open sign-in window. Please allow popups for this site.");
+          setGmailMessage(
+            "Failed to open sign-in window. Please allow popups for this site.",
+          );
         }
       } else {
         const error = await response.json();
@@ -237,12 +244,36 @@ export default function SettingsAccounts() {
   };
 
   const credentialTypeConfig = {
-    imap: { label: "IMAP", icon: HiOutlineEnvelope, badgeClass: "badge-primary" },
-    smtp: { label: "SMTP", icon: HiOutlineEnvelope, badgeClass: "badge-secondary" },
-    oauth: { label: "OAuth", icon: HiOutlineEnvelope, badgeClass: "badge-accent" },
-    apikey: { label: "API Key", icon: HiOutlineEnvelope, badgeClass: "badge-info" },
-    database: { label: "Database", icon: HiOutlineEnvelope, badgeClass: "badge-warning" },
-    custom: { label: "Custom", icon: HiOutlineEnvelope, badgeClass: "badge-ghost" },
+    imap: {
+      label: "IMAP",
+      icon: HiOutlineEnvelope,
+      badgeClass: "badge-primary",
+    },
+    smtp: {
+      label: "SMTP",
+      icon: HiOutlineEnvelope,
+      badgeClass: "badge-secondary",
+    },
+    oauth: {
+      label: "OAuth",
+      icon: HiOutlineEnvelope,
+      badgeClass: "badge-accent",
+    },
+    apikey: {
+      label: "API Key",
+      icon: HiOutlineEnvelope,
+      badgeClass: "badge-info",
+    },
+    database: {
+      label: "Database",
+      icon: HiOutlineEnvelope,
+      badgeClass: "badge-warning",
+    },
+    custom: {
+      label: "Custom",
+      icon: HiOutlineEnvelope,
+      badgeClass: "badge-ghost",
+    },
   };
 
   return (
@@ -297,7 +328,9 @@ export default function SettingsAccounts() {
                           <tr>
                             <td>
                               <div>
-                                <div class="font-bold">{credential.identifier}</div>
+                                <div class="font-bold">
+                                  {credential.identifier}
+                                </div>
                                 <div class="text-sm opacity-60">
                                   {credential.username}
                                 </div>
@@ -358,7 +391,7 @@ export default function SettingsAccounts() {
                                   onClick={() =>
                                     deleteCredential(
                                       credential.id,
-                                      credential.identifier
+                                      credential.identifier,
                                     )
                                   }
                                 >
@@ -383,14 +416,16 @@ export default function SettingsAccounts() {
         <div class="card-body">
           <h2 class="card-title">Add Gmail Account</h2>
           <p class="text-sm text-base-content/70 mb-4">
-            Connect your Gmail account using secure OAuth2 authentication. No password required!
+            Connect your Gmail account using secure OAuth2 authentication. No
+            password required!
           </p>
 
           <div class="flex flex-col items-center justify-center py-8 space-y-4">
             <div class="text-center max-w-md">
               <p class="text-sm mb-6">
                 Click the button below to sign in with your Google account.
-                You'll be redirected to Google's secure login page to authorize dwata to access your Gmail.
+                You'll be redirected to Google's secure login page to authorize
+                dwata to access your Gmail.
               </p>
             </div>
 
@@ -441,9 +476,11 @@ export default function SettingsAccounts() {
 
             <div class="text-xs text-base-content/60 max-w-md text-center mt-4">
               <p>
-                ✓ Secure OAuth2 authentication<br/>
-                ✓ No password storage required<br/>
-                ✓ Easily revoke access anytime from your Google Account settings
+                ✓ Secure OAuth2 authentication
+                <br />
+                ✓ No password storage required
+                <br />✓ Easily revoke access anytime from your Google Account
+                settings
               </p>
             </div>
           </div>
@@ -455,224 +492,231 @@ export default function SettingsAccounts() {
         <div class="card-body">
           <h2 class="card-title">Add Other IMAP Account</h2>
           <p class="text-sm text-base-content/70 mb-4">
-            Add IMAP email accounts from other providers (e.g., Outlook, Yahoo, custom servers).
+            Add IMAP email accounts from other providers (e.g., Outlook, Yahoo,
+            custom servers).
           </p>
 
-        {/* IMAP Email Form */}
-        <form onSubmit={handleSubmit} class="space-y-4">
-          <fieldset class="border border-base-300 rounded-lg p-4">
-            <legend class="text-lg font-semibold px-2">IMAP Email Account</legend>
+          {/* IMAP Email Form */}
+          <form onSubmit={handleSubmit} class="space-y-4">
+            <fieldset class="border border-base-300 rounded-lg p-4">
+              <legend class="text-lg font-semibold px-2">
+                IMAP Email Account
+              </legend>
 
-            {/* Account Information */}
-            <div class="space-y-4 mt-4">
-              <div class="form-control w-full">
-                <label class="label">
-                  <span class="label-text">Account Name *</span>
-                  <span class="label-text-alt text-xs">Unique identifier</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g., work_email, personal_gmail"
-                  class="input input-bordered w-full"
-                  value={identifier()}
-                  onInput={(e) => setIdentifier(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div class="form-control w-full">
-                <label class="label">
-                  <span class="label-text">Email Address *</span>
-                </label>
-                <input
-                  type="email"
-                  placeholder="your.email@example.com"
-                  class="input input-bordered w-full"
-                  value={username()}
-                  onInput={(e) => setUsername(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div class="form-control w-full">
-                <label class="label">
-                  <span class="label-text">Password *</span>
-                  <span class="label-text-alt text-xs">
-                    Stored securely in OS keychain
-                  </span>
-                </label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  class="input input-bordered w-full"
-                  value={password()}
-                  onInput={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Server Settings */}
-            <div class="divider">Server Settings</div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="form-control w-full">
-                <label class="label">
-                  <span class="label-text">IMAP Server Host *</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="imap.gmail.com"
-                  class="input input-bordered w-full"
-                  value={host()}
-                  onInput={(e) => setHost(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div class="form-control w-full">
-                <label class="label">
-                  <span class="label-text">Port *</span>
-                </label>
-                <input
-                  type="number"
-                  placeholder="993"
-                  class="input input-bordered w-full"
-                  value={port()}
-                  onInput={(e) => setPort(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div class="form-control">
-                <label class="label cursor-pointer justify-start gap-4">
-                  <input
-                    type="checkbox"
-                    class="checkbox checkbox-primary"
-                    checked={useTls()}
-                    onChange={(e) => setUseTls(e.target.checked)}
-                  />
-                  <div>
-                    <span class="label-text font-medium">Use TLS/SSL</span>
-                    <span class="label-text-alt block text-xs">
-                      Recommended for secure connection
+              {/* Account Information */}
+              <div class="space-y-4 mt-4">
+                <div class="form-control w-full">
+                  <label class="label">
+                    <span class="label-text">Account Name *</span>
+                    <span class="label-text-alt text-xs">
+                      Unique identifier
                     </span>
-                  </div>
-                </label>
-              </div>
-
-              <div class="form-control">
-                <label class="label cursor-pointer justify-start gap-4">
+                  </label>
                   <input
-                    type="checkbox"
-                    class="checkbox checkbox-primary"
-                    checked={validateCerts()}
-                    onChange={(e) => setValidateCerts(e.target.checked)}
+                    type="text"
+                    placeholder="e.g., work_email, personal_gmail"
+                    class="input input-bordered w-full"
+                    value={identifier()}
+                    onInput={(e) => setIdentifier(e.target.value)}
+                    required
                   />
-                  <div>
-                    <span class="label-text font-medium">Validate SSL Certificates</span>
-                    <span class="label-text-alt block text-xs">
-                      Should be enabled in production
+                </div>
+
+                <div class="form-control w-full">
+                  <label class="label">
+                    <span class="label-text">Email Address *</span>
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="your.email@example.com"
+                    class="input input-bordered w-full"
+                    value={username()}
+                    onInput={(e) => setUsername(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div class="form-control w-full">
+                  <label class="label">
+                    <span class="label-text">Password *</span>
+                    <span class="label-text-alt text-xs">
+                      Stored securely in OS keychain
                     </span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* Advanced Settings */}
-            <div class="divider">Advanced Settings</div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div class="form-control w-full">
-                <label class="label">
-                  <span class="label-text">Authentication Method</span>
-                </label>
-                <select
-                  class="select select-bordered w-full"
-                  value={authMethod()}
-                  onChange={(e) =>
-                    setAuthMethod(e.target.value as ImapAuthMethod)
-                  }
-                >
-                  <option value="plain">Plain</option>
-                  <option value="oauth2">OAuth2</option>
-                  <option value="xoauth2">XOAUTH2</option>
-                </select>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    class="input input-bordered w-full"
+                    value={password()}
+                    onInput={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
               </div>
 
-              <div class="form-control w-full">
+              {/* Server Settings */}
+              <div class="divider">Server Settings</div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control w-full">
+                  <label class="label">
+                    <span class="label-text">IMAP Server Host *</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="imap.gmail.com"
+                    class="input input-bordered w-full"
+                    value={host()}
+                    onInput={(e) => setHost(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div class="form-control w-full">
+                  <label class="label">
+                    <span class="label-text">Port *</span>
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="993"
+                    class="input input-bordered w-full"
+                    value={port()}
+                    onInput={(e) => setPort(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div class="form-control">
+                  <label class="label cursor-pointer justify-start gap-4">
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-primary"
+                      checked={useTls()}
+                      onChange={(e) => setUseTls(e.target.checked)}
+                    />
+                    <div>
+                      <span class="label-text font-medium">Use TLS/SSL</span>
+                      <span class="label-text-alt block text-xs">
+                        Recommended for secure connection
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
+                <div class="form-control">
+                  <label class="label cursor-pointer justify-start gap-4">
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-primary"
+                      checked={validateCerts()}
+                      onChange={(e) => setValidateCerts(e.target.checked)}
+                    />
+                    <div>
+                      <span class="label-text font-medium">
+                        Validate SSL Certificates
+                      </span>
+                      <span class="label-text-alt block text-xs">
+                        Should be enabled in production
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Advanced Settings */}
+              <div class="divider">Advanced Settings</div>
+
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="form-control w-full">
+                  <label class="label">
+                    <span class="label-text">Authentication Method</span>
+                  </label>
+                  <select
+                    class="select select-bordered w-full"
+                    value={authMethod()}
+                    onChange={(e) =>
+                      setAuthMethod(e.target.value as ImapAuthMethod)
+                    }
+                  >
+                    <option value="plain">Plain</option>
+                    <option value="oauth2">OAuth2</option>
+                    <option value="xoauth2">XOAUTH2</option>
+                  </select>
+                </div>
+
+                <div class="form-control w-full">
+                  <label class="label">
+                    <span class="label-text">Default Mailbox</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="INBOX"
+                    class="input input-bordered w-full"
+                    value={defaultMailbox()}
+                    onInput={(e) => setDefaultMailbox(e.target.value)}
+                  />
+                </div>
+
+                <div class="form-control w-full">
+                  <label class="label">
+                    <span class="label-text">Connection Timeout (sec)</span>
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="30"
+                    class="input input-bordered w-full"
+                    value={connectionTimeout()}
+                    onInput={(e) => setConnectionTimeout(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div class="form-control w-full mt-4">
                 <label class="label">
-                  <span class="label-text">Default Mailbox</span>
+                  <span class="label-text">Notes (Optional)</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="INBOX"
-                  class="input input-bordered w-full"
-                  value={defaultMailbox()}
-                  onInput={(e) => setDefaultMailbox(e.target.value)}
+                <textarea
+                  class="textarea textarea-bordered w-full"
+                  placeholder="Additional notes about this account..."
+                  rows={2}
+                  value={notes()}
+                  onInput={(e) => setNotes(e.target.value)}
                 />
               </div>
+            </fieldset>
 
-              <div class="form-control w-full">
-                <label class="label">
-                  <span class="label-text">Connection Timeout (sec)</span>
-                </label>
-                <input
-                  type="number"
-                  placeholder="30"
-                  class="input input-bordered w-full"
-                  value={connectionTimeout()}
-                  onInput={(e) => setConnectionTimeout(e.target.value)}
-                />
+            {/* Message Display */}
+            {message() && (
+              <div
+                class={`alert ${messageType() === "success" ? "alert-success" : "alert-error"}`}
+              >
+                <span>{message()}</span>
               </div>
-            </div>
+            )}
 
-            {/* Notes */}
-            <div class="form-control w-full mt-4">
-              <label class="label">
-                <span class="label-text">Notes (Optional)</span>
-              </label>
-              <textarea
-                class="textarea textarea-bordered w-full"
-                placeholder="Additional notes about this account..."
-                rows={2}
-                value={notes()}
-                onInput={(e) => setNotes(e.target.value)}
-              />
+            {/* CTA Button */}
+            <div class="card-actions justify-end">
+              <button
+                type="submit"
+                class="btn btn-primary btn-wide"
+                disabled={isLoading()}
+              >
+                {isLoading() ? (
+                  <>
+                    <span class="loading loading-spinner loading-sm"></span>
+                    Adding Account...
+                  </>
+                ) : (
+                  "Add IMAP Account"
+                )}
+              </button>
             </div>
-          </fieldset>
-
-          {/* Message Display */}
-          {message() && (
-            <div
-              class={`alert ${messageType() === "success" ? "alert-success" : "alert-error"}`}
-            >
-              <span>{message()}</span>
-            </div>
-          )}
-
-          {/* CTA Button */}
-          <div class="card-actions justify-end">
-            <button
-              type="submit"
-              class="btn btn-primary btn-wide"
-              disabled={isLoading()}
-            >
-              {isLoading() ? (
-                <>
-                  <span class="loading loading-spinner loading-sm"></span>
-                  Adding Account...
-                </>
-              ) : (
-                "Add IMAP Account"
-              )}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
-    </div>
     </div>
   );
 }

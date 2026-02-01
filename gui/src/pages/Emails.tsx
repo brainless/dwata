@@ -30,7 +30,12 @@ export default function Emails() {
     { name: "Sent", icon: HiOutlinePaperAirplane, count: 156, folder: "Sent" },
     { name: "Drafts", icon: HiOutlineDocument, count: 3, folder: "Drafts" },
     { name: "Starred", icon: HiOutlineStar, count: 12, folder: "Starred" },
-    { name: "Archive", icon: HiOutlineArchiveBox, count: 892, folder: "Archive" },
+    {
+      name: "Archive",
+      icon: HiOutlineArchiveBox,
+      count: 892,
+      folder: "Archive",
+    },
     { name: "Trash", icon: HiOutlineTrash, count: 8, folder: "Trash" },
   ];
 
@@ -95,7 +100,8 @@ export default function Emails() {
   // Calculate inbox stats (mocked for now)
   const unreadCount = () => emails().filter((e) => !e.is_read).length;
   const flaggedCount = () => emails().filter((e) => e.is_flagged).length;
-  const withAttachmentsCount = () => emails().filter((e) => e.has_attachments).length;
+  const withAttachmentsCount = () =>
+    emails().filter((e) => e.has_attachments).length;
 
   return (
     <div class="flex h-screen bg-base-200">
@@ -126,7 +132,9 @@ export default function Emails() {
                       <folder.icon class="w-5 h-5" />
                       <span>{folder.name}</span>
                     </div>
-                    <span class="badge badge-sm badge-ghost">{folder.count}</span>
+                    <span class="badge badge-sm badge-ghost">
+                      {folder.count}
+                    </span>
                   </a>
                 </li>
               )}
@@ -139,7 +147,11 @@ export default function Emails() {
           <div class="text-xs text-base-content/60 mb-2">
             Storage: 2.3 GB of 15 GB used
           </div>
-          <progress class="progress progress-primary w-full h-2" value="15" max="100"></progress>
+          <progress
+            class="progress progress-primary w-full h-2"
+            value="15"
+            max="100"
+          ></progress>
         </div>
       </div>
 
@@ -151,15 +163,21 @@ export default function Emails() {
           <div class="flex gap-4 mb-4">
             <div class="stat bg-base-200 rounded-lg p-4 flex-1">
               <div class="stat-title text-xs">Unread</div>
-              <div class="stat-value text-2xl text-primary">{unreadCount()}</div>
+              <div class="stat-value text-2xl text-primary">
+                {unreadCount()}
+              </div>
             </div>
             <div class="stat bg-base-200 rounded-lg p-4 flex-1">
               <div class="stat-title text-xs">Flagged</div>
-              <div class="stat-value text-2xl text-warning">{flaggedCount()}</div>
+              <div class="stat-value text-2xl text-warning">
+                {flaggedCount()}
+              </div>
             </div>
             <div class="stat bg-base-200 rounded-lg p-4 flex-1">
               <div class="stat-title text-xs">With Attachments</div>
-              <div class="stat-value text-2xl text-accent">{withAttachmentsCount()}</div>
+              <div class="stat-value text-2xl text-accent">
+                {withAttachmentsCount()}
+              </div>
             </div>
           </div>
 
@@ -285,7 +303,9 @@ export default function Emails() {
                             <div class="flex gap-1 mt-2 flex-wrap">
                               <For each={email.labels.slice(0, 3)}>
                                 {(label) => (
-                                  <span class="badge badge-xs badge-outline">{label}</span>
+                                  <span class="badge badge-xs badge-outline">
+                                    {label}
+                                  </span>
                                 )}
                               </For>
                             </div>
