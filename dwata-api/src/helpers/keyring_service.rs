@@ -99,6 +99,64 @@ impl KeyringService {
         username: &str,
         new_password: &str,
     ) -> Result<(), KeyringError> {
-        Self::set_password(credential_type, identifier, username, new_password)
+        let service = credential_type.service_name();
+        let keychain_user = Self::keychain_username(identifier, username);
+
+        tracing::info!(
+            "Attempting to update password for service: {}, user: {}",
+            service,
+            keychain_user
+        );
+
+        let entry = Entry::new(&service, &keychain_user).map_err(|e| {
+            tracing::error!("Failed to create keychain entry: {}", e);
+            KeyringError::ServiceUnavailable(format!("Failed to create keychain entry: {}", e))
+        })?;
+
+        match entry.set_password(new_password) {
+            Ok(_) => {
+                tracing::info!("Successfully updated password for {}", keychain_user);
+                Ok(())
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                tracing::error!(
+                    "Failed to update password for {}: {}",
+                    keychain_user,
+                    error_msg
+                );
+
+                if error_msg.contains("already exists") || error_msg.contains("duplicate") {
+                    tracing::info!("Entry already exists, attempting to delete and recreate");
+                    match entry.delete_password() {
+                        Ok(_) => {
+                            tracing::info!("Deleted existing entry, now setting new password");
+                            entry.set_password(new_password).map_err(|e| {
+                                KeyringError::OperationFailed(format!(
+                                    "Failed to store password after delete: {}",
+                                    e
+                                ))
+                            })?;
+                            Ok(())
+                        }
+                        Err(delete_err) => {
+                            tracing::warn!("Failed to delete existing entry: {}, will try to set password anyway", delete_err);
+                            entry.set_password(new_password).map_err(|e| {
+                                KeyringError::OperationFailed(format!(
+                                    "Failed to store password: {}",
+                                    e
+                                ))
+                            })?;
+                            Ok(())
+                        }
+                    }
+                } else {
+                    Err(KeyringError::OperationFailed(format!(
+                        "Failed to store password: {}",
+                        e
+                    )))
+                }
+            }
+        }
     }
 }

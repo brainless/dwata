@@ -45,7 +45,7 @@ export default function SettingsAccounts() {
 
   // Credentials list state
   const [credentials, setCredentials] = createSignal<CredentialMetadata[]>([]);
-  const [isLoadingList, setIsLoadingList] = createSignal(true);
+  const [isLoadingList, setIsLoadingList] = createSignal(false);
 
   // Fetch credentials on mount
   onMount(async () => {
@@ -58,7 +58,11 @@ export default function SettingsAccounts() {
       const response = await fetch(getApiUrl("/api/credentials"));
       if (response.ok) {
         const data: CredentialListResponse = await response.json();
+        console.log("Fetched credentials:", data.credentials);
+        console.log("Credentials count:", data.credentials.length);
         setCredentials(data.credentials);
+      } else {
+        console.error("Failed to fetch credentials, status:", response.status);
       }
     } catch (error) {
       console.error("Failed to fetch credentials:", error);
@@ -243,7 +247,7 @@ export default function SettingsAccounts() {
     }
   };
 
-  const credentialTypeConfig = {
+  const credentialTypeConfig: Record<string, { label: string, icon: any, badgeClass: string }> = {
     imap: {
       label: "IMAP",
       icon: HiOutlineEnvelope,
@@ -268,6 +272,11 @@ export default function SettingsAccounts() {
       label: "Database",
       icon: HiOutlineEnvelope,
       badgeClass: "badge-warning",
+    },
+    localfile: {
+      label: "Local File",
+      icon: HiOutlineEnvelope,
+      badgeClass: "badge-ghost",
     },
     custom: {
       label: "Custom",
@@ -318,10 +327,13 @@ export default function SettingsAccounts() {
                   <tbody>
                     <For each={credentials()}>
                       {(credential) => {
+                        console.log("Rendering credential:", credential);
+                        console.log("Credential type:", credential.credential_type);
                         const typeConfig =
                           credentialTypeConfig[
                             credential.credential_type as keyof typeof credentialTypeConfig
                           ];
+                        console.log("Type config:", typeConfig);
                         const TypeIcon = typeConfig.icon;
 
                         return (

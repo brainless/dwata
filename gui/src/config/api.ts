@@ -4,7 +4,7 @@
  */
 
 const API_HOST = import.meta.env.VITE_API_HOST || "127.0.0.1";
-const API_PORT = import.meta.env.VITE_API_PORT || "8080";
+const API_PORT = import.meta.env.VITE_API_PORT || "9200";
 
 export const API_BASE_URL = `http://${API_HOST}:${API_PORT}`;
 
