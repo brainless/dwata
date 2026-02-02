@@ -172,9 +172,6 @@ pub async fn list_download_jobs(
 ) -> Result<Vec<DownloadJob>, DownloadDbError> {
     let conn_ref = conn.clone();
 
-    // Collect all IDs first, then drop the lock
-    let conn = conn.lock().await;
-
     let query = if let Some(status) = status_filter {
         format!(
             "SELECT id FROM download_jobs WHERE status = '{}' ORDER BY created_at DESC LIMIT {}",
@@ -184,17 +181,19 @@ pub async fn list_download_jobs(
         format!("SELECT id FROM download_jobs ORDER BY created_at DESC LIMIT {}", limit)
     };
 
-    let mut stmt = conn
-        .prepare(&query)
-        .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+    let ids = {
+        let conn = conn.lock().await;
+        let mut stmt = conn
+            .prepare(&query)
+            .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
-    let ids_result: Result<Vec<i64>, rusqlite::Error> = stmt
-        .query_map([], |row| row.get::<_, i64>(0))
-        .collect();
-
-    let ids = ids_result.map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?
-
-
+        let result: Vec<i64> = stmt
+            .query_map([], |row| row.get::<_, i64>(0))
+            .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+        result
+    };
     let mut jobs = Vec::new();
     for id in ids {
         if let Ok(job) = get_download_job(conn_ref.clone(), id).await {
