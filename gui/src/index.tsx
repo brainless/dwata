@@ -5,6 +5,7 @@ import "./index.css";
 import App from "./App";
 import Calendar from "./pages/Calendar";
 import Emails from "./pages/Emails";
+import FinancialHealth from "./pages/FinancialHealth";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Tasks from "./pages/Tasks";
@@ -24,6 +25,7 @@ render(
       <Route path="/tasks" component={Tasks} />
       <Route path="/emails" component={Emails} />
       <Route path="/calendar" component={Calendar} />
+      <Route path="/financial" component={FinancialHealth} />
       <Route path="/settings" component={Settings} />
       <Route path="/settings/:tab" component={Settings} />
     </Router>

@@ -6,6 +6,7 @@ import {
   HiOutlineFolder,
   HiOutlineClipboardDocumentCheck,
   HiOutlineCog6Tooth,
+  HiOutlineCurrencyDollar,
 } from "solid-icons/hi";
 
 export default function Sidebar() {
@@ -74,6 +75,18 @@ export default function Sidebar() {
             >
               <HiOutlineCalendar class="w-5 h-5 flex-shrink-0" />
               <span class="is-drawer-close:hidden ml-3">Calendar</span>
+            </A>
+          </div>
+
+          {/* Financial Health */}
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/financial"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineCurrencyDollar class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Financial</span>
             </A>
           </div>
 

@@ -137,6 +137,13 @@ async fn main() -> std::io::Result<()> {
         db.async_connection.clone(),
     ));
 
+    // Initialize financial extraction manager
+    let financial_extraction_manager = Arc::new(
+        jobs::financial_extraction_manager::FinancialExtractionManager::new(
+            db.async_connection.clone(),
+        ),
+    );
+
     // Restore interrupted jobs on startup
     if let Err(e) = download_manager.restore_interrupted_jobs().await {
         tracing::warn!("Failed to restore interrupted jobs: {}", e);
@@ -150,6 +157,16 @@ async fn main() -> std::io::Result<()> {
     // Run initial sync on startup to check for new emails
     if let Err(e) = download_manager.sync_all_jobs().await {
         tracing::warn!("Failed to run initial sync: {}", e);
+    }
+
+    // Run initial financial extraction on startup
+    match financial_extraction_manager.extract_from_emails(None).await {
+        Ok(count) => {
+            tracing::info!("Financial extraction completed on startup: {} transactions extracted", count);
+        }
+        Err(e) => {
+            tracing::warn!("Failed to run initial financial extraction: {}", e);
+        }
     }
 
     // Spawn periodic sync task (every 5 minutes)
@@ -191,6 +208,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(settings_state.clone()))
             .app_data(web::Data::new(download_manager.clone()))
             .app_data(web::Data::new(extraction_manager.clone()))
+            .app_data(web::Data::new(financial_extraction_manager.clone()))
             .app_data(web::Data::new(oauth_client.clone()))
             .app_data(web::Data::new(state_manager.clone()))
             .app_data(web::Data::new(token_cache.clone()))

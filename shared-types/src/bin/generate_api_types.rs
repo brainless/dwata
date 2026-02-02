@@ -125,6 +125,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(UpdateContactRequest::export_to_string()?));
     types.push(clean_type(ContactsResponse::export_to_string()?));
 
+    // Financial types
+    types.push(clean_type(FinancialDocumentType::export_to_string()?));
+    types.push(clean_type(FinancialTransaction::export_to_string()?));
+    types.push(clean_type(TransactionCategory::export_to_string()?));
+    types.push(clean_type(TransactionStatus::export_to_string()?));
+    types.push(clean_type(FinancialSummary::export_to_string()?));
+    types.push(clean_type(FinancialHealth::export_to_string()?));
+    types.push(clean_type(CategoryBreakdown::export_to_string()?));
+
     let output_dir = Path::new("../gui/src/api-types");
     fs::create_dir_all(output_dir)?;
 

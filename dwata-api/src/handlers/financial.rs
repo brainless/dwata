@@ -1,13 +1,14 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use crate::database::financial_transactions as db;
-use crate::database::AsyncDbConnection;
+use crate::database::Database;
 use crate::jobs::financial_extraction_manager::FinancialExtractionManager;
 use serde::Deserialize;
+use std::sync::Arc;
 
 pub async fn list_transactions(
-    db_conn: web::Data<AsyncDbConnection>,
+    db: web::Data<Arc<Database>>,
 ) -> ActixResult<HttpResponse> {
-    let transactions = db::list_financial_transactions(db_conn.as_ref().clone(), 100)
+    let transactions = db::list_financial_transactions(db.async_connection.clone(), 100)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -23,11 +24,11 @@ pub struct SummaryQuery {
 }
 
 pub async fn get_summary(
-    db_conn: web::Data<AsyncDbConnection>,
+    db: web::Data<Arc<Database>>,
     query: web::Query<SummaryQuery>,
 ) -> ActixResult<HttpResponse> {
     let summary = db::get_financial_summary(
-        db_conn.as_ref().clone(),
+        db.async_connection.clone(),
         &query.start_date,
         &query.end_date,
     )
@@ -43,11 +44,9 @@ pub struct ExtractionRequest {
 }
 
 pub async fn trigger_extraction(
-    db_conn: web::Data<AsyncDbConnection>,
+    manager: web::Data<Arc<FinancialExtractionManager>>,
     request: web::Json<ExtractionRequest>,
 ) -> ActixResult<HttpResponse> {
-    let manager = FinancialExtractionManager::new(db_conn.as_ref().clone());
-
     let count = manager
         .extract_from_emails(request.email_ids.clone())
         .await
