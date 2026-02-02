@@ -286,7 +286,9 @@ export default function SettingsFolders() {
         <div class="card-body">
           <h2 class="card-title">Add Folder</h2>
           <p class="text-sm text-base-content/70 mb-4">
-            Share a local folder path to be used by dwata. Note: Browser will show an upload confirmation but no files are actually uploaded - this is a limitation of browser APIs for folder selection.
+            Share a local folder path to be used by dwata. Note: Browser will
+            show an upload confirmation but no files are actually uploaded -
+            this is a limitation of browser APIs for folder selection.
           </p>
 
           <form onSubmit={handleSubmit} class="space-y-4">

@@ -247,7 +247,10 @@ export default function SettingsAccounts() {
     }
   };
 
-  const credentialTypeConfig: Record<string, { label: string, icon: any, badgeClass: string }> = {
+  const credentialTypeConfig: Record<
+    string,
+    { label: string; icon: any; badgeClass: string }
+  > = {
     imap: {
       label: "IMAP",
       icon: HiOutlineEnvelope,
@@ -328,7 +331,10 @@ export default function SettingsAccounts() {
                     <For each={credentials()}>
                       {(credential) => {
                         console.log("Rendering credential:", credential);
-                        console.log("Credential type:", credential.credential_type);
+                        console.log(
+                          "Credential type:",
+                          credential.credential_type,
+                        );
                         const typeConfig =
                           credentialTypeConfig[
                             credential.credential_type as keyof typeof credentialTypeConfig

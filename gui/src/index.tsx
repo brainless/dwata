@@ -3,6 +3,7 @@ import { Router, Route } from "@solidjs/router";
 import "./index.css";
 
 import App from "./App";
+import BackgroundJobs from "./pages/BackgroundJobs";
 import Calendar from "./pages/Calendar";
 import Emails from "./pages/Emails";
 import FinancialHealth from "./pages/FinancialHealth";
@@ -26,6 +27,7 @@ render(
       <Route path="/emails" component={Emails} />
       <Route path="/calendar" component={Calendar} />
       <Route path="/financial" component={FinancialHealth} />
+      <Route path="/jobs" component={BackgroundJobs} />
       <Route path="/settings" component={Settings} />
       <Route path="/settings/:tab" component={Settings} />
     </Router>
