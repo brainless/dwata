@@ -29,7 +29,7 @@ impl FinancialExtractionManager {
             }
             emails
         } else {
-            emails_db::list_emails(self.db_conn.clone(), 1000).await?
+            emails_db::list_emails(self.db_conn.clone(), None, None, 1000, 0).await?
         };
 
         let mut total_extracted = 0;
