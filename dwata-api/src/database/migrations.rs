@@ -25,6 +25,10 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         "CREATE SEQUENCE IF NOT EXISTS seq_linkedin_connections_id",
         [],
     )?;
+    conn.execute(
+        "CREATE SEQUENCE IF NOT EXISTS seq_financial_transactions_id",
+        [],
+    )?;
 
     // Create agent_sessions table
     conn.execute(
@@ -530,6 +534,56 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     conn.execute("CREATE INDEX IF NOT EXISTS idx_linkedin_connections_contact ON linkedin_connections(contact_id)", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_linkedin_connections_extraction_job ON linkedin_connections(extraction_job_id)", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_linkedin_connections_date ON linkedin_connections(connected_date DESC)", [])?;
+
+    // Create financial_transactions table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS financial_transactions (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_financial_transactions_id'),
+
+            -- Source tracking (agnostic to source type)
+            source_type VARCHAR NOT NULL,
+            source_id VARCHAR NOT NULL,
+            extraction_job_id INTEGER,
+
+            -- Transaction data
+            document_type VARCHAR NOT NULL,
+            description VARCHAR NOT NULL,
+            amount DOUBLE NOT NULL,
+            currency VARCHAR NOT NULL DEFAULT 'USD',
+            transaction_date VARCHAR NOT NULL,
+
+            -- Additional fields
+            category VARCHAR,
+            vendor VARCHAR,
+            status VARCHAR NOT NULL,
+
+            -- Metadata
+            source_file VARCHAR,
+            confidence DOUBLE,
+            requires_review BOOLEAN DEFAULT false,
+
+            -- Timestamps
+            extracted_at BIGINT NOT NULL,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+
+            notes VARCHAR
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_source ON financial_transactions(source_type, source_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_date ON financial_transactions(transaction_date DESC)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_vendor ON financial_transactions(vendor)",
+        [],
+    )?;
 
     // Migration: Drop foreign key constraints that cause DuckDB issues
     // Note: DuckDB doesn't support ALTER TABLE DROP CONSTRAINT directly
