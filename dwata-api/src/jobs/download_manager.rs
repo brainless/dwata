@@ -202,18 +202,6 @@ impl DownloadManager {
             for uid in uids {
                 match imap_client.fetch_email(&folder.name, uid) {
                     Ok(parsed_email) => {
-                        let download_item_id = db::insert_download_item(
-                            db_conn.clone(),
-                            job.id,
-                            &uid.to_string(),
-                            Some(&folder.name),
-                            "email",
-                            "completed",
-                            parsed_email.size_bytes.map(|s| s as i64),
-                            Some("message/rfc822"),
-                            None,
-                        ).await?;
-
                         let to_addresses: Vec<EmailAddress> = parsed_email.to_addresses
                             .iter()
                             .filter_map(|(addr, name)| {
@@ -224,10 +212,11 @@ impl DownloadManager {
                             })
                             .collect();
 
-                        let email_id = emails_db::insert_email(
+                        // Use transactional insert to ensure atomicity
+                        match db::insert_email_download_transactional(
                             db_conn.clone(),
+                            job.id,
                             job.credential_id,
-                            Some(download_item_id),
                             parsed_email.uid,
                             &folder.name,
                             parsed_email.message_id.as_deref(),
@@ -250,20 +239,25 @@ impl DownloadManager {
                             parsed_email.attachment_count,
                             parsed_email.size_bytes,
                             &parsed_email.labels,
-                        ).await?;
-
-                        tracing::info!("Downloaded and stored email UID {} (id: {})", uid, email_id);
-
-                        db::update_job_progress(
-                            db_conn.clone(),
-                            job.id,
-                            None,
-                            Some(1),
-                            None,
-                            None,
-                            parsed_email.size_bytes.map(|s| s as u64),
-                        )
-                        .await?;
+                        ).await {
+                            Ok((_download_item_id, email_id)) => {
+                                tracing::info!("Downloaded and stored email UID {} (id: {}) in transaction", uid, email_id);
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to store email UID {} in transaction: {}", uid, e);
+                                // Update failed count
+                                db::update_job_progress(
+                                    db_conn.clone(),
+                                    job.id,
+                                    None,
+                                    None,
+                                    Some(1),
+                                    None,
+                                    None,
+                                )
+                                .await?;
+                            }
+                        }
                     }
                     Err(e) => {
                         tracing::error!("Failed to download email UID {}: {}", uid, e);

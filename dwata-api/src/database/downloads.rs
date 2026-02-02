@@ -2,6 +2,7 @@ use shared_types::download::{
     CreateDownloadJobRequest, DownloadJob, DownloadJobStatus, DownloadProgress,
     SourceType,
 };
+use shared_types::email::EmailAddress;
 use std::fmt;
 
 pub use crate::database::AsyncDbConnection;
@@ -370,6 +371,148 @@ pub async fn insert_download_item(
     ).map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
     Ok(item_id)
+}
+
+/// Insert email download with transaction support
+/// This ensures download_item, email record, and progress update are atomic
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_email_download_transactional(
+    conn: AsyncDbConnection,
+    job_id: i64,
+    credential_id: i64,
+    uid: u32,
+    folder: &str,
+    message_id: Option<&str>,
+    subject: Option<&str>,
+    from_address: &str,
+    from_name: Option<&str>,
+    to_addresses: &[EmailAddress],
+    cc_addresses: &[EmailAddress],
+    bcc_addresses: &[EmailAddress],
+    reply_to: Option<&str>,
+    date_sent: Option<i64>,
+    date_received: i64,
+    body_text: Option<&str>,
+    body_html: Option<&str>,
+    is_read: bool,
+    is_flagged: bool,
+    is_draft: bool,
+    is_answered: bool,
+    has_attachments: bool,
+    attachment_count: i32,
+    size_bytes: Option<i32>,
+    labels: &[String],
+) -> Result<(i64, i64), DownloadDbError> {
+    let conn = conn.lock().await;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    // Begin transaction
+    conn.execute("BEGIN TRANSACTION", [])
+        .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
+
+    let result = (|| -> Result<(i64, i64), DownloadDbError> {
+        // 1. Insert download_item
+        let metadata_json: Option<String> = None;
+        let download_item_id: i64 = conn.query_row(
+            "INSERT INTO download_items
+             (job_id, source_identifier, source_folder, item_type, status, size_bytes,
+              mime_type, metadata, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING id",
+            duckdb::params![
+                job_id as i32,
+                &uid.to_string(),
+                Some(folder),
+                "email",
+                "completed",
+                size_bytes,
+                Some("message/rfc822"),
+                metadata_json.as_deref(),
+                now,
+                now
+            ],
+            |row| row.get(0)
+        ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to insert download_item: {}", e)))?;
+
+        // 2. Insert email
+        let to_json = serde_json::to_string(to_addresses)
+            .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize to_addresses: {}", e)))?;
+        let cc_json = serde_json::to_string(cc_addresses)
+            .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize cc_addresses: {}", e)))?;
+        let bcc_json = serde_json::to_string(bcc_addresses)
+            .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize bcc_addresses: {}", e)))?;
+        let labels_json = serde_json::to_string(labels)
+            .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize labels: {}", e)))?;
+
+        let email_id: i64 = conn.query_row(
+            "INSERT INTO emails
+             (download_item_id, credential_id, uid, folder, message_id, subject, from_address, from_name,
+              to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+              body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+              has_attachments, attachment_count, size_bytes, labels, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING id",
+            duckdb::params![
+                download_item_id,
+                credential_id,
+                uid as i32,
+                folder,
+                message_id,
+                subject,
+                from_address,
+                from_name,
+                &to_json,
+                &cc_json,
+                &bcc_json,
+                reply_to,
+                date_sent,
+                date_received,
+                body_text,
+                body_html,
+                is_read,
+                is_flagged,
+                is_draft,
+                is_answered,
+                has_attachments,
+                attachment_count,
+                size_bytes,
+                &labels_json,
+                now,
+                now
+            ],
+            |row| row.get(0)
+        ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to insert email: {}", e)))?;
+
+        // 3. Update job progress (increment downloaded_items by 1)
+        conn.execute(
+            "UPDATE download_jobs
+             SET downloaded_items = downloaded_items + 1,
+                 bytes_downloaded = bytes_downloaded + ?,
+                 updated_at = ?
+             WHERE id = ?",
+            duckdb::params![
+                size_bytes.unwrap_or(0) as i64,
+                now,
+                job_id
+            ],
+        ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to update progress: {}", e)))?;
+
+        Ok((download_item_id, email_id))
+    })();
+
+    match result {
+        Ok(ids) => {
+            // Commit transaction
+            conn.execute("COMMIT", [])
+                .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
+            Ok(ids)
+        }
+        Err(e) => {
+            // Rollback transaction
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
 }
 
 fn source_type_to_string(source_type: &SourceType) -> &'static str {
