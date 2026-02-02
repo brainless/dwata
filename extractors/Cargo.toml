@@ -17,3 +17,6 @@ thiserror.workspace = true
 # Attachment parsing
 ical = "0.10"
 csv = "1.3"
+
+# Financial pattern extraction
+regex = "1.10"
