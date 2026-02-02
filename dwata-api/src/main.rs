@@ -228,6 +228,9 @@ async fn main() -> std::io::Result<()> {
             .route("/api/positions", web::get().to(handlers::positions::list_positions))
             .route("/api/positions/{id}", web::get().to(handlers::positions::get_position))
             .route("/api/contacts/{id}/positions", web::get().to(handlers::positions::list_contact_positions))
+            .route("/api/financial/transactions", web::get().to(handlers::financial::list_transactions))
+            .route("/api/financial/summary", web::get().to(handlers::financial::get_summary))
+            .route("/api/financial/extract", web::post().to(handlers::financial::trigger_extraction))
     })
     .bind((host.as_str(), port))?
     .run()

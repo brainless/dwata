@@ -9,6 +9,7 @@ pub mod email;
 pub mod event;
 pub mod extraction;
 pub mod extraction_job;
+pub mod financial;
 pub mod position;
 pub mod project;
 pub mod session;
@@ -39,6 +40,10 @@ pub use extraction_job::{
     ArchiveType, AttachmentExtractionFilter, CreateExtractionJobRequest, ExtractionJob,
     ExtractionJobListResponse, ExtractionJobStatus, ExtractionProgress, ExtractionSourceConfig,
     ExtractionSourceType, ExtractorType,
+};
+pub use financial::{
+    CategoryBreakdown, FinancialDocumentType, FinancialHealth, FinancialSummary,
+    FinancialTransaction, TransactionCategory, TransactionStatus,
 };
 pub use position::{CreatePositionRequest, Position, PositionsResponse};
 pub use project::{
