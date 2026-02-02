@@ -24,10 +24,12 @@
 //! ```
 
 pub mod attachment_parser;
+pub mod financial_patterns;
 pub mod linkedin_archive;
 
 // Re-export commonly used types
 pub use attachment_parser::{AttachmentParserExtractor, IcsParserConfig, TimezoneHandling};
+pub use financial_patterns::FinancialPatternExtractor;
 pub use linkedin_archive::LinkedInArchiveExtractor;
 
 // Re-export the Extractor trait from shared-types for convenience

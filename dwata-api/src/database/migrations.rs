@@ -29,6 +29,10 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         "CREATE SEQUENCE IF NOT EXISTS seq_financial_transactions_id",
         [],
     )?;
+    conn.execute(
+        "CREATE SEQUENCE IF NOT EXISTS seq_financial_extraction_sources_id",
+        [],
+    )?;
 
     // Create agent_sessions table
     conn.execute(
@@ -567,7 +571,8 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             created_at BIGINT NOT NULL,
             updated_at BIGINT NOT NULL,
 
-            notes VARCHAR
+            notes VARCHAR,
+            UNIQUE(source_type, source_id, amount, vendor, transaction_date, document_type)
         )",
         [],
     )?;
@@ -582,6 +587,25 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     )?;
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_financial_transactions_vendor ON financial_transactions(vendor)",
+        [],
+    )?;
+
+    // Track which sources have been processed for financial extraction
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS financial_extraction_sources (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_financial_extraction_sources_id'),
+            source_type VARCHAR NOT NULL,
+            source_id VARCHAR NOT NULL,
+            extraction_job_id INTEGER,
+            extracted_at BIGINT NOT NULL,
+            transaction_count INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(source_type, source_id)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_extraction_sources_job ON financial_extraction_sources(extraction_job_id)",
         [],
     )?;
 

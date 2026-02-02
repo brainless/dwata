@@ -1,4 +1,4 @@
-use crate::database::{financial_transactions as db, emails as emails_db};
+use crate::database::{financial_extraction_sources as sources_db, financial_transactions as db, emails as emails_db};
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use extractors::FinancialPatternExtractor;
@@ -35,14 +35,30 @@ impl FinancialExtractionManager {
         let mut total_extracted = 0;
 
         for email in emails {
+            let source_type = "email";
+            let source_id = email.id.to_string();
+
+            let is_processed = sources_db::is_source_processed(
+                self.db_conn.clone(),
+                source_type,
+                &source_id,
+            ).await.unwrap_or(false);
+
+            if is_processed {
+                tracing::debug!("Skipping already processed email: {}", email.id);
+                continue;
+            }
+
             let transactions = self.extractor.extract_from_email(
                 &email.subject.unwrap_or_default(),
                 &email.body_text.unwrap_or_default(),
             );
 
+            let transaction_count = transactions.len();
+
             for mut transaction in transactions {
-                transaction.source_type = "email".to_string();
-                transaction.source_id = email.id.to_string();
+                transaction.source_type = source_type.to_string();
+                transaction.source_id = source_id.clone();
 
                 db::insert_financial_transaction(
                     self.db_conn.clone(),
@@ -51,6 +67,16 @@ impl FinancialExtractionManager {
                 ).await?;
 
                 total_extracted += 1;
+            }
+
+            if transaction_count > 0 {
+                sources_db::mark_source_processed(
+                    self.db_conn.clone(),
+                    source_type,
+                    &source_id,
+                    None,
+                    transaction_count as i32,
+                ).await?;
             }
         }
 

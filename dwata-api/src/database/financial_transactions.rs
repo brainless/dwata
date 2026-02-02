@@ -45,8 +45,12 @@ pub async fn insert_financial_transaction(
         TransactionCategory::Other => "other",
     });
 
+    let vendor_ref = transaction.vendor.as_deref().unwrap_or("");
+    let notes_ref = transaction.notes.as_deref();
+    let source_file_ref = transaction.source_file.as_deref();
+
     let id: i64 = conn.query_row(
-        "INSERT INTO financial_transactions
+        "INSERT OR IGNORE INTO financial_transactions
          (source_type, source_id, extraction_job_id, document_type, description, amount, currency,
           transaction_date, category, vendor, status, source_file, confidence,
           requires_review, extracted_at, created_at, updated_at, notes)
@@ -62,18 +66,33 @@ pub async fn insert_financial_transaction(
             &transaction.currency,
             &transaction.transaction_date,
             category,
-            transaction.vendor.as_deref(),
+            vendor_ref,
             status,
-            transaction.source_file.as_deref(),
-            0.85,
+            source_file_ref,
+            0.85f64,
             false,
             transaction.extracted_at,
             now,
             now,
-            transaction.notes.as_deref(),
+            notes_ref,
         ],
         |row| row.get(0),
-    )?;
+    ).unwrap_or_else(|_| {
+        conn.query_row(
+            "SELECT id FROM financial_transactions
+             WHERE source_type = ? AND source_id = ? AND amount = ? AND vendor = ? AND transaction_date = ? AND document_type = ?
+             LIMIT 1",
+            params![
+                &transaction.source_type,
+                &transaction.source_id,
+                transaction.amount,
+                vendor_ref,
+                &transaction.transaction_date,
+                document_type,
+            ],
+            |row| row.get(0),
+        ).unwrap()
+    });
 
     Ok(id)
 }

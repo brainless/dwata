@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS financial_transactions (
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL,
 
-    notes VARCHAR
+    notes VARCHAR,
+    UNIQUE(source_type, source_id, amount, vendor, transaction_date, document_type)
 );
 
 CREATE INDEX IF NOT EXISTS idx_financial_transactions_source
@@ -82,7 +83,52 @@ CREATE INDEX IF NOT EXISTS idx_financial_transactions_date
 
 CREATE INDEX IF NOT EXISTS idx_financial_transactions_vendor
     ON financial_transactions(vendor);
+
+CREATE TABLE IF NOT EXISTS financial_extraction_sources (
+    id INTEGER PRIMARY KEY DEFAULT nextval('seq_financial_extraction_sources_id'),
+    source_type VARCHAR NOT NULL,
+    source_id VARCHAR NOT NULL,
+    extraction_job_id INTEGER,
+    extracted_at BIGINT NOT NULL,
+    transaction_count INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(source_type, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_extraction_sources_job
+    ON financial_extraction_sources(extraction_job_id);
 ```
+
+## Source Tracking
+
+**Purpose**: Prevent re-extracting from the same sources when running the extractor multiple times.
+
+### Implementation
+
+1. **Tracking Table**: `financial_extraction_sources` records which sources have been processed
+   - `source_type`: 'email', 'file', etc.
+   - `source_id`: ID of the source (email_id, file_path, etc.)
+   - `extracted_at`: When it was processed
+   - `transaction_count`: How many transactions were found
+
+2. **Extraction Flow**:
+   ```
+   For each source (email, file):
+     1. Check if source is in financial_extraction_sources
+     2. If yes → Skip (already processed)
+     3. If no → Extract transactions
+     4. If transactions found → Mark source as processed
+   ```
+
+3. **Benefits**:
+   - Avoid duplicate processing
+   - Faster re-runs (skip already processed sources)
+   - Can force re-extraction by deleting tracking records
+
+4. **API Functions** (in `financial_extraction_sources.rs`):
+   - `mark_source_processed()` - Record that a source was processed
+   - `is_source_processed()` - Check if source was processed
+   - `get_processed_sources()` - Get all processed sources of a type
+   - `delete_processed_source()` - Allow forced re-extraction
 
 ## Implementation
 
@@ -407,8 +453,16 @@ pub async fn get_financial_summary(
 
 **File**: `dwata-api/src/jobs/financial_extraction_manager.rs`
 
+**Source Tracking**: Prevent re-extraction from same sources
+
+The extraction manager now tracks which sources (emails, files) have been processed using a dedicated tracking table. When re-running the extractor:
+
+1. Check if source was already processed in `financial_extraction_sources` table
+2. Skip already processed sources to avoid duplicate work
+3. Mark new sources as processed after successful extraction
+
 ```rust
-use crate::database::{financial_transactions as db, emails as emails_db};
+use crate::database::{financial_extraction_sources as sources_db, financial_transactions as db, emails as emails_db};
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use extractors::FinancialPatternExtractor;
@@ -442,27 +496,55 @@ impl FinancialExtractionManager {
             emails
         } else {
             // Get recent emails (last 1000)
-            emails_db::list_emails(self.db_conn.clone(), 1000).await?
+            emails_db::list_emails(self.db_conn.clone(), None, None, 1000, 0).await?
         };
 
         let mut total_extracted = 0;
 
         for email in emails {
+            let source_type = "email";
+            let source_id = email.id.to_string();
+
+            // Check if already processed
+            let is_processed = sources_db::is_source_processed(
+                self.db_conn.clone(),
+                source_type,
+                &source_id,
+            ).await.unwrap_or(false);
+
+            if is_processed {
+                continue;
+            }
+
             let transactions = self.extractor.extract_from_email(
-                &email.subject,
-                &email.body_text,
+                &email.subject.unwrap_or_default(),
+                &email.body_text.unwrap_or_default(),
             );
 
-            for transaction in transactions {
+            let transaction_count = transactions.len();
+
+            for mut transaction in transactions {
+                transaction.source_type = source_type.to_string();
+                transaction.source_id = source_id.clone();
+
                 db::insert_financial_transaction(
                     self.db_conn.clone(),
                     &transaction,
-                    "email",                      // source_type
-                    &email.id.to_string(),        // source_id
-                    None,                         // No extraction job for now
+                    None,
                 ).await?;
 
                 total_extracted += 1;
+            }
+
+            // Mark source as processed
+            if transaction_count > 0 {
+                sources_db::mark_source_processed(
+                    self.db_conn.clone(),
+                    source_type,
+                    &source_id,
+                    None,
+                    transaction_count as i32,
+                ).await?;
             }
         }
 
@@ -570,8 +652,9 @@ pub struct ExtractionRequest {
 - [ ] `extractors/src/financial_patterns/extractor.rs` - Extractor implementation
 - [ ] `dwata-api/src/database/migrations.rs` - Add financial_transactions table
 - [ ] `dwata-api/src/database/financial_transactions.rs` - DB operations
-- [ ] `dwata-api/src/database/mod.rs` - Export financial_transactions module
-- [ ] `dwata-api/src/jobs/financial_extraction_manager.rs` - Extraction manager
+- [ ] `dwata-api/src/database/financial_extraction_sources.rs` - Source tracking operations
+- [ ] `dwata-api/src/database/mod.rs` - Export financial modules
+- [ ] `dwata-api/src/jobs/financial_extraction_manager.rs` - Extraction manager with source tracking
 - [ ] `dwata-api/src/handlers/financial.rs` - API handlers
 - [ ] `dwata-api/src/handlers/mod.rs` - Export financial module
 - [ ] `dwata-api/src/main.rs` - Register routes
