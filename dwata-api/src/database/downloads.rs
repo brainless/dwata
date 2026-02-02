@@ -38,9 +38,9 @@ pub async fn insert_download_job(
         .query_row(
             "INSERT INTO download_jobs
              (source_type, credential_id, status, source_state, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)
-             RETURNING id",
-            duckdb::params![
+              VALUES (?, ?, ?, ?, ?, ?)
+              RETURNING id",
+            rusqlite::params![
                 source_type_to_string(&request.source_type),
                 &request.credential_id,
                 "pending",
@@ -160,7 +160,7 @@ pub async fn get_download_job(
         })
     })
     .map_err(|e| match e {
-        duckdb::Error::QueryReturnedNoRows => DownloadDbError::NotFound,
+        rusqlite::Error::QueryReturnedNoRows => DownloadDbError::NotFound,
         _ => DownloadDbError::DatabaseError(e.to_string()),
     })
 }
@@ -173,29 +173,27 @@ pub async fn list_download_jobs(
     let conn_ref = conn.clone();
 
     // Collect all IDs first, then drop the lock
-    let ids = {
-        let conn = conn.lock().await;
+    let conn = conn.lock().await;
 
-        let query = if let Some(status) = status_filter {
-            format!(
-                "SELECT id FROM download_jobs WHERE status = '{}' ORDER BY created_at DESC LIMIT {}",
-                status, limit
-            )
-        } else {
-            format!("SELECT id FROM download_jobs ORDER BY created_at DESC LIMIT {}", limit)
-        };
+    let query = if let Some(status) = status_filter {
+        format!(
+            "SELECT id FROM download_jobs WHERE status = '{}' ORDER BY created_at DESC LIMIT {}",
+            status, limit
+        )
+    } else {
+        format!("SELECT id FROM download_jobs ORDER BY created_at DESC LIMIT {}", limit)
+    };
 
-        let mut stmt = conn
-            .prepare(&query)
-            .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+    let mut stmt = conn
+        .prepare(&query)
+        .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
-        let ids_result: Result<Vec<i64>, duckdb::Error> = stmt
-            .query_map([], |row| row.get::<_, i64>(0))
-            .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?
-            .collect();
+    let ids_result: Result<Vec<i64>, rusqlite::Error> = stmt
+        .query_map([], |row| row.get::<_, i64>(0))
+        .collect();
 
-        ids_result.map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?
-    }; // Lock is dropped here
+    let ids = ids_result.map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?
+
 
     let mut jobs = Vec::new();
     for id in ids {
@@ -227,9 +225,9 @@ pub async fn update_job_status(
 
     conn.execute(
         "UPDATE download_jobs
-         SET status = ?, error_message = ?, updated_at = ?
-         WHERE id = ?",
-        duckdb::params![status_str, &error_message, now, job_id],
+          SET status = ?, error_message = ?, updated_at = ?
+          WHERE id = ?",
+        rusqlite::params![status_str, &error_message, now, job_id],
     )
     .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
@@ -249,7 +247,7 @@ pub async fn update_job_progress(
     let now = chrono::Utc::now().timestamp_millis();
 
     let mut updates = vec!["updated_at = ?"];
-    let mut params: Vec<Box<dyn duckdb::ToSql>> = vec![Box::new(now)];
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now)];
 
     if let Some(total) = total_items {
         updates.push("total_items = ?");
@@ -279,7 +277,7 @@ pub async fn update_job_progress(
         updates.join(", ")
     );
 
-    let params_refs: Vec<&dyn duckdb::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     conn.execute(&query, params_refs.as_slice())
         .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
@@ -300,9 +298,9 @@ pub async fn update_source_state(
 
     conn.execute(
         "UPDATE download_jobs
-         SET source_state = ?, updated_at = ?
-         WHERE id = ?",
-        duckdb::params![&source_state_json, now, job_id],
+          SET source_state = ?, updated_at = ?
+          WHERE id = ?",
+        rusqlite::params![&source_state_json, now, job_id],
     )
     .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
@@ -354,8 +352,8 @@ pub async fn insert_download_item(
          (job_id, source_identifier, source_folder, item_type, status, size_bytes,
           mime_type, metadata, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          RETURNING id",
+        rusqlite::params![
             job_id as i32,
             source_identifier,
             source_folder,
@@ -419,7 +417,7 @@ pub async fn insert_email_download_transactional(
               mime_type, metadata, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING id",
-            duckdb::params![
+            rusqlite::params![
                 job_id as i32,
                 &uid.to_string(),
                 Some(folder),
@@ -451,8 +449,8 @@ pub async fn insert_email_download_transactional(
               body_text, body_html, is_read, is_flagged, is_draft, is_answered,
               has_attachments, attachment_count, size_bytes, labels, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             RETURNING id",
-            duckdb::params![
+              RETURNING id",
+            rusqlite::params![
                 download_item_id,
                 credential_id,
                 uid as i32,
@@ -486,11 +484,11 @@ pub async fn insert_email_download_transactional(
         // 3. Update job progress (increment downloaded_items by 1)
         conn.execute(
             "UPDATE download_jobs
-             SET downloaded_items = downloaded_items + 1,
-                 bytes_downloaded = bytes_downloaded + ?,
-                 updated_at = ?
-             WHERE id = ?",
-            duckdb::params![
+              SET downloaded_items = downloaded_items + 1,
+                  bytes_downloaded = bytes_downloaded + ?,
+                  updated_at = ?
+              WHERE id = ?",
+            rusqlite::params![
                 size_bytes.unwrap_or(0) as i64,
                 now,
                 job_id

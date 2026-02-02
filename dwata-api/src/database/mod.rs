@@ -15,7 +15,7 @@ pub mod models;
 pub mod positions;
 pub mod queries;
 
-use duckdb::{params, Connection};
+use rusqlite::{params, Connection};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as TokioMutex;

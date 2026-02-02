@@ -21,9 +21,9 @@ pub async fn insert_company(
         "INSERT INTO companies
          (extraction_job_id, name, description, industry, location, website, linkedin_url,
           confidence, requires_review, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING id",
+        rusqlite::params![
             extraction_job_id,
             &name,
             description.as_ref(),
@@ -52,7 +52,7 @@ pub async fn get_or_create_company(
         let locked_conn = conn.lock().await;
         let result: Result<i64, _> = locked_conn.query_row(
             "SELECT id FROM companies WHERE name = ? AND (location = ? OR location IS NULL AND ? IS NULL)",
-            duckdb::params![&name, location.as_ref(), location.as_ref()],
+            rusqlite::params![&name, location.as_ref(), location.as_ref()],
             |row| row.get(0),
         );
 

@@ -119,7 +119,7 @@ impl DownloadManager {
     }
 
     async fn run_imap_download(
-        db_conn: Arc<Mutex<duckdb::Connection>>,
+        db_conn: Arc<Mutex<rusqlite::Connection>>,
         job: &DownloadJob,
         token_cache: Arc<crate::helpers::token_cache::TokenCache>,
         oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,

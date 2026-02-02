@@ -1,4 +1,4 @@
-use duckdb::Connection;
+use rusqlite::Connection;
 use shared_types::credential::{CredentialMetadata, CredentialType, CreateCredentialRequest};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -53,7 +53,7 @@ pub async fn insert_credential(
               created_at, updated_at, is_active, extra_metadata)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING id",
-            duckdb::params![
+            rusqlite::params![
                 request.credential_type.as_str(),
                 &request.identifier,
                 &request.username,
@@ -192,7 +192,7 @@ pub async fn get_credential(
         })
     })
     .map_err(|e| match e {
-        duckdb::Error::QueryReturnedNoRows => CredentialDbError::NotFound,
+        rusqlite::Error::QueryReturnedNoRows => CredentialDbError::NotFound,
         _ => CredentialDbError::DatabaseError(e.to_string()),
     })
 }
@@ -206,7 +206,7 @@ pub async fn update_last_accessed(
 
     conn.execute(
         "UPDATE credentials_metadata SET last_accessed_at = ? WHERE id = ?",
-        duckdb::params![now, id],
+        rusqlite::params![now, id],
     )
     .map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
 
@@ -227,7 +227,7 @@ pub async fn update_credential(
     let now = chrono::Utc::now().timestamp_millis();
 
     let mut updates = vec!["updated_at = ?".to_string()];
-    let mut params: Vec<Box<dyn duckdb::ToSql>> = vec![Box::new(now)];
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now)];
 
     if username.is_some() {
         updates.push("username = ?".to_string());
@@ -261,7 +261,7 @@ pub async fn update_credential(
         updates.join(", ")
     );
 
-    let params_refs: Vec<&dyn duckdb::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     conn.execute(&query, params_refs.as_slice())
         .map_err(|e| CredentialDbError::DatabaseError(e.to_string()))?;
@@ -303,11 +303,10 @@ pub async fn update_credential(
         })
     })
     .map_err(|e| match e {
-        duckdb::Error::QueryReturnedNoRows => CredentialDbError::NotFound,
+        rusqlite::Error::QueryReturnedNoRows => CredentialDbError::NotFound,
         _ => CredentialDbError::DatabaseError(e.to_string()),
     })?;
 
-    drop(conn);
     Ok(credential)
 }
 

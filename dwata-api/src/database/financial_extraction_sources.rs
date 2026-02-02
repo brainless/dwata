@@ -1,6 +1,6 @@
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
-use duckdb::params;
+use rusqlite::params;
 
 pub async fn mark_source_processed(
     conn: AsyncDbConnection,

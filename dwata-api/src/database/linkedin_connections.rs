@@ -19,7 +19,7 @@ pub async fn insert_linkedin_connection(
 
     let result: Result<i64, _> = conn.query_row(
         "SELECT id FROM linkedin_connections WHERE contact_id = ? AND extraction_job_id = ?",
-        duckdb::params![contact_id, extraction_job_id],
+        rusqlite::params![contact_id, extraction_job_id],
         |row| row.get(0),
     );
 
@@ -32,9 +32,9 @@ pub async fn insert_linkedin_connection(
          (extraction_job_id, contact_id, connected_on, connected_date, connection_source,
           direction, invitation_message, invitation_sent_at, company_at_connection,
           position_at_connection, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING id",
+        rusqlite::params![
             extraction_job_id,
             contact_id,
             connected_on.as_ref(),

@@ -32,9 +32,9 @@ pub async fn insert_contact_from_extraction(
         "INSERT INTO contacts
          (extraction_job_id, email_id, name, email, phone, organization,
           confidence, requires_review, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING id",
+        rusqlite::params![
             extraction_job_id,
             email_id,
             &name,

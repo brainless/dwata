@@ -1,47 +1,12 @@
-use duckdb::Connection;
+use rusqlite::Connection;
 
 /// Run all database migrations
 #[allow(dead_code)]
 pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
-    // Create sequences
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_agent_sessions_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_agent_messages_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_agent_tool_calls_id", [])?;
-    conn.execute(
-        "CREATE SEQUENCE IF NOT EXISTS seq_credentials_metadata_id",
-        [],
-    )?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_download_jobs_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_download_items_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_emails_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_email_attachments_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_extraction_jobs_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_events_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_contacts_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_companies_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_contact_links_id", [])?;
-    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_positions_id", [])?;
-    conn.execute(
-        "CREATE SEQUENCE IF NOT EXISTS seq_linkedin_connections_id",
-        [],
-    )?;
-    conn.execute(
-        "CREATE SEQUENCE IF NOT EXISTS seq_financial_transactions_id",
-        [],
-    )?;
-    conn.execute(
-        "CREATE SEQUENCE IF NOT EXISTS seq_financial_extraction_sources_id",
-        [],
-    )?;
-    conn.execute(
-        "CREATE SEQUENCE IF NOT EXISTS seq_financial_patterns_id",
-        [],
-    )?;
-
     // Create agent_sessions table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_sessions (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_agent_sessions_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             agent_name VARCHAR NOT NULL,
             provider VARCHAR NOT NULL,
             model VARCHAR NOT NULL,
@@ -60,7 +25,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_messages table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_messages (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_agent_messages_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER NOT NULL,
             role VARCHAR NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
             content VARCHAR NOT NULL,
@@ -73,7 +38,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create agent_tool_calls table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_tool_calls (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_agent_tool_calls_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER NOT NULL,
             message_id INTEGER,
             tool_call_id VARCHAR NOT NULL,
@@ -113,7 +78,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create credentials_metadata table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS credentials_metadata (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_credentials_metadata_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             credential_type VARCHAR NOT NULL,
             identifier VARCHAR NOT NULL UNIQUE,
             username VARCHAR NOT NULL,
@@ -138,11 +103,9 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     )?;
 
     // Create download_jobs table
-    // Note: Foreign keys removed due to DuckDB constraint bugs with UPDATE operations
-    // Referential integrity maintained through application logic
     conn.execute(
         "CREATE TABLE IF NOT EXISTS download_jobs (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_download_jobs_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_type VARCHAR NOT NULL,
             credential_id INTEGER NOT NULL,
             status VARCHAR NOT NULL DEFAULT 'pending',
@@ -177,10 +140,9 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     )?;
 
     // Create download_items table
-    // Note: Foreign keys removed due to DuckDB constraint bugs with UPDATE operations
     conn.execute(
         "CREATE TABLE IF NOT EXISTS download_items (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_download_items_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER NOT NULL,
             source_identifier VARCHAR NOT NULL,
             source_folder VARCHAR,
@@ -215,7 +177,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create emails table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS emails (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_emails_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             download_item_id INTEGER,
             credential_id INTEGER NOT NULL,
             uid INTEGER NOT NULL,
@@ -278,10 +240,9 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     )?;
 
     // Create email_attachments table
-    // Note: Foreign keys removed due to DuckDB constraint bugs with UPDATE operations
     conn.execute(
         "CREATE TABLE IF NOT EXISTS email_attachments (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_email_attachments_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             email_id INTEGER NOT NULL,
             filename VARCHAR NOT NULL,
             content_type VARCHAR,
@@ -311,7 +272,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create extraction_jobs table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS extraction_jobs (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_extraction_jobs_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_type VARCHAR NOT NULL,
             extractor_type VARCHAR NOT NULL,
             status VARCHAR NOT NULL DEFAULT 'pending',
@@ -348,7 +309,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create events table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS events (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_events_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             extraction_job_id INTEGER,
             email_id INTEGER,
             name VARCHAR NOT NULL,
@@ -385,7 +346,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create contacts table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_contacts_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             extraction_job_id INTEGER,
             email_id INTEGER,
             name VARCHAR NOT NULL,
@@ -422,7 +383,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create companies table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS companies (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_companies_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             extraction_job_id INTEGER,
             name VARCHAR NOT NULL,
             description VARCHAR,
@@ -458,7 +419,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create contact_links table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS contact_links (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_contact_links_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             contact_id INTEGER NOT NULL,
             link_type VARCHAR NOT NULL,
             url VARCHAR NOT NULL,
@@ -484,7 +445,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create positions table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS positions (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_positions_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             extraction_job_id INTEGER,
             contact_id INTEGER NOT NULL,
             company_id INTEGER NOT NULL,
@@ -522,7 +483,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create linkedin_connections table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS linkedin_connections (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_linkedin_connections_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             extraction_job_id INTEGER NOT NULL,
             contact_id INTEGER NOT NULL,
             connected_on VARCHAR,
@@ -546,7 +507,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create financial_transactions table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS financial_transactions (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_financial_transactions_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
 
             -- Source tracking (agnostic to source type)
             source_type VARCHAR NOT NULL,
@@ -597,7 +558,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Track which sources have been processed for financial extraction
     conn.execute(
         "CREATE TABLE IF NOT EXISTS financial_extraction_sources (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_financial_extraction_sources_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_type VARCHAR NOT NULL,
             source_id VARCHAR NOT NULL,
             extraction_job_id INTEGER,
@@ -616,7 +577,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Create financial_patterns table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS financial_patterns (
-            id INTEGER PRIMARY KEY DEFAULT nextval('seq_financial_patterns_id'),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
 
             -- Pattern identity
             name VARCHAR NOT NULL,
@@ -796,11 +757,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         [],
     )?;
 
-    // Migration: Drop foreign key constraints that cause DuckDB issues
-    // Note: DuckDB doesn't support ALTER TABLE DROP CONSTRAINT directly
-    // So we need to recreate tables without foreign keys if they exist with them
-    // For now, just log a warning - user should delete db.duckdb to get fresh schema
-    tracing::info!("Foreign key constraints removed from schema for new installations");
+    tracing::info!("Database migrations completed successfully");
 
     Ok(())
 }
@@ -808,8 +765,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
 /// Check if database tables exist
 #[allow(dead_code)]
 pub fn has_schema(conn: &Connection) -> anyhow::Result<bool> {
-    let mut stmt = conn.prepare(
-        "SELECT table_name FROM information_schema.tables WHERE table_name='agent_sessions'",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_sessions'")?;
     Ok(stmt.exists([])?)
 }

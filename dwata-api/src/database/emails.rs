@@ -45,8 +45,8 @@ pub async fn insert_email(
           body_text, body_html, is_read, is_flagged, is_draft, is_answered,
           has_attachments, attachment_count, size_bytes, labels, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          RETURNING id",
+        rusqlite::params![
             download_item_id, credential_id, uid as i32, folder, message_id, subject, from_address, from_name,
             &to_json, &cc_json, &bcc_json, reply_to, date_sent, date_received,
             body_text, body_html, is_read, is_flagged, is_draft, is_answered,
@@ -123,44 +123,43 @@ pub async fn list_emails(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<Email>> {
-    let ids = {
-        let conn_guard = conn.lock().await;
-        let query = match (credential_id, folder) {
-            (Some(cred), Some(f)) => {
-                format!(
-                    "SELECT id FROM emails WHERE credential_id = {} AND folder = '{}'
-                     ORDER BY date_received DESC LIMIT {} OFFSET {}",
-                    cred, f, limit, offset
-                )
-            }
-            (Some(cred), None) => {
-                format!(
-                    "SELECT id FROM emails WHERE credential_id = {}
-                     ORDER BY date_received DESC LIMIT {} OFFSET {}",
-                    cred, limit, offset
-                )
-            }
-            (None, Some(f)) => {
-                format!(
-                    "SELECT id FROM emails WHERE folder = '{}'
-                     ORDER BY date_received DESC LIMIT {} OFFSET {}",
-                    f, limit, offset
-                )
-            }
-            (None, None) => {
-                format!(
-                    "SELECT id FROM emails ORDER BY date_received DESC
-                     LIMIT {} OFFSET {}",
-                    limit, offset
-                )
-            }
-        };
+    let conn_guard = conn.lock().await;
 
-        let mut stmt = conn_guard.prepare(&query)?;
-        stmt
-            .query_map([], |row| row.get(0))?
-            .collect::<Result<Vec<_>, _>>()?
+    let query = match (credential_id, folder) {
+        (Some(cred), Some(f)) => {
+            format!(
+                "SELECT id FROM emails WHERE credential_id = {} AND folder = '{}'
+                 ORDER BY date_received DESC LIMIT {} OFFSET {}",
+                cred, f, limit, offset
+            )
+        }
+        (Some(cred), None) => {
+            format!(
+                "SELECT id FROM emails WHERE credential_id = {}
+                 ORDER BY date_received DESC LIMIT {} OFFSET {}",
+                cred, limit, offset
+            )
+        }
+        (None, Some(f)) => {
+            format!(
+                "SELECT id FROM emails WHERE folder = '{}'
+                 ORDER BY date_received DESC LIMIT {} OFFSET {}",
+                f, limit, offset
+            )
+        }
+        (None, None) => {
+            format!(
+                "SELECT id FROM emails ORDER BY date_received DESC
+                 LIMIT {} OFFSET {}",
+                limit, offset
+            )
+        }
     };
+
+    let mut stmt = conn_guard.prepare(&query)?;
+    let ids: Vec<i64> = stmt
+        .query_map([], |row| row.get::<_, i64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
 
     let mut emails = Vec::new();
     for id in ids {
@@ -192,8 +191,8 @@ pub async fn insert_attachment(
          (email_id, filename, content_type, size_bytes, content_id, file_path, checksum,
           is_inline, extraction_status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          RETURNING id",
+        rusqlite::params![
             email_id, filename, content_type, size_bytes, content_id, file_path, checksum,
             is_inline, "pending", now, now
         ],
@@ -305,7 +304,7 @@ pub async fn update_attachment_extraction_status(
 
     conn.execute(
         "UPDATE email_attachments SET extraction_status = ?, updated_at = ? WHERE id = ?",
-        duckdb::params![status, now, attachment_id],
+        rusqlite::params![status, now, attachment_id],
     )?;
 
     Ok(())

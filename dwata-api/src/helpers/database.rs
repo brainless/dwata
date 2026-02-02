@@ -8,14 +8,14 @@ use std::path::PathBuf;
 ///
 /// # Platform-specific paths
 ///
-/// - **macOS**: `~/Library/Application Support/dwata/db.duckdb`
-/// - **Linux**: `~/.local/share/dwata/db.duckdb`
-/// - **Windows**: `%LOCALAPPDATA%\dwata\db.duckdb`
+/// - **macOS**: `~/Library/Application Support/dwata/db.sqlite`
+/// - **Linux**: `~/.local/share/dwata/db.sqlite`
+/// - **Windows**: `%LOCALAPPDATA%\dwata\db.sqlite`
 pub fn get_db_path() -> anyhow::Result<PathBuf> {
     let data_dir = dirs::data_local_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?;
 
-    let db_path = data_dir.join("dwata").join("db.duckdb");
+    let db_path = data_dir.join("dwata").join("db.sqlite");
 
     Ok(db_path)
 }

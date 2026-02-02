@@ -1,6 +1,6 @@
 use crate::database::AsyncDbConnection;
 use shared_types::FinancialPattern;
-use duckdb::{params, Row};
+use rusqlite::{params, Row};
 use anyhow::Result;
 
 pub async fn list_patterns(
@@ -228,7 +228,7 @@ pub async fn update_last_matched(
     Ok(())
 }
 
-fn map_row_to_pattern(row: &Row) -> duckdb::Result<FinancialPattern> {
+fn map_row_to_pattern(row: &Row) -> rusqlite::Result<FinancialPattern> {
     Ok(FinancialPattern {
         id: row.get(0)?,
         name: row.get(1)?,

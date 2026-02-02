@@ -16,7 +16,7 @@ pub async fn insert_contact_link(
 
     let result: Result<i64, _> = conn.query_row(
         "SELECT id FROM contact_links WHERE contact_id = ? AND link_type = ? AND url = ?",
-        duckdb::params![contact_id, &link_type_str, &url],
+        rusqlite::params![contact_id, &link_type_str, &url],
         |row| row.get(0),
     );
 
@@ -27,9 +27,9 @@ pub async fn insert_contact_link(
     let id: i64 = conn.query_row(
         "INSERT INTO contact_links
          (contact_id, link_type, url, label, is_primary, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          RETURNING id",
+        rusqlite::params![
             contact_id,
             &link_type_str,
             &url,

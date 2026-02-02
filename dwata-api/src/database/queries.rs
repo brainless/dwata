@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_imports)]
 
-use duckdb::Connection;
+use rusqlite::Connection;
 use shared_types::{AgentMessage, AgentSession, AgentToolCall, SessionListItem};
 /// Get all sessions ordered by most recent
 #[allow(dead_code)]
@@ -59,7 +59,7 @@ pub fn get_session(conn: &Connection, session_id: i64) -> anyhow::Result<Option<
 
     match session {
         Ok(s) => Ok(Some(s)),
-        Err(duckdb::Error::QueryReturnedNoRows) => Ok(None),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.into()),
     }
 }
@@ -109,7 +109,7 @@ pub fn get_session_tool_calls(
     let calls = stmt.query_map([session_id], |row| {
         let request_str: String = row.get(5)?;
         let request = serde_json::from_str(&request_str).map_err(|e| {
-            duckdb::Error::FromSqlConversionFailure(5, duckdb::types::Type::Text, Box::new(e))
+            rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(e))
         })?;
 
         let response: Option<serde_json::Value> = row

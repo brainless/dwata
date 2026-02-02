@@ -26,9 +26,9 @@ pub async fn insert_position(
          (extraction_job_id, contact_id, company_id, title, description, location,
           started_on, finished_on, started_date, finished_date, is_current,
           confidence, requires_review, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING id",
+        rusqlite::params![
             extraction_job_id,
             contact_id,
             company_id,

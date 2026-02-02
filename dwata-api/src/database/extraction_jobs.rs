@@ -31,9 +31,9 @@ pub async fn insert_extraction_job(
     let id: i64 = conn.query_row(
         "INSERT INTO extraction_jobs
          (source_type, extractor_type, status, source_config, created_at, updated_at)
-         VALUES (?, ?, 'pending', ?, ?, ?)
-         RETURNING id",
-        duckdb::params![source_type_str, extractor_type_str, &source_config_json, now, now],
+          VALUES (?, ?, 'pending', ?, ?, ?)
+          RETURNING id",
+        rusqlite::params![source_type_str, extractor_type_str, &source_config_json, now, now],
         |row| row.get(0),
     )?;
 
@@ -191,9 +191,9 @@ pub async fn update_job_status(
 
     conn.execute(
         "UPDATE extraction_jobs
-         SET status = ?, error_message = ?, updated_at = ?
-         WHERE id = ?",
-        duckdb::params![status_str, &error_message, now, job_id],
+          SET status = ?, error_message = ?, updated_at = ?
+          WHERE id = ?",
+        rusqlite::params![status_str, &error_message, now, job_id],
     )?;
 
     Ok(())
@@ -212,7 +212,7 @@ pub async fn update_job_progress(
     let now = chrono::Utc::now().timestamp();
 
     let mut updates = vec!["updated_at = ?"];
-    let mut params: Vec<Box<dyn duckdb::ToSql>> = vec![Box::new(now)];
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now)];
 
     if let Some(total) = total_items {
         updates.push("total_items = ?");
@@ -246,7 +246,7 @@ pub async fn update_job_progress(
         updates.join(", ")
     );
 
-    let params_refs: Vec<&dyn duckdb::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     conn.execute(&query, params_refs.as_slice())?;
 

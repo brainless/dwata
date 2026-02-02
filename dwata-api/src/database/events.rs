@@ -23,9 +23,9 @@ pub async fn insert_event_from_extraction(
         "INSERT INTO events
          (extraction_job_id, email_id, name, description, event_date, location, attendees,
           confidence, requires_review, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING id",
+        rusqlite::params![
             extraction_job_id,
             email_id,
             &name,

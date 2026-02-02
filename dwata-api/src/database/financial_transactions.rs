@@ -4,7 +4,7 @@ use shared_types::{
     FinancialTransaction, FinancialDocumentType, TransactionStatus,
     TransactionCategory, FinancialSummary,
 };
-use duckdb::params;
+use rusqlite::params;
 
 pub async fn insert_financial_transaction(
     conn: AsyncDbConnection,
