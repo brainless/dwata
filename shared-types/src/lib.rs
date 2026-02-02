@@ -42,7 +42,7 @@ pub use extraction_job::{
     ExtractionSourceType, ExtractorType,
 };
 pub use financial::{
-    CategoryBreakdown, FinancialDocumentType, FinancialHealth, FinancialSummary,
+    CategoryBreakdown, FinancialDocumentType, FinancialHealth, FinancialPattern, FinancialSummary,
     FinancialTransaction, TransactionCategory, TransactionStatus,
 };
 pub use position::{CreatePositionRequest, Position, PositionsResponse};

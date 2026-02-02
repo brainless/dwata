@@ -19,8 +19,8 @@ pub struct FinancialTransaction {
     pub id: i64,
 
     // Source tracking (agnostic to source type)
-    pub source_type: String,        // 'email', 'document', 'chat', 'file', etc.
-    pub source_id: String,          // ID in the source system
+    pub source_type: String, // 'email', 'document', 'chat', 'file', etc.
+    pub source_id: String,   // ID in the source system
 
     // Transaction data
     pub document_type: FinancialDocumentType,
@@ -97,4 +97,25 @@ pub struct CategoryBreakdown {
     pub amount: f64,
     pub percentage: f64,
     pub transaction_count: i32,
+}
+
+/// Financial pattern for extracting transactions
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct FinancialPattern {
+    pub id: i64,
+    pub name: String,
+    pub regex_pattern: String,
+    pub description: Option<String>,
+    pub document_type: String,
+    pub status: String,
+    pub confidence: f32,
+    pub amount_group: usize,
+    pub vendor_group: Option<usize>,
+    pub date_group: Option<usize>,
+    pub is_default: bool,
+    pub is_active: bool,
+    pub match_count: i32,
+    pub last_matched_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }

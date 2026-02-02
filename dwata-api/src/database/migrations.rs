@@ -33,6 +33,10 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         "CREATE SEQUENCE IF NOT EXISTS seq_financial_extraction_sources_id",
         [],
     )?;
+    conn.execute(
+        "CREATE SEQUENCE IF NOT EXISTS seq_financial_patterns_id",
+        [],
+    )?;
 
     // Create agent_sessions table
     conn.execute(
@@ -606,6 +610,189 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_financial_extraction_sources_job ON financial_extraction_sources(extraction_job_id)",
+        [],
+    )?;
+
+    // Create financial_patterns table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS financial_patterns (
+            id INTEGER PRIMARY KEY DEFAULT nextval('seq_financial_patterns_id'),
+
+            -- Pattern identity
+            name VARCHAR NOT NULL,
+            regex_pattern VARCHAR NOT NULL,
+            description VARCHAR,
+
+            -- Pattern metadata
+            document_type VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            confidence FLOAT NOT NULL,
+
+            -- Capture group indices (which regex group contains each field)
+            amount_group INTEGER NOT NULL,
+            vendor_group INTEGER,
+            date_group INTEGER,
+
+            -- Management flags
+            is_default BOOLEAN DEFAULT false,
+            is_active BOOLEAN DEFAULT true,
+
+            -- Usage statistics
+            match_count INTEGER DEFAULT 0,
+            last_matched_at BIGINT,
+
+            -- Timestamps
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+
+            -- Uniqueness constraints
+            UNIQUE(name),
+            UNIQUE(regex_pattern)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_patterns_active ON financial_patterns(is_active)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_patterns_type ON financial_patterns(document_type)",
+        [],
+    )?;
+
+    // Seed default financial patterns
+    conn.execute(
+        "INSERT INTO financial_patterns
+            (name, regex_pattern, description, document_type, status, confidence,
+             amount_group, vendor_group, date_group, is_default, is_active,
+             match_count, created_at, updated_at)
+        VALUES
+            -- Payment Confirmation Patterns (5)
+            ('payment_to_vendor',
+             '(?i)payment of \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
+             'Matches: \"payment of $150.00 to Comcast\"',
+             'payment-confirmation', 'paid', 0.90,
+             1, 2, NULL,
+             true, true,
+             0, 0, 0),
+
+            ('paid_amount_to_vendor',
+             '(?i)paid \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
+             'Matches: \"paid $99 to Adobe\"',
+             'payment-confirmation', 'paid', 0.88,
+             1, 2, NULL,
+             true, true,
+             0, 0, 0),
+
+            ('your_payment_to_vendor',
+             '(?i)your \\$?([\\d,]+\\.?\\d{0,2}) payment to ([A-Za-z\\s]+)',
+             'Matches: \"Your $50.00 payment to Netflix\"',
+             'payment-confirmation', 'paid', 0.87,
+             1, 2, NULL,
+             true, true,
+             0, 0, 0),
+
+            ('successfully_paid_to_vendor',
+             '(?i)successfully paid \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
+             'Matches: \"successfully paid $1,200.00 to Chase\"',
+             'payment-confirmation', 'paid', 0.92,
+             1, 2, NULL,
+             true, true,
+             0, 0, 0),
+
+            ('payment_processed_to_vendor',
+             '(?i)payment processed:? \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
+             'Matches: \"payment processed: $45.99 to Spotify\"',
+             'payment-confirmation', 'paid', 0.91,
+             1, 2, NULL,
+             true, true,
+             0, 0, 0),
+
+            -- Bill/Invoice Due Patterns (4)
+            ('bill_due_explicit',
+             '(?i)bill (?:of|for) \\$?([\\d,]+\\.?\\d{0,2}) (?:is )?due (?:on )?([A-Za-z]+ \\d{1,2})',
+             'Matches: \"bill of $99.99 is due on Feb 10\"',
+             'bill', 'pending', 0.88,
+             1, NULL, 2,
+             true, true,
+             0, 0, 0),
+
+            ('invoice_due_date',
+             '(?i)invoice for \\$?([\\d,]+\\.?\\d{0,2}) due ([A-Za-z]+ \\d{1,2})',
+             'Matches: \"invoice for $3,500 due January 25\"',
+             'invoice', 'pending', 0.89,
+             1, NULL, 2,
+             true, true,
+             0, 0, 0),
+
+            ('vendor_bill_due',
+             '(?i)(?:your )?([A-Za-z]+) bill (?:\\(?\\$?([\\d,]+\\.?\\d{0,2})\\)?) is due ([A-Za-z]+ \\d{1,2})',
+             'Matches: \"Your Adobe bill ($99) is due Feb 10\"',
+             'bill', 'pending', 0.87,
+             2, 1, 3,
+             true, true,
+             0, 0, 0),
+
+            ('due_amount_by_date',
+             '(?i)due:? \\$?([\\d,]+\\.?\\d{0,2}) by (\\d{2}/\\d{2}/\\d{4})',
+             'Matches: \"due: $150.00 by 02/05/2026\"',
+             'bill', 'pending', 0.86,
+             1, NULL, 2,
+             true, true,
+             0, 0, 0),
+
+            -- Payment Received Patterns (3)
+            ('received_payment_from',
+             '(?i)received (?:a payment of )?\\$?([\\d,]+\\.?\\d{0,2}) from ([A-Za-z\\s]+)',
+             'Matches: \"received $3,500.00 from Acme Corp\"',
+             'invoice', 'paid', 0.92,
+             1, 2, NULL,
+             true, true,
+             0, 0, 0),
+
+            ('payment_of_from',
+             '(?i)payment of \\$?([\\d,]+\\.?\\d{0,2}) from ([A-Za-z\\s]+)',
+             'Matches: \"payment of $2,000 from TechStart Inc\"',
+             'invoice', 'paid', 0.90,
+             1, 2, NULL,
+             true, true,
+             0, 0, 0),
+
+            ('you_received_payment',
+             '(?i)you received (?:a payment:? )?\\$?([\\d,]+\\.?\\d{0,2}) from ([A-Za-z\\s]+)',
+             'Matches: \"You received a payment: $1,500 from Client Name\"',
+             'invoice', 'paid', 0.91,
+             1, 2, NULL,
+             true, true,
+             0, 0, 0),
+
+            -- Overdue/Late Patterns (3)
+            ('payment_overdue',
+             '(?i)payment of \\$?([\\d,]+\\.?\\d{0,2}) (?:is |to ([A-Za-z\\s]+) )?(?:is )?overdue',
+             'Matches: \"payment of $1,200 is overdue\" or \"payment of $1,200 to Chase is overdue\"',
+             'bill', 'overdue', 0.93,
+             1, 2, NULL,
+             true, true,
+             0, 0, 0),
+
+            ('amount_past_due',
+             '(?i)\\$?([\\d,]+\\.?\\d{0,2}) payment past due',
+             'Matches: \"$450.00 payment past due\"',
+             'bill', 'overdue', 0.91,
+             1, NULL, NULL,
+             true, true,
+             0, 0, 0),
+
+            ('overdue_bill_days',
+             '(?i)overdue bill:? \\$?([\\d,]+\\.?\\d{0,2})(?: \\((\\d+) days? late\\))?',
+             'Matches: \"overdue bill: $99 (3 days late)\"',
+             'bill', 'overdue', 0.90,
+             1, NULL, NULL,
+             true, true,
+             0, 0, 0)
+        ON CONFLICT (regex_pattern) DO NOTHING",
         [],
     )?;
 

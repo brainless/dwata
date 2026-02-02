@@ -1,18 +1,16 @@
-use crate::database::{financial_extraction_sources as sources_db, financial_transactions as db, emails as emails_db};
+use crate::database::{financial_extraction_sources as sources_db, financial_patterns as patterns_db, financial_transactions as db, emails as emails_db};
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use extractors::FinancialPatternExtractor;
 
 pub struct FinancialExtractionManager {
     db_conn: AsyncDbConnection,
-    extractor: FinancialPatternExtractor,
 }
 
 impl FinancialExtractionManager {
     pub fn new(db_conn: AsyncDbConnection) -> Self {
         Self {
             db_conn,
-            extractor: FinancialPatternExtractor::new(),
         }
     }
 
@@ -20,6 +18,14 @@ impl FinancialExtractionManager {
         &self,
         email_ids: Option<Vec<i64>>,
     ) -> Result<usize> {
+        let db_patterns = patterns_db::list_active_patterns(self.db_conn.clone()).await?;
+
+        if db_patterns.is_empty() {
+            return Err(anyhow::anyhow!("No active patterns found"));
+        }
+
+        let extractor = FinancialPatternExtractor::from_patterns(db_patterns)?;
+
         let emails = if let Some(ids) = email_ids {
             let mut emails = Vec::new();
             for id in ids {
@@ -49,14 +55,16 @@ impl FinancialExtractionManager {
                 continue;
             }
 
-            let transactions = self.extractor.extract_from_email(
-                &email.subject.unwrap_or_default(),
-                &email.body_text.unwrap_or_default(),
+            let text = format!("{}\n\n{}",
+                email.subject.unwrap_or_default(),
+                email.body_text.unwrap_or_default()
             );
 
-            let transaction_count = transactions.len();
+            let results = extractor.extract_from_text(&text);
 
-            for mut transaction in transactions {
+            let transaction_count = results.len();
+
+            for (mut transaction, pattern_id) in results {
                 transaction.source_type = source_type.to_string();
                 transaction.source_id = source_id.clone();
 
@@ -64,6 +72,17 @@ impl FinancialExtractionManager {
                     self.db_conn.clone(),
                     &transaction,
                     None,
+                ).await?;
+
+                patterns_db::increment_match_count(
+                    self.db_conn.clone(),
+                    pattern_id,
+                ).await?;
+
+                patterns_db::update_last_matched(
+                    self.db_conn.clone(),
+                    pattern_id,
+                    chrono::Utc::now().timestamp(),
                 ).await?;
 
                 total_extracted += 1;
