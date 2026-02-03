@@ -111,6 +111,8 @@ async fn main() -> std::io::Result<()> {
         ("127.0.0.1".to_string(), 8080)
     };
 
+    tracing::info!("Server will listen on {}:{}", host, port);
+
     // Initialize OAuth components
     let google_oauth_config = config.google_oauth.unwrap_or_default();
     let redirect_uri = format!("http://{}:{}/api/oauth/google/callback", host, port);

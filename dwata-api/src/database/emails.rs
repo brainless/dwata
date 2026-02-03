@@ -128,28 +128,48 @@ pub async fn list_emails(
     let query = match (credential_id, folder) {
         (Some(cred), Some(f)) => {
             format!(
-                "SELECT id FROM emails WHERE credential_id = {} AND folder = '{}'
+                "SELECT id, download_item_id, credential_id, uid, folder, message_id, subject, from_address, from_name,
+                        to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                        has_attachments, attachment_count, size_bytes, thread_id, labels,
+                        created_at, updated_at
+                 FROM emails WHERE credential_id = {} AND folder = '{}'
                  ORDER BY date_received DESC LIMIT {} OFFSET {}",
                 cred, f, limit, offset
             )
         }
         (Some(cred), None) => {
             format!(
-                "SELECT id FROM emails WHERE credential_id = {}
+                "SELECT id, download_item_id, credential_id, uid, folder, message_id, subject, from_address, from_name,
+                        to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                        has_attachments, attachment_count, size_bytes, thread_id, labels,
+                        created_at, updated_at
+                 FROM emails WHERE credential_id = {}
                  ORDER BY date_received DESC LIMIT {} OFFSET {}",
                 cred, limit, offset
             )
         }
         (None, Some(f)) => {
             format!(
-                "SELECT id FROM emails WHERE folder = '{}'
+                "SELECT id, download_item_id, credential_id, uid, folder, message_id, subject, from_address, from_name,
+                        to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                        has_attachments, attachment_count, size_bytes, thread_id, labels,
+                        created_at, updated_at
+                 FROM emails WHERE folder = '{}'
                  ORDER BY date_received DESC LIMIT {} OFFSET {}",
                 f, limit, offset
             )
         }
         (None, None) => {
             format!(
-                "SELECT id FROM emails ORDER BY date_received DESC
+                "SELECT id, download_item_id, credential_id, uid, folder, message_id, subject, from_address, from_name,
+                        to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                        has_attachments, attachment_count, size_bytes, thread_id, labels,
+                        created_at, updated_at
+                 FROM emails ORDER BY date_received DESC
                  LIMIT {} OFFSET {}",
                 limit, offset
             )
@@ -157,19 +177,50 @@ pub async fn list_emails(
     };
 
     let mut stmt = conn_guard.prepare(&query)?;
-    let ids: Vec<i64> = stmt
-        .query_map([], |row| row.get::<_, i64>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
+    let emails = stmt
+        .query_map([], |row| {
+            let to_json: String = row.get(9)?;
+            let cc_json: String = row.get(10)?;
+            let bcc_json: String = row.get(11)?;
+            let labels_json: String = row.get(25)?;
 
-    let mut emails = Vec::new();
-    for id in ids {
-        if let Ok(email) = get_email(conn.clone(), id).await {
-            emails.push(email);
-        }
-    }
+            Ok(Email {
+                id: row.get(0)?,
+                download_item_id: row.get(1)?,
+                credential_id: row.get(2)?,
+                uid: row.get::<_, i32>(3)? as u32,
+                folder: row.get(4)?,
+                message_id: row.get(5)?,
+                subject: row.get(6)?,
+                from_address: row.get(7)?,
+                from_name: row.get(8)?,
+                to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
+                cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
+                bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
+                reply_to: row.get(12)?,
+                date_sent: row.get(13)?,
+                date_received: row.get(14)?,
+                body_text: row.get(15)?,
+                body_html: row.get(16)?,
+                is_read: row.get(17)?,
+                is_flagged: row.get(18)?,
+                is_draft: row.get(19)?,
+                is_answered: row.get(20)?,
+                has_attachments: row.get(21)?,
+                attachment_count: row.get(22)?,
+                size_bytes: row.get(23)?,
+                thread_id: row.get(24)?,
+                labels: serde_json::from_str(&labels_json).unwrap_or_default(),
+                created_at: row.get(26)?,
+                updated_at: row.get(27)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(emails)
 }
+
+/// Insert attachment
 
 /// Insert attachment
 pub async fn insert_attachment(

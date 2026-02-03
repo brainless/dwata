@@ -188,12 +188,21 @@ export default function BackgroundJobs() {
   const currentDownloadJobs = () => downloadJobs();
   const currentExtractionJobs = () => extractionJobs();
 
-  const downloadSourceTypes: SourceType[] = [
-    "imap",
-    "google-drive",
-    "dropbox",
-    "one-drive",
-  ];
+  // Map credential type to its applicable source type
+  const getSourceTypeForCredential = (
+    credential: CredentialMetadata,
+  ): SourceType | null => {
+    switch (credential.credential_type) {
+      case "imap":
+        return "imap";
+      case "oauth":
+        // TODO: Determine OAuth provider from credential metadata
+        // For now, assume Google OAuth
+        return "google-drive";
+      default:
+        return null;
+    }
+  };
 
   const extractionSourceTypes: ExtractionSourceType[] = [
     "email-attachment",
@@ -258,7 +267,7 @@ export default function BackgroundJobs() {
             onSelectionChange={setSelectedDownloads}
             onStart={startSelectedJobs}
             loading={startFormLoading()}
-            sourceTypes={downloadSourceTypes}
+            getSourceTypeForCredential={getSourceTypeForCredential}
           />
         </Show>
 
@@ -409,7 +418,7 @@ function StartDownloadsForm(props: {
   onSelectionChange: (selected: Set<string>) => void;
   onStart: () => void;
   loading: boolean;
-  sourceTypes: SourceType[];
+  getSourceTypeForCredential: (credential: CredentialMetadata) => SourceType | null;
 }) {
   const handleCheckboxChange = (key: string, checked: boolean) => {
     props.onSelectionChange((prev) => {
@@ -426,7 +435,8 @@ function StartDownloadsForm(props: {
   const handleSelectAll = (checked: boolean) => {
     const allKeys: string[] = [];
     for (const cred of props.credentials) {
-      for (const sourceType of props.sourceTypes) {
+      const sourceType = props.getSourceTypeForCredential(cred);
+      if (sourceType) {
         allKeys.push(`${cred.id}:${sourceType}`);
       }
     }
@@ -436,7 +446,8 @@ function StartDownloadsForm(props: {
   const allKeys = () => {
     const keys: string[] = [];
     for (const cred of props.credentials) {
-      for (const sourceType of props.sourceTypes) {
+      const sourceType = props.getSourceTypeForCredential(cred);
+      if (sourceType) {
         keys.push(`${cred.id}:${sourceType}`);
       }
     }
@@ -479,32 +490,31 @@ function StartDownloadsForm(props: {
               </thead>
               <tbody>
                 <For each={props.credentials}>
-                  {(cred) => (
-                    <For each={props.sourceTypes}>
-                      {(sourceType) => {
-                        const key = `${cred.id}:${sourceType}`;
-                        return (
-                          <tr>
-                            <td>
-                              <input
-                                type="checkbox"
-                                class="checkbox checkbox-sm"
-                                checked={props.selectedDownloads.has(key)}
-                                onChange={(e) =>
-                                  handleCheckboxChange(
-                                    key,
-                                    e.currentTarget.checked,
-                                  )
-                                }
-                              />
-                            </td>
-                            <td>{cred.identifier}</td>
-                            <td>{sourceType}</td>
-                          </tr>
-                        );
-                      }}
-                    </For>
-                  )}
+                  {(cred) => {
+                    const sourceType = props.getSourceTypeForCredential(cred);
+                    if (!sourceType) return null;
+
+                    const key = `${cred.id}:${sourceType}`;
+                    return (
+                      <tr>
+                        <td>
+                          <input
+                            type="checkbox"
+                            class="checkbox checkbox-sm"
+                            checked={props.selectedDownloads.has(key)}
+                            onChange={(e) =>
+                              handleCheckboxChange(
+                                key,
+                                e.currentTarget.checked,
+                              )
+                            }
+                          />
+                        </td>
+                        <td>{cred.identifier}</td>
+                        <td>{sourceType}</td>
+                      </tr>
+                    );
+                  }}
                 </For>
               </tbody>
             </table>
