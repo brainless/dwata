@@ -121,6 +121,7 @@ pub struct FileFilter {
 pub struct CreateDownloadJobRequest {
     pub credential_id: i64,
     pub source_type: SourceType,
+    #[serde(default)]
     #[ts(skip)]
     pub source_config: serde_json::Value,
 }

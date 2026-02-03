@@ -96,21 +96,28 @@ export default function BackgroundJobs() {
         for (const key of selected) {
           const [credentialId, sourceType] = key.split(":");
 
+          const requestBody = {
+            credential_id: Number(credentialId),
+            source_type: sourceType,
+          };
+          console.log("Sending request body:", JSON.stringify(requestBody, null, 2));
+
           const response = await fetch(getApiUrl("/api/downloads"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              credential_id: credentialId,
-              source_type: sourceType,
-            }),
+            body: JSON.stringify(requestBody),
           });
 
-          if (response.ok) {
-            const job = await response.json();
-            await fetch(getApiUrl(`/api/downloads/${job.id}/start`), {
-              method: "POST",
-            });
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error("Failed to create download job:", response.status, errorText);
+            continue;
           }
+
+          const job = await response.json();
+          await fetch(getApiUrl(`/api/downloads/${job.id}/start`), {
+            method: "POST",
+          });
         }
         setSelectedDownloads(new Set());
         await fetchDownloadJobs();
@@ -530,7 +537,7 @@ function StartExtractionsForm(props: {
     const allIds: number[] = [];
     for (const cred of props.credentials) {
       if (cred.credential_type === "imap") {
-        allIds.push(cred.id);
+        allIds.push(Number(cred.id));
       }
     }
     props.onSelectionChange(new Set(checked ? allIds : []));
@@ -540,7 +547,7 @@ function StartExtractionsForm(props: {
     const ids: number[] = [];
     for (const cred of props.credentials) {
       if (cred.credential_type === "imap") {
-        ids.push(cred.id);
+        ids.push(Number(cred.id));
       }
     }
     return ids;
@@ -597,9 +604,9 @@ function StartExtractionsForm(props: {
                         <input
                           type="checkbox"
                           class="checkbox checkbox-sm"
-                          checked={props.selectedExtractions.has(cred.id)}
+                          checked={props.selectedExtractions.has(Number(cred.id))}
                           onChange={(e) =>
-                            handleCheckboxChange(cred.id, e.currentTarget.checked)
+                            handleCheckboxChange(Number(cred.id), e.currentTarget.checked)
                           }
                         />
                       </td>

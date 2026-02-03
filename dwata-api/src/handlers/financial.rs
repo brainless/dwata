@@ -6,6 +6,7 @@ use crate::jobs::financial_extraction_manager::FinancialExtractionManager;
 use serde::Deserialize;
 use shared_types::FinancialPattern;
 use std::sync::Arc;
+use tracing::info;
 
 pub async fn list_transactions(
     db: web::Data<Arc<Database>>,
@@ -50,10 +51,20 @@ pub async fn trigger_extraction(
     manager: web::Data<Arc<FinancialExtractionManager>>,
     request: web::Json<ExtractionRequest>,
 ) -> ActixResult<HttpResponse> {
+    info!(
+        "Triggering financial extraction: email_ids={:?}, credential_id={:?}",
+        request.email_ids, request.credential_id
+    );
+
     let count = manager
         .extract_from_emails(request.email_ids.clone(), request.credential_id.clone())
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    info!(
+        "Financial extraction completed: extracted_count={}",
+        count
+    );
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "extracted_count": count,
