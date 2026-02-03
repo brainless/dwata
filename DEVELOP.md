@@ -4,7 +4,7 @@
 
 - **Rust**: Required for building the API server (`dwata-api`) and shared types
 - **Node.js and npm**: Required for running the GUI application
-- **DuckDB CLI**: Optional, if you want to run SQL queries directly against the database
+- **SQLite CLI**: Optional, if you want to run SQL queries directly against the database
 
 ## Project Structure
 
@@ -27,14 +27,14 @@ exclude = [
 
 Location: `/dwata-api/`
 
-The API server is built with Actix-web and uses DuckDB for data storage.
+The API server is built with Actix-web and uses SQLite for data storage.
 
 #### Key Dependencies
 
 From `dwata-api/Cargo.toml`:
 ```toml
 actix-web.workspace = true
-duckdb = { version = "1.1", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 shared-types = { path = "../shared-types" }
 config = { version = "0.14", default-features = false, features = ["toml"] }
 dirs = "5.0"
@@ -193,21 +193,21 @@ port = 8080
 
 ### Database Location
 
-The API server uses DuckDB for storage. The database path is determined by the OS.
+The API server uses SQLite for storage. The database path is determined by the OS.
 
 From `dwata-api/src/helpers/database.rs`:
 
 ```rust
 /// Platform-specific paths
 ///
-/// - **macOS**: `~/Library/Application Support/dwata/db.duckdb`
-/// - **Linux**: `~/.local/share/dwata/db.duckdb`
-/// - **Windows**: `%LOCALAPPDATA%\dwata\db.duckdb`
+/// - **macOS**: `~/Library/Application Support/dwata/db.sqlite`
+/// - **Linux**: `~/.local/share/dwata/db.sqlite`
+/// - **Windows**: `%LOCALAPPDATA%\dwata\db.sqlite`
 pub fn get_db_path() -> anyhow::Result<PathBuf> {
     let data_dir = dirs::data_local_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?;
 
-    let db_path = data_dir.join("dwata").join("db.duckdb");
+    let db_path = data_dir.join("dwata").join("db.sqlite");
 
     Ok(db_path)
 }
@@ -317,14 +317,16 @@ This generates `gui/src/api-types/types.ts` with TypeScript definitions.
 
 ## Accessing the Database Directly
 
-If you have the DuckDB CLI installed, you can query the database directly:
+If you have the SQLite CLI installed, you can query the database directly:
 
 ```bash
 # On macOS
-duckdb ~/Library/Application\ Support/dwata/db.duckdb
+sqlite3 ~/Library/Application\ Support/dwata/db.sqlite
 
 # Example queries
-SELECT * FROM credentials;
+SELECT * FROM credentials_metadata;
 SELECT * FROM download_jobs;
 SELECT * FROM emails;
+.tables  # List all tables
+.schema credentials_metadata  # Show table schema
 ```
