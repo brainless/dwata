@@ -194,12 +194,16 @@ export default function BackgroundJobs() {
   ): SourceType | null => {
     switch (credential.credential_type) {
       case "imap":
+        // IMAP credentials (whether using OAuth2 or plain auth) are for IMAP downloads
         return "imap";
       case "oauth":
+        // Pure OAuth credentials for cloud storage
         // TODO: Determine OAuth provider from credential metadata
-        // For now, assume Google OAuth
+        // For now, assume Google Drive
         return "google-drive";
       default:
+        // Other credential types (smtp, apikey, database, localfile, custom)
+        // don't have associated download source types
         return null;
     }
   };
