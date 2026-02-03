@@ -13,8 +13,6 @@ import type {
   ExtractionJobStatus,
   CredentialMetadata,
   SourceType,
-  ExtractionSourceType,
-  ExtractorType,
 } from "../api-types/types";
 
 type Tab = "downloads" | "extractions";
@@ -30,9 +28,9 @@ export default function BackgroundJobs() {
   const [selectedDownloads, setSelectedDownloads] = createSignal<Set<string>>(
     new Set(),
   );
-  const [selectedExtractions, setSelectedExtractions] = createSignal<
-    Set<string>
-  >(new Set());
+  const [selectedExtractions, setSelectedExtractions] = createSignal<Set<number>>(
+    new Set(),
+  );
 
   const fetchDownloadJobs = async () => {
     try {
@@ -118,35 +116,16 @@ export default function BackgroundJobs() {
         await fetchDownloadJobs();
       } else {
         const selected = selectedExtractions();
-        for (const key of selected) {
-          const [sourceType, extractorType] = key.split(":");
-
-          const response = await fetch(getApiUrl("/api/extractions"), {
+        for (const credentialId of selected) {
+          await fetch(getApiUrl("/api/financial/extract"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              source_type: sourceType,
-              extractor_type: extractorType,
-              source_config: {
-                type: "EmailAttachments",
-                config: {
-                  email_ids: null,
-                  attachment_types: ["application/pdf"],
-                  status_filter: "pending",
-                },
-              },
+              credential_id: credentialId,
             }),
           });
-
-          if (response.ok) {
-            const job = await response.json();
-            await fetch(getApiUrl(`/api/extractions/${job.id}/start`), {
-              method: "POST",
-            });
-          }
         }
         setSelectedExtractions(new Set());
-        await fetchExtractionJobs();
       }
     } catch (error) {
       console.error("Failed to start jobs:", error);
@@ -208,20 +187,6 @@ export default function BackgroundJobs() {
     }
   };
 
-  const extractionSourceTypes: ExtractionSourceType[] = [
-    "email-attachment",
-    "local-file",
-    "local-archive",
-    "email-body",
-  ];
-
-  const extractionExtractorTypes: ExtractorType[] = [
-    "attachment-parser",
-    "linkedin-archive",
-    "gliner-ner",
-    "llm-based",
-  ];
-
   return (
     <div class="p-4 md:p-8">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
@@ -282,12 +247,11 @@ export default function BackgroundJobs() {
             getStatusBadgeClass={getStatusBadgeClass}
           />
           <StartExtractionsForm
+            credentials={credentials()}
             selectedExtractions={selectedExtractions()}
             onSelectionChange={setSelectedExtractions}
             onStart={startSelectedJobs}
             loading={startFormLoading()}
-            sourceTypes={extractionSourceTypes}
-            extractorTypes={extractionExtractorTypes}
           />
         </Show>
       </Show>
@@ -544,116 +508,123 @@ function StartDownloadsForm(props: {
 }
 
 function StartExtractionsForm(props: {
-  selectedExtractions: Set<string>;
-  onSelectionChange: (selected: Set<string>) => void;
+  credentials: CredentialMetadata[];
+  selectedExtractions: Set<number>;
+  onSelectionChange: (selected: Set<number>) => void;
   onStart: () => void;
   loading: boolean;
-  sourceTypes: ExtractionSourceType[];
-  extractorTypes: ExtractorType[];
 }) {
-  const handleCheckboxChange = (key: string, checked: boolean) => {
+  const handleCheckboxChange = (id: number, checked: boolean) => {
     props.onSelectionChange((prev) => {
       const next = new Set(prev);
       if (checked) {
-        next.add(key);
+        next.add(id);
       } else {
-        next.delete(key);
+        next.delete(id);
       }
       return next;
     });
   };
 
   const handleSelectAll = (checked: boolean) => {
-    const allKeys: string[] = [];
-    for (const sourceType of props.sourceTypes) {
-      for (const extractorType of props.extractorTypes) {
-        allKeys.push(`${sourceType}:${extractorType}`);
+    const allIds: number[] = [];
+    for (const cred of props.credentials) {
+      if (cred.credential_type === "imap") {
+        allIds.push(cred.id);
       }
     }
-    props.onSelectionChange(new Set(checked ? allKeys : []));
+    props.onSelectionChange(new Set(checked ? allIds : []));
   };
 
-  const allKeys = () => {
-    const keys: string[] = [];
-    for (const sourceType of props.sourceTypes) {
-      for (const extractorType of props.extractorTypes) {
-        keys.push(`${sourceType}:${extractorType}`);
+  const allIds = () => {
+    const ids: number[] = [];
+    for (const cred of props.credentials) {
+      if (cred.credential_type === "imap") {
+        ids.push(cred.id);
       }
     }
-    return keys;
+    return ids;
   };
 
   const allSelected = () =>
-    allKeys().length > 0 &&
-    allKeys().every((key) => props.selectedExtractions.has(key));
+    allIds().length > 0 &&
+    allIds().every((id) => props.selectedExtractions.has(id));
+
+  const emailCredentials = () => {
+    const filtered = props.credentials.filter((cred) => {
+      const isImapType = cred.credential_type === "imap";
+      const isImapOauth =
+        cred.credential_type === "oauth" && cred.service_name?.includes("imap");
+      return isImapType || isImapOauth;
+    });
+    return filtered;
+  };
 
   return (
     <div class="card bg-base-100 shadow-sm border border-base-300">
       <div class="card-body">
         <h2 class="card-title mb-4">Start New Extraction Job(s)</h2>
 
-        <div class="overflow-x-auto">
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>
-                  <input
-                    type="checkbox"
-                    class="checkbox checkbox-sm"
-                    checked={allSelected()}
-                    onChange={(e) => handleSelectAll(e.currentTarget.checked)}
-                  />
-                </th>
-                <th>Source Type</th>
-                <th>Extractor Type</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={props.sourceTypes}>
-                {(sourceType) => (
-                  <For each={props.extractorTypes}>
-                    {(extractorType) => {
-                      const key = `${sourceType}:${extractorType}`;
-                      return (
-                        <tr>
-                          <td>
-                            <input
-                              type="checkbox"
-                              class="checkbox checkbox-sm"
-                              checked={props.selectedExtractions.has(key)}
-                              onChange={(e) =>
-                                handleCheckboxChange(
-                                  key,
-                                  e.currentTarget.checked,
-                                )
-                              }
-                            />
-                          </td>
-                          <td>{sourceType}</td>
-                          <td>{extractorType}</td>
-                        </tr>
-                      );
-                    }}
-                  </For>
-                )}
-              </For>
-            </tbody>
-          </table>
-        </div>
+        <Show
+          when={emailCredentials().length > 0}
+          fallback={
+            <p class="text-base-content/60">
+              No IMAP email accounts available. Add IMAP credentials first to
+              run financial extraction.
+            </p>
+          }
+        >
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-sm"
+                      checked={allSelected()}
+                      onChange={(e) => handleSelectAll(e.currentTarget.checked)}
+                    />
+                  </th>
+                  <th>Email Account</th>
+                </tr>
+              </thead>
+              <tbody>
+                <For each={emailCredentials()}>
+                  {(cred) => (
+                    <tr>
+                      <td>
+                        <input
+                          type="checkbox"
+                          class="checkbox checkbox-sm"
+                          checked={props.selectedExtractions.has(cred.id)}
+                          onChange={(e) =>
+                            handleCheckboxChange(cred.id, e.currentTarget.checked)
+                          }
+                        />
+                      </td>
+                      <td>{cred.identifier}</td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </div>
 
-        <div class="card-actions justify-end mt-4">
-          <button
-            class="btn btn-primary"
-            onClick={props.onStart}
-            disabled={props.selectedExtractions.size === 0 || props.loading}
-          >
-            {props.loading ? (
-              <span class="loading loading-spinner loading-sm"></span>
-            ) : (
-              "Start Selected Jobs"
-            )}
-          </button>
-        </div>
+          <div class="card-actions justify-end mt-4">
+            <button
+              class="btn btn-primary"
+              onClick={props.onStart}
+              disabled={props.selectedExtractions.size === 0 || props.loading}
+            >
+              {props.loading ? (
+                <span class="loading loading-spinner loading-sm"></span>
+              ) : (
+                "Start Selected Jobs"
+              )}
+            </button>
+          </div>
+        </Show>
       </div>
     </div>
   );

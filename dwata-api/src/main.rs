@@ -162,7 +162,7 @@ async fn main() -> std::io::Result<()> {
     }
 
     // Run initial financial extraction on startup
-    match financial_extraction_manager.extract_from_emails(None).await {
+    match financial_extraction_manager.extract_from_emails(None, None).await {
         Ok(count) => {
             tracing::info!("Financial extraction completed on startup: {} transactions extracted", count);
         }

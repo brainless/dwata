@@ -43,6 +43,7 @@ pub async fn get_summary(
 #[derive(Deserialize)]
 pub struct ExtractionRequest {
     email_ids: Option<Vec<i64>>,
+    credential_id: Option<i64>,
 }
 
 pub async fn trigger_extraction(
@@ -50,7 +51,7 @@ pub async fn trigger_extraction(
     request: web::Json<ExtractionRequest>,
 ) -> ActixResult<HttpResponse> {
     let count = manager
-        .extract_from_emails(request.email_ids.clone())
+        .extract_from_emails(request.email_ids.clone(), request.credential_id.clone())
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 

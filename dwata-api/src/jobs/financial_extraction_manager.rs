@@ -17,6 +17,7 @@ impl FinancialExtractionManager {
     pub async fn extract_from_emails(
         &self,
         email_ids: Option<Vec<i64>>,
+        credential_id: Option<i64>,
     ) -> Result<usize> {
         let db_patterns = patterns_db::list_active_patterns(self.db_conn.clone()).await?;
 
@@ -35,7 +36,7 @@ impl FinancialExtractionManager {
             }
             emails
         } else {
-            emails_db::list_emails(self.db_conn.clone(), None, None, 1000, 0).await?
+            emails_db::list_emails(self.db_conn.clone(), credential_id, None, 1000, 0).await?
         };
 
         let mut total_extracted = 0;
