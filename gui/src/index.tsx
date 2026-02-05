@@ -25,6 +25,9 @@ render(
       <Route path="/projects" component={Projects} />
       <Route path="/tasks" component={Tasks} />
       <Route path="/emails" component={Emails} />
+      <Route path="/emails/account/:accountId" component={Emails} />
+      <Route path="/emails/account/:accountId/folder/:folderId" component={Emails} />
+      <Route path="/emails/account/:accountId/label/:labelId" component={Emails} />
       <Route path="/calendar" component={Calendar} />
       <Route path="/financial" component={FinancialHealth} />
       <Route path="/jobs" component={BackgroundJobs} />

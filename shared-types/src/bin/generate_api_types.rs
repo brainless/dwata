@@ -89,6 +89,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(ListEmailsRequest::export_to_string()?));
     types.push(clean_type(ListEmailsResponse::export_to_string()?));
 
+    // Email Folder and Label types
+    types.push(clean_type(EmailFolder::export_to_string()?));
+    types.push(clean_type(ListFoldersRequest::export_to_string()?));
+    types.push(clean_type(ListFoldersResponse::export_to_string()?));
+    types.push(clean_type(EmailLabel::export_to_string()?));
+    types.push(clean_type(ListLabelsRequest::export_to_string()?));
+    types.push(clean_type(ListLabelsResponse::export_to_string()?));
+
     // Extraction types
     types.push(clean_type(DataType::export_to_string()?));
     types.push(clean_type(ExtractionMethod::export_to_string()?));

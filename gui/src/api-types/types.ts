@@ -399,6 +399,28 @@ import type { Email } from "./Email";
 export type ListEmailsResponse = { emails: Array<Email>, total_count: bigint, has_more: boolean, };
 
 
+export type EmailFolder = { id: bigint, credential_id: bigint, name: string, display_name: string | null, imap_path: string, folder_type: string | null, parent_folder_id: bigint | null, uidvalidity: number | null, last_synced_uid: number | null, total_messages: number, unread_messages: number, is_subscribed: boolean, is_selectable: boolean, created_at: bigint, updated_at: bigint, last_synced_at: bigint | null, };
+
+
+export type ListFoldersRequest = { credential_id: bigint, };
+
+
+import type { EmailFolder } from "./EmailFolder";
+
+export type ListFoldersResponse = { folders: Array<EmailFolder>, };
+
+
+export type EmailLabel = { id: bigint, credential_id: bigint, name: string, display_name: string | null, label_type: string, color: string | null, message_count: number, created_at: bigint, updated_at: bigint, };
+
+
+export type ListLabelsRequest = { credential_id: bigint, };
+
+
+import type { EmailLabel } from "./EmailLabel";
+
+export type ListLabelsResponse = { labels: Array<EmailLabel>, };
+
+
 export type DataType = "project" | "task" | "event" | "contact" | "location" | "date" | "priority" | "status" | "company" | "position";
 
 
