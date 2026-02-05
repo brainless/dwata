@@ -455,8 +455,8 @@ pub async fn insert_email_download_transactional(
              (download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
                body_text, body_html, is_read, is_flagged, is_draft, is_answered,
-               has_attachments, attachment_count, size_bytes, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               has_attachments, attachment_count, size_bytes, thread_id, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                RETURNING id",
             rusqlite::params![
                 download_item_id,
@@ -482,6 +482,7 @@ pub async fn insert_email_download_transactional(
                 has_attachments,
                 attachment_count,
                 size_bytes,
+                None::<String>,
                 now,
                 now
             ],

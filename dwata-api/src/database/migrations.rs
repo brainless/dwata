@@ -949,7 +949,7 @@ pub fn migrate_folders_and_labels(conn: &mut Connection) -> anyhow::Result<()> {
     tx.execute(
         "UPDATE download_items
          SET source_folder_id = (
-             SELECT id FROM email_folders
+             SELECT email_folders.id FROM email_folders
              JOIN download_jobs ON download_jobs.id = download_items.job_id
              WHERE email_folders.credential_id = download_jobs.credential_id
                AND email_folders.imap_path = download_items.source_folder
@@ -958,15 +958,17 @@ pub fn migrate_folders_and_labels(conn: &mut Connection) -> anyhow::Result<()> {
         [],
     )?;
 
-    // Step 8: Drop old columns
+    // Step 8: Update indexes - drop old index BEFORE dropping the column
+    tracing::info!("Updating indexes");
+    tx.execute("DROP INDEX IF EXISTS idx_emails_folder_date", [])?;
+
+    // Step 9: Drop old columns
     tracing::info!("Dropping old folder and labels columns");
     tx.execute("ALTER TABLE emails DROP COLUMN folder", [])?;
     tx.execute("ALTER TABLE emails DROP COLUMN labels", [])?;
     tx.execute("ALTER TABLE download_items DROP COLUMN source_folder", [])?;
 
-    // Step 9: Update indexes - remove old index and create new one
-    tracing::info!("Updating indexes");
-    tx.execute("DROP INDEX IF EXISTS idx_emails_folder_date", [])?;
+    // Step 10: Create new index with folder_id
     tx.execute(
         "CREATE INDEX IF NOT EXISTS idx_emails_folder_date ON emails(folder_id, date_received DESC)",
         [],
