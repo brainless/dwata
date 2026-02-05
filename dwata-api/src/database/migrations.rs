@@ -623,6 +623,83 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         [],
     )?;
 
+    // Create email_folders table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS email_folders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            credential_id INTEGER NOT NULL,
+            name VARCHAR NOT NULL,
+            display_name VARCHAR,
+            imap_path VARCHAR NOT NULL,
+            folder_type VARCHAR,
+            parent_folder_id INTEGER,
+            uidvalidity INTEGER,
+            last_synced_uid INTEGER,
+            total_messages INTEGER DEFAULT 0,
+            unread_messages INTEGER DEFAULT 0,
+            is_subscribed BOOLEAN DEFAULT true,
+            is_selectable BOOLEAN DEFAULT true,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            last_synced_at BIGINT,
+            UNIQUE(credential_id, imap_path),
+            FOREIGN KEY(credential_id) REFERENCES credentials_metadata(id) ON DELETE CASCADE,
+            FOREIGN KEY(parent_folder_id) REFERENCES email_folders(id) ON DELETE SET NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_folders_credential ON email_folders(credential_id)",
+        [],
+    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_email_folders_type ON email_folders(credential_id, folder_type)", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_folders_parent ON email_folders(parent_folder_id)",
+        [],
+    )?;
+
+    // Create email_labels table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS email_labels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            credential_id INTEGER NOT NULL,
+            name VARCHAR NOT NULL,
+            display_name VARCHAR,
+            label_type VARCHAR NOT NULL,
+            color VARCHAR,
+            message_count INTEGER DEFAULT 0,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            UNIQUE(credential_id, name),
+            FOREIGN KEY(credential_id) REFERENCES credentials_metadata(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_labels_credential ON email_labels(credential_id)",
+        [],
+    )?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_email_labels_type ON email_labels(credential_id, label_type)", [])?;
+
+    // Create email_label_associations table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS email_label_associations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email_id INTEGER NOT NULL,
+            label_id INTEGER NOT NULL,
+            created_at BIGINT NOT NULL,
+            UNIQUE(email_id, label_id),
+            FOREIGN KEY(email_id) REFERENCES emails(id) ON DELETE CASCADE,
+            FOREIGN KEY(label_id) REFERENCES email_labels(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_email_label_assoc_email ON email_label_associations(email_id)", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_email_label_assoc_label ON email_label_associations(label_id)", [])?;
+
     // Seed default financial patterns
     conn.execute(
         "INSERT INTO financial_patterns
@@ -768,4 +845,136 @@ pub fn has_schema(conn: &Connection) -> anyhow::Result<bool> {
     let mut stmt = conn
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_sessions'")?;
     Ok(stmt.exists([])?)
+}
+
+/// Migrate existing email folders and labels to new normalized schema
+#[allow(dead_code)]
+pub fn migrate_folders_and_labels(conn: &mut Connection) -> anyhow::Result<()> {
+    let tx = conn.transaction()?;
+
+    tracing::info!("Starting email folders and labels migration");
+
+    // Check if migration already ran (folder_id column exists in emails table)
+    let has_folder_id: bool = tx.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('emails') WHERE name='folder_id'",
+        [],
+        |row| {
+            let count: i64 = row.get(0)?;
+            Ok(count > 0)
+        },
+    )?;
+
+    if has_folder_id {
+        tracing::info!("Migration already completed, skipping");
+        tx.commit()?;
+        return Ok(());
+    }
+
+    // Step 1: Extract unique folders from emails table and insert into email_folders
+    tracing::info!("Migrating folders from emails table");
+    tx.execute(
+        "INSERT INTO email_folders (credential_id, name, imap_path, created_at, updated_at)
+         SELECT DISTINCT credential_id, folder, folder, strftime('%s', 'now') * 1000, strftime('%s', 'now') * 1000
+         FROM emails
+         WHERE folder IS NOT NULL",
+        [],
+    )?;
+
+    // Step 2: Add folder_id column to emails table
+    tracing::info!("Adding folder_id column to emails table");
+    tx.execute("ALTER TABLE emails ADD COLUMN folder_id INTEGER", [])?;
+
+    // Step 3: Update emails.folder_id based on folder string
+    tracing::info!("Updating emails with folder_id references");
+    tx.execute(
+        "UPDATE emails
+         SET folder_id = (
+             SELECT id FROM email_folders
+             WHERE email_folders.credential_id = emails.credential_id
+               AND email_folders.imap_path = emails.folder
+         )",
+        [],
+    )?;
+
+    // Step 4: Make folder_id NOT NULL (ensure all emails have valid folder_id)
+    tracing::info!("Validating folder_id references");
+    tx.execute("UPDATE emails SET folder_id = NULL WHERE folder_id = 0", [])?;
+
+    // Step 5: Extract labels from emails table and insert into email_labels
+    tracing::info!("Migrating labels from emails table");
+    let mut stmt = tx.prepare("SELECT DISTINCT credential_id, labels FROM emails WHERE labels IS NOT NULL AND labels != '[]' AND labels != 'null'")?;
+    let rows: Result<Vec<_>, _> = stmt
+        .query_map([], |row| {
+            let cred_id: i64 = row.get(0)?;
+            let labels_json: String = row.get(1)?;
+            Ok((cred_id, labels_json))
+        })?
+        .collect();
+    drop(stmt);
+    let label_rows: Vec<(i64, String)> = rows?;
+
+    for (cred_id, labels_json) in label_rows {
+        if let Ok(label_list) = serde_json::from_str::<Vec<String>>(&labels_json) {
+            for label_name in label_list {
+                if !label_name.is_empty() {
+                    let now = chrono::Utc::now().timestamp_millis();
+                    tx.execute(
+                        "INSERT OR IGNORE INTO email_labels (credential_id, name, label_type, created_at, updated_at)
+                         VALUES (?, ?, 'user', ?, ?)",
+                        rusqlite::params![cred_id, label_name.as_str(), now, now],
+                    )?;
+                }
+            }
+        }
+    }
+
+    // Step 6: Create email_label_associations from existing labels
+    tracing::info!("Creating email_label_associations");
+    tx.execute(
+        "INSERT INTO email_label_associations (email_id, label_id, created_at)
+         SELECT e.id, l.id, strftime('%s', 'now') * 1000
+         FROM emails e
+         CROSS JOIN json_each(e.labels) as label_name
+         JOIN email_labels l ON l.credential_id = e.credential_id AND l.name = label_name.value
+         WHERE e.labels IS NOT NULL AND e.labels != '[]' AND e.labels != 'null'",
+        [],
+    )?;
+
+    // Step 7: Update download_items.source_folder -> source_folder_id
+    tracing::info!("Migrating download_items.source_folder");
+    tx.execute(
+        "ALTER TABLE download_items ADD COLUMN source_folder_id INTEGER",
+        [],
+    )?;
+    tx.execute(
+        "UPDATE download_items
+         SET source_folder_id = (
+             SELECT id FROM email_folders
+             JOIN download_jobs ON download_jobs.id = download_items.job_id
+             WHERE email_folders.credential_id = download_jobs.credential_id
+               AND email_folders.imap_path = download_items.source_folder
+         )
+         WHERE source_folder IS NOT NULL",
+        [],
+    )?;
+
+    // Step 8: Drop old columns
+    tracing::info!("Dropping old folder and labels columns");
+    tx.execute("ALTER TABLE emails DROP COLUMN folder", [])?;
+    tx.execute("ALTER TABLE emails DROP COLUMN labels", [])?;
+    tx.execute("ALTER TABLE download_items DROP COLUMN source_folder", [])?;
+
+    // Step 9: Update indexes - remove old index and create new one
+    tracing::info!("Updating indexes");
+    tx.execute("DROP INDEX IF EXISTS idx_emails_folder_date", [])?;
+    tx.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_folder_date ON emails(folder_id, date_received DESC)",
+        [],
+    )?;
+
+    tx.commit()?;
+
+    tracing::info!("Email folders and labels migration completed successfully");
+
+    Ok(())
 }

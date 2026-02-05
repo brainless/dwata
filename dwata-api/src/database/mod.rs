@@ -9,6 +9,8 @@ pub mod extraction_jobs;
 pub mod financial_extraction_sources;
 pub mod financial_patterns;
 pub mod financial_transactions;
+pub mod folders;
+pub mod labels;
 pub mod linkedin_connections;
 pub mod migrations;
 pub mod models;
@@ -43,8 +45,9 @@ impl Database {
 
         // Run migrations on sync connection before opening async connection
         {
-            let conn = sync_mutex.lock().unwrap();
+            let mut conn = sync_mutex.lock().unwrap();
             migrations::run_migrations(&conn)?;
+            migrations::migrate_folders_and_labels(&mut *conn)?;
         }
 
         // Now open async connection - it will see the migrated schema

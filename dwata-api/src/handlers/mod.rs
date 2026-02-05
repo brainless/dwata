@@ -6,6 +6,8 @@ pub mod emails;
 pub mod events;
 pub mod extraction_jobs;
 pub mod financial;
+pub mod folders;
+pub mod labels;
 pub mod oauth;
 pub mod positions;
 pub mod settings;

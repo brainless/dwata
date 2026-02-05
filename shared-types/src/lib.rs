@@ -10,6 +10,8 @@ pub mod event;
 pub mod extraction;
 pub mod extraction_job;
 pub mod financial;
+pub mod folder;
+pub mod label;
 pub mod position;
 pub mod project;
 pub mod session;
@@ -45,6 +47,8 @@ pub use financial::{
     CategoryBreakdown, FinancialDocumentType, FinancialHealth, FinancialPattern, FinancialSummary,
     FinancialTransaction, TransactionCategory, TransactionStatus,
 };
+pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
+pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
 pub use position::{CreatePositionRequest, Position, PositionsResponse};
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,

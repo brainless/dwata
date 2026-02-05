@@ -408,18 +408,29 @@ pub async fn insert_email_download_transactional(
         .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
 
     let result = (|| -> Result<(i64, i64), DownloadDbError> {
+        // 0. Get or create folder in email_folders table
+        let folder_id: i64 = conn.query_row(
+            "INSERT INTO email_folders (credential_id, name, imap_path, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(credential_id, imap_path) DO UPDATE SET
+                 updated_at = excluded.updated_at
+             RETURNING id",
+            rusqlite::params![credential_id, folder, folder, now, now],
+            |row| row.get(0)
+        ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to get/create folder: {}", e)))?;
+
         // 1. Insert download_item
         let metadata_json: Option<String> = None;
         let download_item_id: i64 = conn.query_row(
             "INSERT INTO download_items
-             (job_id, source_identifier, source_folder, item_type, status, size_bytes,
-              mime_type, metadata, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             RETURNING id",
+             (job_id, source_identifier, source_folder_id, item_type, status, size_bytes,
+               mime_type, metadata, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              RETURNING id",
             rusqlite::params![
                 job_id as i32,
                 &uid.to_string(),
-                Some(folder),
+                folder_id,
                 "email",
                 "completed",
                 size_bytes,
@@ -438,22 +449,20 @@ pub async fn insert_email_download_transactional(
             .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize cc_addresses: {}", e)))?;
         let bcc_json = serde_json::to_string(bcc_addresses)
             .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize bcc_addresses: {}", e)))?;
-        let labels_json = serde_json::to_string(labels)
-            .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize labels: {}", e)))?;
 
         let email_id: i64 = conn.query_row(
             "INSERT INTO emails
-             (download_item_id, credential_id, uid, folder, message_id, subject, from_address, from_name,
-              to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-              body_text, body_html, is_read, is_flagged, is_draft, is_answered,
-              has_attachments, attachment_count, size_bytes, labels, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              RETURNING id",
+             (download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+               to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+               body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+               has_attachments, attachment_count, size_bytes, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               RETURNING id",
             rusqlite::params![
                 download_item_id,
                 credential_id,
                 uid as i32,
-                folder,
+                folder_id,
                 message_id,
                 subject,
                 from_address,
@@ -473,12 +482,33 @@ pub async fn insert_email_download_transactional(
                 has_attachments,
                 attachment_count,
                 size_bytes,
-                &labels_json,
                 now,
                 now
             ],
             |row| row.get(0)
         ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to insert email: {}", e)))?;
+
+        // 3. Insert labels if present
+        for label_name in labels {
+            if !label_name.is_empty() {
+                let label_id: i64 = conn.query_row(
+                    "INSERT INTO email_labels (credential_id, name, label_type, created_at, updated_at)
+                     VALUES (?, ?, 'user', ?, ?)
+                     ON CONFLICT(credential_id, name) DO UPDATE SET
+                         updated_at = excluded.updated_at
+                     RETURNING id",
+                    rusqlite::params![credential_id, label_name, now, now],
+                    |row| row.get(0)
+                ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to get/create label: {}", e)))?;
+
+                // Insert label association
+                conn.execute(
+                    "INSERT OR IGNORE INTO email_label_associations (email_id, label_id, created_at)
+                     VALUES (?, ?, ?)",
+                    rusqlite::params![email_id, label_id, now],
+                ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to insert label association: {}", e)))?;
+            }
+        }
 
         // 3. Update job progress (increment downloaded_items by 1)
         conn.execute(

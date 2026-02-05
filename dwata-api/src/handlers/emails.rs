@@ -1,8 +1,8 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use shared_types::{ListEmailsRequest, ListEmailsResponse};
+use shared_types::{Email, ListEmailsRequest, ListEmailsResponse};
 use std::sync::Arc;
 
-use crate::database::emails as emails_db;
+use crate::database::{emails as emails_db, labels as labels_db};
 use crate::database::Database;
 
 pub async fn list_emails(
@@ -11,7 +11,8 @@ pub async fn list_emails(
 ) -> ActixResult<HttpResponse> {
     let ListEmailsRequest {
         credential_id,
-        folder,
+        folder_id,
+        label_id,
         limit,
         offset,
         search_query: _,
@@ -20,9 +21,15 @@ pub async fn list_emails(
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
 
-    let emails = emails_db::list_emails(db.async_connection.clone(), credential_id, folder.as_deref(), limit, offset)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let emails = if let Some(lid) = label_id {
+        emails_db::list_emails_by_label(db.async_connection.clone(), lid, limit, offset)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
+    } else {
+        emails_db::list_emails(db.async_connection.clone(), credential_id, folder_id, limit, offset)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
+    };
 
     let total_count = emails.len() as i64;
     let has_more = emails.len() == limit;
@@ -45,4 +52,17 @@ pub async fn get_email(
         .map_err(|e| actix_web::error::ErrorNotFound(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(email))
+}
+
+pub async fn get_email_labels(
+    db: web::Data<Arc<Database>>,
+    path: web::Path<i64>,
+) -> ActixResult<HttpResponse> {
+    let email_id = path.into_inner();
+
+    let labels = labels_db::get_labels_for_email(db.async_connection.clone(), email_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(labels))
 }
