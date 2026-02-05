@@ -108,6 +108,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_type VARCHAR NOT NULL,
             credential_id INTEGER NOT NULL,
+            job_type VARCHAR NOT NULL DEFAULT 'recent-sync',
             status VARCHAR NOT NULL DEFAULT 'pending',
             total_items BIGINT NOT NULL DEFAULT 0,
             downloaded_items BIGINT NOT NULL DEFAULT 0,
@@ -138,6 +139,24 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             ON download_jobs(credential_id)",
         [],
     )?;
+
+    // Migration: Add job_type column to download_jobs if it doesn't exist
+    let has_job_type: bool = conn.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('download_jobs') WHERE name='job_type'",
+        [],
+        |row| {
+            let count: i64 = row.get(0)?;
+            Ok(count > 0)
+        },
+    )?;
+
+    if !has_job_type {
+        tracing::info!("Adding job_type column to download_jobs table");
+        conn.execute(
+            "ALTER TABLE download_jobs ADD COLUMN job_type VARCHAR NOT NULL DEFAULT 'recent-sync'",
+            [],
+        )?;
+    }
 
     // Create download_items table
     conn.execute(

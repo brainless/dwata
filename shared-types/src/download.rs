@@ -7,6 +7,7 @@ pub struct DownloadJob {
     pub id: i64,
     pub source_type: SourceType,
     pub credential_id: i64,
+    pub job_type: JobType,
     pub status: DownloadJobStatus,
     pub progress: DownloadProgress,
     #[ts(skip)]
@@ -17,6 +18,13 @@ pub struct DownloadJob {
     pub updated_at: i64,
     pub completed_at: Option<i64>,
     pub last_sync_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum JobType {
+    RecentSync,
+    HistoricalBackfill,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

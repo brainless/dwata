@@ -204,6 +204,34 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
+    // Spawn historical backfill on startup
+    let manager_clone_backfill = download_manager.clone();
+    tokio::spawn(async move {
+        // Wait 10 seconds to allow recent sync to complete first
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+
+        tracing::info!("Starting historical backfill on startup");
+
+        // Get all credentials and start historical backfill for each
+        match crate::database::credentials::list_credentials(
+            manager_clone_backfill.get_db_connection(),
+            false,
+        ).await {
+            Ok(credentials) => {
+                for credential in credentials {
+                    if credential.credential_type.requires_keychain() {
+                        if let Err(e) = manager_clone_backfill.start_historical_backfill(credential.id).await {
+                            tracing::warn!("Failed to start historical backfill for credential {}: {}", credential.id, e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to get credentials for historical backfill: {}", e);
+            }
+        }
+    });
+
     // Spawn periodic sync task (every 5 minutes)
     let manager_clone = download_manager.clone();
     tokio::spawn(async move {

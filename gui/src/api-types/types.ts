@@ -291,12 +291,13 @@ export type CreateLocalFileCredentialRequest = { identifier: string, settings: L
 
 import type { DownloadJobStatus } from "./DownloadJobStatus";
 import type { DownloadProgress } from "./DownloadProgress";
+import type { JobType } from "./JobType";
 import type { SourceType } from "./SourceType";
 
 /**
  * Represents a long-running download job
  */
-export type DownloadJob = { id: bigint, source_type: SourceType, credential_id: bigint, status: DownloadJobStatus, progress: DownloadProgress, error_message: string | null, created_at: bigint, started_at: bigint | null, updated_at: bigint, completed_at: bigint | null, last_sync_at: bigint | null, };
+export type DownloadJob = { id: bigint, source_type: SourceType, credential_id: bigint, job_type: JobType, status: DownloadJobStatus, progress: DownloadProgress, error_message: string | null, created_at: bigint, started_at: bigint | null, updated_at: bigint, completed_at: bigint | null, last_sync_at: bigint | null, };
 
 
 export type DownloadJobStatus = "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";

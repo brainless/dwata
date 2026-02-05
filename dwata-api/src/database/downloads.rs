@@ -1,6 +1,6 @@
 use shared_types::download::{
     CreateDownloadJobRequest, DownloadJob, DownloadJobStatus, DownloadProgress,
-    SourceType,
+    SourceType, JobType,
 };
 use shared_types::email::EmailAddress;
 use std::fmt;
@@ -27,6 +27,7 @@ impl std::error::Error for DownloadDbError {}
 pub async fn insert_download_job(
     conn: AsyncDbConnection,
     request: &CreateDownloadJobRequest,
+    job_type: JobType,
 ) -> Result<DownloadJob, DownloadDbError> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
@@ -34,15 +35,21 @@ pub async fn insert_download_job(
     let source_state_json = serde_json::to_string(&request.source_config)
         .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize config: {}", e)))?;
 
+    let job_type_str = match job_type {
+        JobType::RecentSync => "recent-sync",
+        JobType::HistoricalBackfill => "historical-backfill",
+    };
+
     let id: i64 = conn
         .query_row(
             "INSERT INTO download_jobs
-             (source_type, credential_id, status, source_state, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?)
-              RETURNING id",
+             (source_type, credential_id, job_type, status, source_state, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               RETURNING id",
             rusqlite::params![
                 source_type_to_string(&request.source_type),
                 &request.credential_id,
+                job_type_str,
                 "pending",
                 &source_state_json,
                 now,
@@ -56,6 +63,7 @@ pub async fn insert_download_job(
         id,
         source_type: request.source_type.clone(),
         credential_id: request.credential_id,
+        job_type,
         status: DownloadJobStatus::Pending,
         progress: DownloadProgress {
             total_items: 0,
@@ -87,7 +95,7 @@ pub async fn get_download_job(
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, source_type, credential_id, status, total_items, downloaded_items,
+            "SELECT id, source_type, credential_id, job_type, status, total_items, downloaded_items,
                     failed_items, skipped_items, in_progress_items, bytes_downloaded,
                     source_state, error_message, created_at, started_at, updated_at,
                     completed_at, last_sync_at
@@ -98,6 +106,8 @@ pub async fn get_download_job(
 
     stmt.query_row([id], |row| {
         let source_type_str: String = row.get(1)?;
+        let job_type_str: String = row.get(3)?;
+
         let source_type = match source_type_str.as_str() {
             "imap" => SourceType::Imap,
             "google-drive" => SourceType::GoogleDrive,
@@ -106,7 +116,13 @@ pub async fn get_download_job(
             _ => SourceType::Imap,
         };
 
-        let status_str: String = row.get(3)?;
+        let job_type = match job_type_str.as_str() {
+            "recent-sync" => JobType::RecentSync,
+            "historical-backfill" => JobType::HistoricalBackfill,
+            _ => JobType::RecentSync,
+        };
+
+        let status_str: String = row.get(4)?;
         let status = match status_str.as_str() {
             "pending" => DownloadJobStatus::Pending,
             "running" => DownloadJobStatus::Running,
@@ -117,11 +133,11 @@ pub async fn get_download_job(
             _ => DownloadJobStatus::Pending,
         };
 
-        let total_items: i64 = row.get(4)?;
-        let downloaded_items: i64 = row.get(5)?;
-        let failed_items: i64 = row.get(6)?;
-        let skipped_items: i64 = row.get(7)?;
-        let in_progress_items: i64 = row.get(8)?;
+        let total_items: i64 = row.get(5)?;
+        let downloaded_items: i64 = row.get(6)?;
+        let failed_items: i64 = row.get(7)?;
+        let skipped_items: i64 = row.get(8)?;
+        let in_progress_items: i64 = row.get(9)?;
 
         let remaining = total_items.saturating_sub(downloaded_items + failed_items + skipped_items);
         let percent = if total_items > 0 {
@@ -130,13 +146,14 @@ pub async fn get_download_job(
             0.0
         };
 
-        let source_state_json: String = row.get(10)?;
+        let source_state_json: String = row.get(11)?;
         let source_state: serde_json::Value = serde_json::from_str(&source_state_json).unwrap_or(serde_json::json!({}));
 
         Ok(DownloadJob {
             id: row.get(0)?,
             source_type,
             credential_id: row.get(2)?,
+            job_type,
             status,
             progress: DownloadProgress {
                 total_items: total_items as u64,
@@ -151,12 +168,12 @@ pub async fn get_download_job(
                 estimated_completion_secs: None,
             },
             source_state,
-            error_message: row.get(11)?,
-            created_at: row.get(12)?,
-            started_at: row.get(13)?,
-            updated_at: row.get(14)?,
-            completed_at: row.get(15)?,
-            last_sync_at: row.get(16)?,
+            error_message: row.get(12)?,
+            created_at: row.get(13)?,
+            started_at: row.get(14)?,
+            updated_at: row.get(15)?,
+            completed_at: row.get(16)?,
+            last_sync_at: row.get(17)?,
         })
     })
     .map_err(|e| match e {
@@ -378,7 +395,7 @@ pub async fn insert_email_download_transactional(
     job_id: i64,
     credential_id: i64,
     uid: u32,
-    folder: &str,
+    folder_id: i64,
     message_id: Option<&str>,
     subject: Option<&str>,
     from_address: &str,
@@ -408,17 +425,6 @@ pub async fn insert_email_download_transactional(
         .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
 
     let result = (|| -> Result<(i64, i64), DownloadDbError> {
-        // 0. Get or create folder in email_folders table
-        let folder_id: i64 = conn.query_row(
-            "INSERT INTO email_folders (credential_id, name, imap_path, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(credential_id, imap_path) DO UPDATE SET
-                 updated_at = excluded.updated_at
-             RETURNING id",
-            rusqlite::params![credential_id, folder, folder, now, now],
-            |row| row.get(0)
-        ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to get/create folder: {}", e)))?;
-
         // 1. Insert download_item
         let metadata_json: Option<String> = None;
         let download_item_id: i64 = conn.query_row(

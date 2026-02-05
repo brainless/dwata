@@ -1,14 +1,11 @@
 import {
-  HiOutlinePlus,
   HiOutlineArrowTrendingUp,
   HiOutlineArrowTrendingDown,
   HiOutlineCurrencyDollar,
   HiOutlineExclamationTriangle,
   HiOutlineDocumentText,
   HiOutlineCalendar,
-  HiOutlineCheckCircle,
   HiOutlineClock,
-  HiOutlineArrowUpTray,
   HiOutlineArrowPath,
 } from "solid-icons/hi";
 import { createSignal, createEffect, For, Show } from "solid-js";
@@ -22,7 +19,6 @@ import type {
 import { getApiUrl } from "../config/api";
 
 export default function FinancialHealth() {
-  const [selectedPeriod, setSelectedPeriod] = createSignal("month");
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -31,18 +27,21 @@ export default function FinancialHealth() {
     [],
   );
   const [isExtracting, setIsExtracting] = createSignal(false);
+  const [credentials, setCredentials] = createSignal<any[]>([]);
 
   const fetchFinancialData = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const dates = getPeriodDates(selectedPeriod());
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
       const [summaryResponse, transactionsResponse] = await Promise.all([
         fetch(
           getApiUrl(
-            `/api/financial/summary?start_date=${dates.start}&end_date=${dates.end}`,
+            `/api/financial/summary?start_date=${start.toISOString().split("T")[0]}&end_date=${end.toISOString().split("T")[0]}`,
           ),
         ),
         fetch(getApiUrl("/api/financial/transactions")),
@@ -73,52 +72,41 @@ export default function FinancialHealth() {
     }
   };
 
-  const getPeriodDates = (period: string) => {
-    const now = new Date();
-    const start = new Date();
-    let end = new Date();
-
-    switch (period) {
-      case "week":
-        start.setDate(now.getDate() - 7);
-        break;
-      case "month":
-        start.setDate(1);
-        end.setMonth(now.getMonth() + 1);
-        end.setDate(0);
-        break;
-      case "quarter":
-        const quarter = Math.floor(now.getMonth() / 3);
-        start.setMonth(quarter * 3, 1);
-        end.setMonth((quarter + 1) * 3, 0);
-        break;
-      case "year":
-        start.setMonth(0, 1);
-        end.setMonth(11, 31);
-        break;
+  const fetchCredentials = async () => {
+    try {
+      const response = await fetch(getApiUrl("/api/credentials"));
+      const data = await response.json();
+      setCredentials(data.credentials || []);
+    } catch (error) {
+      console.error("Failed to fetch credentials:", error);
     }
-
-    return {
-      start: start.toISOString().split("T")[0],
-      end: end.toISOString().split("T")[0],
-    };
   };
 
   const triggerExtraction = async () => {
     setIsExtracting(true);
     try {
-      const response = await fetch(getApiUrl("/api/financial/extract"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+      const emailCredentials = credentials().filter((cred: any) => {
+        const isImapType = cred.credential_type === "imap";
+        const isImapOauth =
+          cred.credential_type === "oauth" &&
+          cred.service_name?.includes("imap");
+        return isImapType || isImapOauth;
       });
 
-      if (!response.ok) {
-        throw new Error(`Extraction failed: ${response.status}`);
-      }
+      for (const cred of emailCredentials) {
+        const response = await fetch(getApiUrl("/api/financial/extract"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential_id: Number(cred.id) }),
+        });
 
-      const result = await response.json();
-      console.log("Extraction result:", result);
+        if (!response.ok) {
+          console.error(
+            `Extraction failed for credential ${cred.id}:`,
+            response.status,
+          );
+        }
+      }
 
       await fetchFinancialData();
     } catch (err) {
@@ -130,6 +118,7 @@ export default function FinancialHealth() {
 
   createEffect(() => {
     fetchFinancialData();
+    fetchCredentials();
   });
 
   const upcomingBills = () => {
@@ -221,14 +210,6 @@ export default function FinancialHealth() {
             )}
             {isExtracting() ? "Extracting..." : "Run Extraction"}
           </button>
-          <button class="btn btn-outline gap-2">
-            <HiOutlineArrowUpTray class="w-5 h-5" />
-            Upload Documents
-          </button>
-          <button class="btn btn-primary gap-2">
-            <HiOutlinePlus class="w-5 h-5" />
-            Add Transaction
-          </button>
         </div>
       </div>
 
@@ -253,38 +234,6 @@ export default function FinancialHealth() {
       {/* Content */}
       <Show when={!loading() && !error() && summary()}>
         <div>
-          {/* Period Selector */}
-          <div class="flex gap-2 mb-6">
-            <button
-              class="btn btn-sm"
-              classList={{ "btn-primary": selectedPeriod() === "week" }}
-              onClick={() => setSelectedPeriod("week")}
-            >
-              Week
-            </button>
-            <button
-              class="btn btn-sm"
-              classList={{ "btn-primary": selectedPeriod() === "month" }}
-              onClick={() => setSelectedPeriod("month")}
-            >
-              Month
-            </button>
-            <button
-              class="btn btn-sm"
-              classList={{ "btn-primary": selectedPeriod() === "quarter" }}
-              onClick={() => setSelectedPeriod("quarter")}
-            >
-              Quarter
-            </button>
-            <button
-              class="btn btn-sm"
-              classList={{ "btn-primary": selectedPeriod() === "year" }}
-              onClick={() => setSelectedPeriod("year")}
-            >
-              Year
-            </button>
-          </div>
-
           {/* Financial Stats Overview */}
           <div class="stats stats-vertical lg:stats-horizontal shadow mb-8 w-full">
             <div class="stat">

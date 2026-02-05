@@ -28,9 +28,9 @@ export default function BackgroundJobs() {
   const [selectedDownloads, setSelectedDownloads] = createSignal<Set<string>>(
     new Set(),
   );
-  const [selectedExtractions, setSelectedExtractions] = createSignal<Set<number>>(
-    new Set(),
-  );
+  const [selectedExtractions, setSelectedExtractions] = createSignal<
+    Set<number>
+  >(new Set());
 
   const fetchDownloadJobs = async () => {
     try {
@@ -100,7 +100,10 @@ export default function BackgroundJobs() {
             credential_id: Number(credentialId),
             source_type: sourceType,
           };
-          console.log("Sending request body:", JSON.stringify(requestBody, null, 2));
+          console.log(
+            "Sending request body:",
+            JSON.stringify(requestBody, null, 2),
+          );
 
           const response = await fetch(getApiUrl("/api/downloads"), {
             method: "POST",
@@ -110,7 +113,11 @@ export default function BackgroundJobs() {
 
           if (!response.ok) {
             const errorText = await response.text();
-            console.error("Failed to create download job:", response.status, errorText);
+            console.error(
+              "Failed to create download job:",
+              response.status,
+              errorText,
+            );
             continue;
           }
 
@@ -393,7 +400,9 @@ function StartDownloadsForm(props: {
   onSelectionChange: (selected: Set<string>) => void;
   onStart: () => void;
   loading: boolean;
-  getSourceTypeForCredential: (credential: CredentialMetadata) => SourceType | null;
+  getSourceTypeForCredential: (
+    credential: CredentialMetadata,
+  ) => SourceType | null;
 }) {
   const handleCheckboxChange = (key: string, checked: boolean) => {
     props.onSelectionChange((prev) => {
@@ -478,10 +487,7 @@ function StartDownloadsForm(props: {
                             class="checkbox checkbox-sm"
                             checked={props.selectedDownloads.has(key)}
                             onChange={(e) =>
-                              handleCheckboxChange(
-                                key,
-                                e.currentTarget.checked,
-                              )
+                              handleCheckboxChange(key, e.currentTarget.checked)
                             }
                           />
                         </td>
@@ -604,9 +610,14 @@ function StartExtractionsForm(props: {
                         <input
                           type="checkbox"
                           class="checkbox checkbox-sm"
-                          checked={props.selectedExtractions.has(Number(cred.id))}
+                          checked={props.selectedExtractions.has(
+                            Number(cred.id),
+                          )}
                           onChange={(e) =>
-                            handleCheckboxChange(Number(cred.id), e.currentTarget.checked)
+                            handleCheckboxChange(
+                              Number(cred.id),
+                              e.currentTarget.checked,
+                            )
                           }
                         />
                       </td>
