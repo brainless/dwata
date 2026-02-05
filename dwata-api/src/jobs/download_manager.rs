@@ -219,7 +219,14 @@ impl DownloadManager {
 
         // Store folder metadata in database
         for folder in &folders {
-            let mailbox_status = imap_client.mailbox_status(&folder.imap_path)?;
+            let mailbox_status = match imap_client.mailbox_status(&folder.imap_path) {
+                Ok(status) => status,
+                Err(e) => {
+                    tracing::warn!("Failed to get status for folder '{}': {}. Skipping.", folder.imap_path, e);
+                    continue;
+                }
+            };
+
             let _folder_id = folders::upsert_folder_from_imap(
                 db_conn.clone(),
                 job.credential_id,
@@ -252,22 +259,34 @@ impl DownloadManager {
             let uids = match job.job_type {
                 JobType::RecentSync => {
                     // Download new emails (UID > last_synced_uid)
-                    imap_client.search_emails(
+                    match imap_client.search_emails(
                         &db_folder.imap_path,
                         resume_uid,
                         max_age_months,
                         Some(state.fetch_batch_size)
-                    )?
+                    ) {
+                        Ok(uids) => uids,
+                        Err(e) => {
+                            tracing::warn!("Failed to search emails in folder '{}': {}. Skipping.", db_folder.imap_path, e);
+                            continue;
+                        }
+                    }
                 }
                 JobType::HistoricalBackfill => {
                     // Download historical emails (oldest first, up to 100 per folder)
                     // Try reverse chronological (oldest UIDs first)
-                    let all_uids = imap_client.search_emails(
+                    let all_uids = match imap_client.search_emails(
                         &db_folder.imap_path,
                         None,
                         None,
                         None,
-                    )?;
+                    ) {
+                        Ok(uids) => uids,
+                        Err(e) => {
+                            tracing::warn!("Failed to search emails in folder '{}': {}. Skipping.", db_folder.imap_path, e);
+                            continue;
+                        }
+                    };
 
                     // Filter for emails we haven't synced yet (UID <= last_synced_uid or last_synced_uid is None)
                     let historical_uids: Vec<u32> = all_uids
