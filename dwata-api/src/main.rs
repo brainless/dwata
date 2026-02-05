@@ -156,20 +156,30 @@ async fn main() -> std::io::Result<()> {
         tracing::warn!("Failed to ensure jobs for all credentials: {}", e);
     }
 
-    // Run initial sync on startup to check for new emails
-    if let Err(e) = download_manager.sync_all_jobs().await {
-        tracing::warn!("Failed to run initial sync: {}", e);
-    }
+    // Spawn background task for initial sync (delayed to allow full initialization)
+    let manager_clone_startup = download_manager.clone();
+    let extraction_manager_clone_startup = financial_extraction_manager.clone();
+    tokio::spawn(async move {
+        // Wait 2 seconds for server to fully initialize
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    // Run initial financial extraction on startup
-    match financial_extraction_manager.extract_from_emails(None, None).await {
-        Ok(count) => {
-            tracing::info!("Financial extraction completed on startup: {} transactions extracted", count);
+        tracing::info!("Running initial sync after startup delay");
+
+        // Run initial sync to check for new emails
+        if let Err(e) = manager_clone_startup.sync_all_jobs().await {
+            tracing::warn!("Failed to run initial sync: {}", e);
         }
-        Err(e) => {
-            tracing::warn!("Failed to run initial financial extraction: {}", e);
+
+        // Run initial financial extraction
+        match extraction_manager_clone_startup.extract_from_emails(None, None).await {
+            Ok(count) => {
+                tracing::info!("Financial extraction completed on startup: {} transactions extracted", count);
+            }
+            Err(e) => {
+                tracing::warn!("Failed to run initial financial extraction: {}", e);
+            }
         }
-    }
+    });
 
     // Spawn periodic sync task (every 5 minutes)
     let manager_clone = download_manager.clone();

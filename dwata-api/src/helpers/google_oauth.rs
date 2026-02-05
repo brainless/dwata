@@ -96,12 +96,18 @@ impl GoogleOAuthClient {
         &self,
         refresh_token: &str,
     ) -> Result<oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>> {
+        tracing::debug!("Attempting to refresh OAuth token");
         let token = self
             .client
             .exchange_refresh_token(&oauth2::RefreshToken::new(refresh_token.to_string()))
             .request_async(self.async_http_client())
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::warn!("OAuth token refresh failed: {}", e);
+                anyhow::anyhow!("Failed to refresh OAuth token: {}", e)
+            })?;
 
+        tracing::debug!("OAuth token refreshed successfully");
         Ok(token)
     }
 }

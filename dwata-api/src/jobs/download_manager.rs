@@ -69,20 +69,46 @@ impl DownloadManager {
                             Err(_) => format!("credential_id {}", job_clone.credential_id),
                         };
 
-                        tracing::error!(
-                            "IMAP download failed for job {} [Account: {}]: {}",
-                            job_id_for_spawn,
-                            credential_info,
-                            e
-                        );
+                        let error_str = e.to_string();
 
-                        let _ = db::update_job_status(
-                            db_conn,
-                            job_id_for_spawn,
-                            DownloadJobStatus::Failed,
-                            Some(e.to_string()),
-                        )
-                        .await;
+                        // Check if this is a transient error (network, timeout, request failed)
+                        let is_transient = error_str.contains("Request failed")
+                            || error_str.contains("timeout")
+                            || error_str.contains("connection")
+                            || error_str.contains("network");
+
+                        if is_transient {
+                            tracing::warn!(
+                                "IMAP download encountered transient error for job {} [Account: {}]: {}. Will retry on next sync.",
+                                job_id_for_spawn,
+                                credential_info,
+                                e
+                            );
+
+                            // Set back to Completed so it will retry on next sync
+                            let _ = db::update_job_status(
+                                db_conn,
+                                job_id_for_spawn,
+                                DownloadJobStatus::Completed,
+                                None,
+                            )
+                            .await;
+                        } else {
+                            tracing::error!(
+                                "IMAP download failed for job {} [Account: {}]: {}",
+                                job_id_for_spawn,
+                                credential_info,
+                                e
+                            );
+
+                            let _ = db::update_job_status(
+                                db_conn,
+                                job_id_for_spawn,
+                                DownloadJobStatus::Failed,
+                                Some(error_str),
+                            )
+                            .await;
+                        }
                     }
                 }
                 _ => {
