@@ -40,6 +40,7 @@ pub async fn google_oauth_callback(
     state_manager: web::Data<Arc<OAuthStateManager>>,
     db: web::Data<Arc<crate::database::Database>>,
     token_cache: web::Data<Arc<crate::helpers::token_cache::TokenCache>>,
+    keyring: web::Data<Arc<KeyringService>>,
 ) -> Result<HttpResponse> {
     if let Some(error) = &query.error {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
@@ -118,13 +119,15 @@ pub async fn google_oauth_callback(
         Err(e) => return Err(actix_web::error::ErrorInternalServerError(format!("Failed to store credential: {}", e))),
     };
 
-    KeyringService::update_password(
-        &CredentialType::OAuth,
-        &credential_request.identifier,
-        &email,
-        refresh_token,
-    )
-    .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to store refresh token: {}", e)))?;
+    keyring
+        .update_password(
+            &CredentialType::OAuth,
+            &credential_request.identifier,
+            &email,
+            refresh_token,
+        )
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to store refresh token: {}", e)))?;
 
     token_cache.store_token(metadata.id, access_token.to_string(), expires_in).await;
 

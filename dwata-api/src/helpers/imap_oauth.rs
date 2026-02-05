@@ -28,16 +28,19 @@ pub async fn get_access_token_for_imap(
     credential: &shared_types::credential::CredentialMetadata,
     token_cache: &crate::helpers::token_cache::TokenCache,
     oauth_client: &crate::helpers::google_oauth::GoogleOAuthClient,
+    keyring_service: &crate::helpers::keyring_service::KeyringService,
 ) -> Result<String> {
     if let Some(access_token) = token_cache.get_token(credential_id).await {
         return Ok(access_token);
     }
 
-    let refresh_token = crate::helpers::keyring_service::KeyringService::get_password(
-        &credential.credential_type,
-        &credential.identifier,
-        &credential.username,
-    )?;
+    let refresh_token = keyring_service
+        .get_password(
+            &credential.credential_type,
+            &credential.identifier,
+            &credential.username,
+        )
+        .await?;
 
     let token_response = oauth_client.refresh_token(&refresh_token).await?;
     let access_token = token_response.access_token().secret().to_string();

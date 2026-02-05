@@ -19,6 +19,7 @@ pub struct DownloadManager {
     active_jobs: Arc<Mutex<HashMap<i64, JoinHandle<()>>>>,
     token_cache: Arc<crate::helpers::token_cache::TokenCache>,
     oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
+    keyring_service: Arc<KeyringService>,
 }
 
 impl DownloadManager {
@@ -26,12 +27,14 @@ impl DownloadManager {
         db_conn: AsyncDbConnection,
         token_cache: Arc<crate::helpers::token_cache::TokenCache>,
         oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
+        keyring_service: Arc<KeyringService>,
     ) -> Self {
         Self {
             db_conn,
             active_jobs: Arc::new(Mutex::new(HashMap::new())),
             token_cache,
             oauth_client,
+            keyring_service,
         }
     }
 
@@ -57,12 +60,13 @@ impl DownloadManager {
         let job_id_for_spawn = job_id;
         let token_cache = self.token_cache.clone();
         let oauth_client = self.oauth_client.clone();
+        let keyring_service = self.keyring_service.clone();
         let job_clone = job.clone();
 
         let handle = tokio::spawn(async move {
             match job_clone.source_type {
                 SourceType::Imap => {
-                    if let Err(e) = Self::run_imap_download(db_conn.clone(), &job_clone, token_cache, oauth_client).await {
+                    if let Err(e) = Self::run_imap_download(db_conn.clone(), &job_clone, token_cache, oauth_client, keyring_service).await {
                         // Get credential info for better error logging
                         let credential_info = match get_credential(db_conn.clone(), job_clone.credential_id).await {
                             Ok(cred) => format!("{} ({})", cred.username, cred.identifier),
@@ -149,6 +153,7 @@ impl DownloadManager {
         job: &DownloadJob,
         token_cache: Arc<crate::helpers::token_cache::TokenCache>,
         oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
+        keyring_service: Arc<KeyringService>,
     ) -> Result<()> {
         let credential = get_credential(
             db_conn.clone(),
@@ -171,6 +176,7 @@ impl DownloadManager {
                 &credential,
                 &token_cache,
                 &oauth_client,
+                &keyring_service,
             )
             .await?;
 
@@ -182,11 +188,13 @@ impl DownloadManager {
             )
             .await?
         } else {
-            let password = KeyringService::get_password(
-                &credential.credential_type,
-                &credential.identifier,
-                &credential.username,
-            )?;
+            let password = keyring_service
+                .get_password(
+                    &credential.credential_type,
+                    &credential.identifier,
+                    &credential.username,
+                )
+                .await?;
 
             RealImapClient::connect_with_password(
                 &credential.service_name.unwrap_or_default(),

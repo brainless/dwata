@@ -127,11 +127,34 @@ async fn main() -> std::io::Result<()> {
     let state_manager = Arc::new(crate::helpers::oauth_state::OAuthStateManager::new());
     let token_cache = Arc::new(crate::helpers::token_cache::TokenCache::new());
 
+    // Initialize keyring service with caching
+    tracing::info!("Initializing keyring service with 1 hour cache TTL");
+    let keyring_service = Arc::new(crate::helpers::keyring_service::KeyringService::new());
+
+    // Preload credentials into cache at startup
+    tracing::info!("Preloading credentials into keyring cache...");
+    match crate::database::credentials::list_credentials(db.async_connection.clone(), false).await {
+        Ok(credentials) => {
+            let preload_list: Vec<_> = credentials
+                .iter()
+                .filter(|c| c.credential_type.requires_keychain())
+                .map(|c| (c.credential_type.clone(), c.identifier.clone(), c.username.clone()))
+                .collect();
+
+            tracing::info!("Found {} credentials to preload", preload_list.len());
+            keyring_service.preload_credentials(preload_list).await;
+        }
+        Err(e) => {
+            tracing::warn!("Failed to preload credentials: {}", e);
+        }
+    }
+
     // Initialize download manager
     let download_manager = Arc::new(jobs::download_manager::DownloadManager::new(
         db.async_connection.clone(),
         token_cache.clone(),
         oauth_client.clone(),
+        keyring_service.clone(),
     ));
 
     // Initialize extraction manager
@@ -224,6 +247,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(oauth_client.clone()))
             .app_data(web::Data::new(state_manager.clone()))
             .app_data(web::Data::new(token_cache.clone()))
+            .app_data(web::Data::new(keyring_service.clone()))
             .service(hello)
             .service(health)
             .service(get_settings)
