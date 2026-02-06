@@ -21,4 +21,5 @@ pub struct SettingsResponse {
 #[derive(Debug, Serialize, Deserialize, TS)]
 pub struct UpdateApiKeysRequest {
     pub gemini_api_key: Option<String>,
+    pub claude_api_key: Option<String>,
 }

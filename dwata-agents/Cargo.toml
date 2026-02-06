@@ -1,0 +1,39 @@
+[package]
+name = "dwata-agents"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# nocodo framework
+nocodo-llm-sdk = { path = "../../nocodo/nocodo-llm-sdk" }
+
+# Internal dependencies
+shared-types = { path = "../shared-types" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = "0.8"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Regex
+regex = "1"
+
+# Logging
+tracing = "0.1"
+
+# Date/time
+chrono = "0.4"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }

@@ -29,6 +29,7 @@ impl Default for ApiConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ApiKeysConfig {
     pub gemini_api_key: Option<String>,
+    pub claude_api_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -73,6 +74,7 @@ impl ApiConfig {
             let default_config = r#"
 [api_keys]
 # gemini_api_key = "your-gemini-key"
+# claude_api_key = "your-claude-key"
 
 [cors]
 allowed_origins = ["http://localhost:3030"]

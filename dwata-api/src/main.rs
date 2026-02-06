@@ -337,6 +337,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/financial/patterns/{id}", web::get().to(handlers::financial::get_pattern))
             .route("/api/financial/patterns/{id}", web::put().to(handlers::financial::update_pattern))
             .route("/api/financial/patterns/{id}/toggle", web::patch().to(handlers::financial::toggle_pattern))
+            .service(handlers::pattern_generation::generate_pattern)
     })
     .bind((host.as_str(), port))?
     .run();

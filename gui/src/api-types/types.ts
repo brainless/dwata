@@ -137,7 +137,7 @@ export type SettingsResponse = { config_file_path: string, api_keys: Array<ApiKe
 /**
  * Request to update API keys
  */
-export type UpdateApiKeysRequest = { gemini_api_key: string | null, };
+export type UpdateApiKeysRequest = { gemini_api_key: string | null, claude_api_key: string | null, };
 
 
 export type CredentialType = "imap" | "smtp" | "oauth" | "apikey" | "database" | "localfile" | "custom";
