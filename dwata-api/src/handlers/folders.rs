@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use shared_types::{EmailFolder, ListFoldersResponse};
+use shared_types::{EmailFolder, ListEmailsResponse, ListFoldersResponse};
 use std::sync::Arc;
 
 use crate::database::folders as folders_db;
@@ -51,7 +51,14 @@ pub async fn list_folder_emails(
     .await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(emails))
+    let total_count = emails.len() as i64;
+    let has_more = emails.len() == limit;
+
+    Ok(HttpResponse::Ok().json(ListEmailsResponse {
+        emails,
+        total_count,
+        has_more,
+    }))
 }
 
 #[derive(serde::Deserialize)]
