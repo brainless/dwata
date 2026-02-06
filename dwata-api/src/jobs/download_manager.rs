@@ -11,6 +11,7 @@ use shared_types::credential::CredentialType;
 use shared_types::email::EmailAddress;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::task::JoinHandle;
 use tokio::sync::Mutex;
 
@@ -20,6 +21,7 @@ pub struct DownloadManager {
     token_cache: Arc<crate::helpers::token_cache::TokenCache>,
     oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
     keyring_service: Arc<KeyringService>,
+    shutdown_flag: Arc<AtomicBool>,
 }
 
 impl DownloadManager {
@@ -35,6 +37,7 @@ impl DownloadManager {
             token_cache,
             oauth_client,
             keyring_service,
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -42,7 +45,15 @@ impl DownloadManager {
         self.db_conn.clone()
     }
 
+    pub fn is_shutting_down(&self) -> bool {
+        self.shutdown_flag.load(Ordering::SeqCst)
+    }
+
     pub async fn start_job(&self, job_id: i64) -> Result<()> {
+        if self.shutdown_flag.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!("Download manager is shutting down"));
+        }
+
         let job = db::get_download_job(self.db_conn.clone(), job_id).await?;
 
         let active_jobs = self.active_jobs.lock().await;
@@ -66,11 +77,20 @@ impl DownloadManager {
         let oauth_client = self.oauth_client.clone();
         let keyring_service = self.keyring_service.clone();
         let job_clone = job.clone();
+        let shutdown_flag = self.shutdown_flag.clone();
+        let active_jobs_cleanup = self.active_jobs.clone();
 
         let handle = tokio::spawn(async move {
             match job_clone.source_type {
                 SourceType::Imap => {
-                    if let Err(e) = Self::run_imap_download(db_conn.clone(), &job_clone, token_cache, oauth_client, keyring_service).await {
+                    if let Err(e) = Self::run_imap_download(
+                        db_conn.clone(),
+                        &job_clone,
+                        token_cache,
+                        oauth_client,
+                        keyring_service,
+                        shutdown_flag.clone(),
+                    ).await {
                         // Get credential info for better error logging
                         let credential_info = match get_credential(db_conn.clone(), job_clone.credential_id).await {
                             Ok(cred) => format!("{} ({})", cred.username, cred.identifier),
@@ -85,7 +105,15 @@ impl DownloadManager {
                             || error_str.contains("connection")
                             || error_str.contains("network");
 
-                        if is_transient {
+                        if shutdown_flag.load(Ordering::SeqCst) {
+                            let _ = db::update_job_status(
+                                db_conn,
+                                job_id_for_spawn,
+                                DownloadJobStatus::Cancelled,
+                                Some("Server shutdown".to_string()),
+                            )
+                            .await;
+                        } else if is_transient {
                             tracing::warn!(
                                 "IMAP download encountered transient error for job {} [Account: {}]: {}. Will retry on next sync.",
                                 job_id_for_spawn,
@@ -123,11 +151,35 @@ impl DownloadManager {
                     tracing::warn!("Unsupported source type: {:?}", job_clone.source_type);
                 }
             }
+
+            let mut active_jobs = active_jobs_cleanup.lock().await;
+            active_jobs.remove(&job_id_for_spawn);
         });
 
         let mut active_jobs = self.active_jobs.lock().await;
         active_jobs.insert(job_id, handle);
         drop(active_jobs);
+
+        Ok(())
+    }
+
+    pub async fn shutdown(&self) -> Result<()> {
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+
+        let mut active_jobs = self.active_jobs.lock().await;
+        let handles = std::mem::take(&mut *active_jobs);
+        drop(active_jobs);
+
+        for (job_id, handle) in handles {
+            handle.abort();
+            let _ = db::update_job_status(
+                self.db_conn.clone(),
+                job_id,
+                DownloadJobStatus::Cancelled,
+                Some("Server shutdown".to_string()),
+            )
+            .await;
+        }
 
         Ok(())
     }
@@ -153,12 +205,24 @@ impl DownloadManager {
     }
 
     async fn run_imap_download(
-        db_conn: Arc<Mutex<rusqlite::Connection>>,
+        db_conn: AsyncDbConnection,
         job: &DownloadJob,
         token_cache: Arc<crate::helpers::token_cache::TokenCache>,
         oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
         keyring_service: Arc<KeyringService>,
+        shutdown_flag: Arc<AtomicBool>,
     ) -> Result<()> {
+        if shutdown_flag.load(Ordering::SeqCst) {
+            db::update_job_status(
+                db_conn.clone(),
+                job.id,
+                DownloadJobStatus::Cancelled,
+                Some("Server shutdown".to_string()),
+            )
+            .await?;
+            return Ok(());
+        }
+
         let credential = get_credential(
             db_conn.clone(),
             job.credential_id,
@@ -248,6 +312,17 @@ impl DownloadManager {
         tracing::info!("Found {} folders for credential {}", db_folders.len(), job.credential_id);
 
         for db_folder in db_folders {
+            if shutdown_flag.load(Ordering::SeqCst) {
+                db::update_job_status(
+                    db_conn.clone(),
+                    job.id,
+                    DownloadJobStatus::Cancelled,
+                    Some("Server shutdown".to_string()),
+                )
+                .await?;
+                return Ok(());
+            }
+
             if !db_folder.is_selectable {
                 tracing::debug!("Skipping non-selectable folder: {}", db_folder.imap_path);
                 continue;
@@ -304,6 +379,17 @@ impl DownloadManager {
             let mut highest_uid = db_folder.last_synced_uid;
 
             for uid in uids {
+                if shutdown_flag.load(Ordering::SeqCst) {
+                    db::update_job_status(
+                        db_conn.clone(),
+                        job.id,
+                        DownloadJobStatus::Cancelled,
+                        Some("Server shutdown".to_string()),
+                    )
+                    .await?;
+                    return Ok(());
+                }
+
                 match imap_client.fetch_email(&db_folder.imap_path, uid) {
                     Ok(parsed_email) => {
                         let to_addresses: Vec<EmailAddress> = parsed_email.to_addresses

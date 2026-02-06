@@ -1,10 +1,5 @@
-use rusqlite::Connection;
+use crate::database::AsyncDbConnection;
 use shared_types::credential::{CredentialMetadata, CredentialType, CreateCredentialRequest};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-pub type DbConnection = Arc<std::sync::Mutex<Connection>>;
-pub type AsyncDbConnection = Arc<Mutex<Connection>>;
 
 #[derive(Debug)]
 pub enum CredentialDbError {

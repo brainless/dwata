@@ -186,6 +186,10 @@ async fn main() -> std::io::Result<()> {
         // Wait 2 seconds for server to fully initialize
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
+        if manager_clone_startup.is_shutting_down() {
+            return;
+        }
+
         tracing::info!("Running initial sync after startup delay");
 
         // Run initial sync to check for new emails
@@ -209,6 +213,10 @@ async fn main() -> std::io::Result<()> {
     tokio::spawn(async move {
         // Wait 10 seconds to allow recent sync to complete first
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+
+        if manager_clone_backfill.is_shutting_down() {
+            return;
+        }
 
         tracing::info!("Starting historical backfill on startup");
 
@@ -238,6 +246,9 @@ async fn main() -> std::io::Result<()> {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
         loop {
             interval.tick().await;
+            if manager_clone.is_shutting_down() {
+                break;
+            }
             if let Err(e) = manager_clone.sync_all_jobs().await {
                 tracing::error!("Periodic sync failed: {}", e);
             }
@@ -246,7 +257,8 @@ async fn main() -> std::io::Result<()> {
 
     println!("Starting server on {}:{}", host, port);
 
-    HttpServer::new(move || {
+    let download_manager_for_server = download_manager.clone();
+    let server = HttpServer::new(move || {
         // Configure CORS
         let cors = if let Some(cors_config) = &config.cors {
             let mut cors_builder = Cors::default();
@@ -269,7 +281,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(web::Data::new(db.clone()))
             .app_data(web::Data::new(settings_state.clone()))
-            .app_data(web::Data::new(download_manager.clone()))
+            .app_data(web::Data::new(download_manager_for_server.clone()))
             .app_data(web::Data::new(extraction_manager.clone()))
             .app_data(web::Data::new(financial_extraction_manager.clone()))
             .app_data(web::Data::new(oauth_client.clone()))
@@ -327,6 +339,24 @@ async fn main() -> std::io::Result<()> {
             .route("/api/financial/patterns/{id}/toggle", web::patch().to(handlers::financial::toggle_pattern))
     })
     .bind((host.as_str(), port))?
-    .run()
-    .await
+    .run();
+
+    let handle = server.handle();
+    let shutdown_manager = download_manager.clone();
+
+    tokio::spawn(async move {
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::error!("Failed to listen for Ctrl+C: {}", e);
+            return;
+        }
+
+        tracing::info!("Ctrl+C received, shutting down...");
+        if let Err(e) = shutdown_manager.shutdown().await {
+            tracing::warn!("Failed to shutdown download manager cleanly: {}", e);
+        }
+
+        handle.stop(true).await;
+    });
+
+    server.await
 }

@@ -16,7 +16,7 @@ tokio.workspace = true
 # manager-tools.workspace = true
 shared-types = { path = "../shared-types" }
 extractors = { path = "../extractors" }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 chrono.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
@@ -38,3 +38,5 @@ native-tls = "0.2"
 mail-parser = "0.9"
 regex = "1.10"
 futures = "0.3"
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
