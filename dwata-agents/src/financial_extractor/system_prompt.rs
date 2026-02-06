@@ -4,6 +4,8 @@ pub fn build_system_prompt(
     email_subject: &str,
     email_body: &str,
     existing_patterns: &[FinancialPattern],
+    high_signal_line: Option<&str>,
+    improved_attempt: bool,
 ) -> String {
     format!(
         r#"You are a financial data extraction pattern generator. Your goal is to create regex patterns that extract financial information from emails.
@@ -42,6 +44,10 @@ Pattern: `invoice for \$?([\d,]+\.?\d{{0,2}}) due ([A-Za-z]+ \d{{1,2}})`
 
 {}
 
+## High-Signal Line (if present)
+
+{}
+
 ## Your Task
 
 1. Analyze the email content carefully
@@ -50,6 +56,7 @@ Pattern: `invoice for \$?([\d,]+\.?\d{{0,2}}) due ([A-Za-z]+ \d{{1,2}})`
 4. Use the test_pattern tool to validate your regex
 5. Iterate until the pattern extracts correct data
 6. Use the save_pattern tool to persist the final pattern
+7. Finish with a final assistant message and no tool calls
 
 ## Available Tools
 
@@ -61,7 +68,7 @@ Parameters:
 - vendor_group: Optional - which capture group contains the vendor
 - date_group: Optional - which capture group contains the date
 
-Returns: List of extracted transactions
+Returns: JSON list of extracted transactions. An empty list means no match.
 
 ### save_pattern
 Save a validated pattern to the database.
@@ -86,6 +93,15 @@ Returns: Pattern ID
 - Make patterns specific enough to avoid false positives
 - But not so specific that they only match one email
 - Once you successfully save a pattern, your task is complete
+- Success criteria for test_pattern: at least one transaction with a non-empty amount
+- You may attempt at most 5 test_pattern calls before deciding it is not feasible
+- If you cannot find a working pattern, respond with a final assistant message explaining why
+- After save_pattern, do not call any more tools
+- After the first successful test_pattern, immediately call save_pattern with the same regex and group indices. Do not call test_pattern again after a success.
+
+## First Attempt Guidance
+
+{}
 
 ## Email to Analyze
 
@@ -94,6 +110,8 @@ Returns: Pattern ID
 **Body:**
 {}"#,
         format_existing_patterns(existing_patterns),
+        high_signal_line.unwrap_or("None detected."),
+        first_attempt_guidance(improved_attempt),
         email_subject,
         email_body,
     )
@@ -126,4 +144,12 @@ fn format_existing_patterns(patterns: &[FinancialPattern]) -> String {
     }
 
     output
+}
+
+fn first_attempt_guidance(improved_attempt: bool) -> &'static str {
+    if improved_attempt {
+        "Use the high-signal line as the anchor if available. Avoid `.*` across lines. Prefer a single-line regex like: `(?i)Receipt from\\s+([A-Za-z0-9 .,&-]+)\\s+\\$?([\\d,]+\\.\\d{2})\\s+Paid\\s+([A-Za-z]+\\s+\\d{1,2},\\s+\\d{4})` and then adjust minimally."
+    } else {
+        "First attempt must anchor on a high-signal line that includes vendor, amount, and date. Avoid `.*` across lines and keep the regex single-line when possible. If the test succeeds, immediately save the pattern."
+    }
 }
