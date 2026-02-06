@@ -42,13 +42,6 @@ Pattern: `invoice for \$?([\d,]+\.?\d{{0,2}}) due ([A-Za-z]+ \d{{1,2}})`
 
 {}
 
-## Email to Analyze
-
-**Subject:** {}
-
-**Body:**
-{}
-
 ## Your Task
 
 1. Analyze the email content carefully
@@ -92,7 +85,14 @@ Returns: Pattern ID
 - If the pattern doesn't match, analyze why and adjust
 - Make patterns specific enough to avoid false positives
 - But not so specific that they only match one email
-- Once you successfully save a pattern, your task is complete"#,
+- Once you successfully save a pattern, your task is complete
+
+## Email to Analyze
+
+**Subject:** {}
+
+**Body:**
+{}"#,
         format_existing_patterns(existing_patterns),
         email_subject,
         email_body,

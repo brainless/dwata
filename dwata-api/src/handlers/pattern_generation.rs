@@ -90,6 +90,7 @@ pub async fn generate_pattern(
         llm_client,
         storage.clone(),
         tool_executor,
+        "claude-sonnet-4-5-20250929".to_string(),
         subject,
         body_text,
         patterns,

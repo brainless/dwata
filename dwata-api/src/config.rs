@@ -5,6 +5,7 @@ use std::path::PathBuf;
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ApiConfig {
     pub api_keys: Option<ApiKeysConfig>,
+    pub database: Option<DatabaseConfig>,
     pub cors: Option<CorsConfig>,
     pub server: Option<ServerConfig>,
     pub google_oauth: Option<GoogleOAuthConfig>,
@@ -14,6 +15,7 @@ impl Default for ApiConfig {
     fn default() -> Self {
         Self {
             api_keys: None,
+            database: None,
             cors: Some(CorsConfig {
                 allowed_origins: vec!["http://localhost:3000".to_string()],
             }),
@@ -30,6 +32,11 @@ impl Default for ApiConfig {
 pub struct ApiKeysConfig {
     pub gemini_api_key: Option<String>,
     pub claude_api_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct DatabaseConfig {
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -75,6 +82,9 @@ impl ApiConfig {
 [api_keys]
 # gemini_api_key = "your-gemini-key"
 # claude_api_key = "your-claude-key"
+
+[database]
+# path = "/absolute/path/to/db.sqlite"
 
 [cors]
 allowed_origins = ["http://localhost:3030"]

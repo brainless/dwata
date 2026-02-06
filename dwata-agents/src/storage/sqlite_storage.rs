@@ -22,7 +22,7 @@ impl AgentStorage for SqliteAgentStorage {
         conn.execute(
             "INSERT INTO agent_sessions
              (agent_name, provider, model, system_prompt, user_prompt, config, status, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             rusqlite::params![
                 session.agent_type,
                 "financial-extractor",

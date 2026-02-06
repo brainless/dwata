@@ -31,9 +31,16 @@ regex = "1"
 
 # Logging
 tracing = "0.1"
+tracing-subscriber.workspace = true
 
 # Date/time
 chrono = "0.4"
 
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+# CLI/config
+clap.workspace = true
+config = { version = "0.14", default-features = false, features = ["toml"] }
+dirs = "5.0"
+mail-parser = "0.9"
