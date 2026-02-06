@@ -4,6 +4,7 @@ use shared_types::download::{
 };
 use shared_types::email::EmailAddress;
 use std::fmt;
+use rusqlite::OptionalExtension;
 
 pub use crate::database::AsyncDbConnection;
 
@@ -420,6 +421,19 @@ pub async fn insert_email_download_transactional(
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
 
+    // Skip if we already have this UID for the folder
+    let existing_email_id: Option<i64> = conn.query_row(
+        "SELECT id FROM emails WHERE credential_id = ? AND folder_id = ? AND uid = ?",
+        rusqlite::params![credential_id, folder_id, uid as i32],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to check existing email: {}", e)))?;
+
+    if let Some(email_id) = existing_email_id {
+        return Ok((0, email_id));
+    }
+
     // Begin transaction
     conn.execute("BEGIN TRANSACTION", [])
         .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
@@ -463,7 +477,9 @@ pub async fn insert_email_download_transactional(
                body_text, body_html, is_read, is_flagged, is_draft, is_answered,
                has_attachments, attachment_count, size_bytes, thread_id, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               RETURNING id",
+              ON CONFLICT(credential_id, folder_id, uid) DO UPDATE SET
+                updated_at = excluded.updated_at
+              RETURNING id",
             rusqlite::params![
                 download_item_id,
                 credential_id,

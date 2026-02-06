@@ -884,7 +884,89 @@ pub fn migrate_folders_and_labels(conn: &mut Connection) -> anyhow::Result<()> {
     )?;
 
     if has_folder_id {
-        tracing::info!("Migration already completed, skipping");
+        tracing::info!("Migration already completed, ensuring email UID uniqueness");
+
+        // Dedupe any existing rows before creating unique index
+        let dup_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM (
+                SELECT credential_id, folder_id, uid, COUNT(*) as c
+                FROM emails
+                WHERE folder_id IS NOT NULL
+                GROUP BY credential_id, folder_id, uid
+                HAVING c > 1
+            )",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if dup_count > 0 {
+            tracing::warn!("Found {} duplicate email UID groups, deduplicating", dup_count);
+
+            tx.execute(
+                "CREATE TEMP TABLE email_uid_dedupe AS
+                 SELECT e.id AS duplicate_id,
+                        (SELECT MIN(e2.id) FROM emails e2
+                         WHERE e2.credential_id = e.credential_id
+                           AND e2.folder_id = e.folder_id
+                           AND e2.uid = e.uid) AS canonical_id
+                 FROM emails e
+                 WHERE e.id != (
+                     SELECT MIN(e2.id) FROM emails e2
+                     WHERE e2.credential_id = e.credential_id
+                       AND e2.folder_id = e.folder_id
+                       AND e2.uid = e.uid
+                 )",
+                [],
+            )?;
+
+            // Preserve label associations without violating uniqueness
+            tx.execute(
+                "INSERT OR IGNORE INTO email_label_associations (email_id, label_id, created_at)
+                 SELECT d.canonical_id, ela.label_id, ela.created_at
+                 FROM email_label_associations ela
+                 JOIN email_uid_dedupe d ON d.duplicate_id = ela.email_id",
+                [],
+            )?;
+            tx.execute(
+                "DELETE FROM email_label_associations
+                 WHERE email_id IN (SELECT duplicate_id FROM email_uid_dedupe)",
+                [],
+            )?;
+
+            // Re-point other tables that reference emails
+            tx.execute(
+                "UPDATE email_attachments
+                 SET email_id = (SELECT canonical_id FROM email_uid_dedupe WHERE duplicate_id = email_attachments.email_id)
+                 WHERE email_id IN (SELECT duplicate_id FROM email_uid_dedupe)",
+                [],
+            )?;
+            tx.execute(
+                "UPDATE events
+                 SET email_id = (SELECT canonical_id FROM email_uid_dedupe WHERE duplicate_id = events.email_id)
+                 WHERE email_id IN (SELECT duplicate_id FROM email_uid_dedupe)",
+                [],
+            )?;
+            tx.execute(
+                "UPDATE contacts
+                 SET email_id = (SELECT canonical_id FROM email_uid_dedupe WHERE duplicate_id = contacts.email_id)
+                 WHERE email_id IN (SELECT duplicate_id FROM email_uid_dedupe)",
+                [],
+            )?;
+
+            tx.execute(
+                "DELETE FROM emails WHERE id IN (SELECT duplicate_id FROM email_uid_dedupe)",
+                [],
+            )?;
+
+            tx.execute("DROP TABLE email_uid_dedupe", [])?;
+        }
+
+        tx.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_unique_uid
+             ON emails(credential_id, folder_id, uid)",
+            [],
+        )?;
+
         tx.commit()?;
         return Ok(());
     }
@@ -990,6 +1072,13 @@ pub fn migrate_folders_and_labels(conn: &mut Connection) -> anyhow::Result<()> {
     // Step 10: Create new index with folder_id
     tx.execute(
         "CREATE INDEX IF NOT EXISTS idx_emails_folder_date ON emails(folder_id, date_received DESC)",
+        [],
+    )?;
+
+    // Step 11: Ensure unique UID per credential + folder
+    tx.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_unique_uid
+         ON emails(credential_id, folder_id, uid)",
         [],
     )?;
 

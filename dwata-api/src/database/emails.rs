@@ -1,6 +1,8 @@
 use shared_types::email::{Email, EmailAddress, EmailAttachment, AttachmentExtractionStatus};
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
+use rusqlite::params_from_iter;
+use std::collections::HashSet;
 
 /// Insert email into database
 pub async fn insert_email(
@@ -43,7 +45,9 @@ pub async fn insert_email(
            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
            has_attachments, attachment_count, size_bytes, thread_id, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id",
+           ON CONFLICT(credential_id, folder_id, uid) DO UPDATE SET
+             updated_at = excluded.updated_at
+           RETURNING id",
         rusqlite::params![
             download_item_id, credential_id, uid as i32, folder_id, message_id, subject, from_address, from_name,
             &to_json, &cc_json, &bcc_json, reply_to, date_sent, date_received,
@@ -54,6 +58,54 @@ pub async fn insert_email(
     )?;
 
     Ok(email_id)
+}
+
+/// Filter out UIDs that already exist for a credential + folder
+pub async fn filter_new_uids(
+    conn: AsyncDbConnection,
+    credential_id: i64,
+    folder_id: i64,
+    uids: &[u32],
+) -> Result<Vec<u32>> {
+    if uids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let conn = conn.lock().await;
+    let mut existing = HashSet::new();
+    let chunk_size = 900; // SQLite max variables is 999
+
+    for chunk in uids.chunks(chunk_size) {
+        let placeholders = std::iter::repeat("?")
+            .take(chunk.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let query = format!(
+            "SELECT uid FROM emails
+             WHERE credential_id = ? AND folder_id = ? AND uid IN ({})",
+            placeholders
+        );
+
+        let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(2 + chunk.len());
+        params.push(rusqlite::types::Value::from(credential_id));
+        params.push(rusqlite::types::Value::from(folder_id));
+        params.extend(chunk.iter().map(|uid| rusqlite::types::Value::from(*uid as i64)));
+
+        let mut stmt = conn.prepare(&query)?;
+        let rows = stmt.query_map(params_from_iter(params), |row| row.get::<_, i32>(0))?;
+        for row in rows {
+            existing.insert(row? as u32);
+        }
+    }
+
+    let filtered = uids
+        .iter()
+        .copied()
+        .filter(|uid| !existing.contains(uid))
+        .collect();
+
+    Ok(filtered)
 }
 
 /// Get email by ID

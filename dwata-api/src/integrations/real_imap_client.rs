@@ -196,6 +196,7 @@ impl RealImapClient {
 
         let date_received = message.internal_date()
             .map(|dt| dt.timestamp_millis())
+            .or(date_sent)
             .unwrap_or_else(|| Utc::now().timestamp_millis());
 
         let size_bytes = message.size;

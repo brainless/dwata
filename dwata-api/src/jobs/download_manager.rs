@@ -1,5 +1,6 @@
 use crate::database::downloads as db;
 use crate::database::credentials::get_credential;
+use crate::database::emails;
 use crate::database::folders;
 use crate::database::AsyncDbConnection;
 use crate::helpers::keyring_service::KeyringService;
@@ -400,7 +401,14 @@ impl DownloadManager {
                 }
             };
 
-            tracing::info!("Found {} emails to download in {}", uids.len(), db_folder.imap_path);
+            let uids = emails::filter_new_uids(
+                db_conn.clone(),
+                job.credential_id,
+                db_folder.id,
+                &uids,
+            ).await?;
+
+            tracing::info!("Found {} new emails to download in {}", uids.len(), db_folder.imap_path);
 
             let mut highest_uid = db_folder.last_synced_uid;
 
