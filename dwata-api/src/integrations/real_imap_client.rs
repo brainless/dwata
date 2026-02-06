@@ -8,7 +8,7 @@ pub struct RealImapClient {
 }
 
 impl RealImapClient {
-    pub async fn connect_with_password(
+    pub fn connect_with_password(
         host: &str,
         port: u16,
         username: &str,
@@ -25,7 +25,7 @@ impl RealImapClient {
         Ok(Self { session })
     }
 
-    pub async fn connect_with_oauth(
+    pub fn connect_with_oauth(
         host: &str,
         port: u16,
         username: &str,

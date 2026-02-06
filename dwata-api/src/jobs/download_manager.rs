@@ -212,6 +212,34 @@ impl DownloadManager {
         keyring_service: Arc<KeyringService>,
         shutdown_flag: Arc<AtomicBool>,
     ) -> Result<()> {
+        let handle = tokio::runtime::Handle::current();
+        let job = job.clone();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        std::thread::spawn(move || {
+            let result = handle.block_on(Self::run_imap_download_async(
+                db_conn,
+                job,
+                token_cache,
+                oauth_client,
+                keyring_service,
+                shutdown_flag,
+            ));
+            let _ = tx.send(result);
+        });
+
+        rx.await
+            .map_err(|e| anyhow::anyhow!("IMAP worker thread stopped: {}", e))?
+    }
+
+    async fn run_imap_download_async(
+        db_conn: AsyncDbConnection,
+        job: DownloadJob,
+        token_cache: Arc<crate::helpers::token_cache::TokenCache>,
+        oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
+        keyring_service: Arc<KeyringService>,
+        shutdown_flag: Arc<AtomicBool>,
+    ) -> Result<()> {
         if shutdown_flag.load(Ordering::SeqCst) {
             db::update_job_status(
                 db_conn.clone(),
@@ -254,8 +282,7 @@ impl DownloadManager {
                 credential.port.unwrap_or(993) as u16,
                 &credential.username,
                 &access_token,
-            )
-            .await?
+            )?
         } else {
             let password = keyring_service
                 .get_password(
@@ -270,8 +297,7 @@ impl DownloadManager {
                 credential.port.unwrap_or(993) as u16,
                 &credential.username,
                 &password,
-            )
-            .await?
+            )?
         };
 
         let state: ImapDownloadState = serde_json::from_value(job.source_state.clone())?;
