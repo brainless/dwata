@@ -34,6 +34,7 @@ pub enum SourceType {
     GoogleDrive,
     Dropbox,
     OneDrive,
+    LocalFile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq)]

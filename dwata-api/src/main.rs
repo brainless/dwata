@@ -332,6 +332,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/financial/transactions", web::get().to(handlers::financial::list_transactions))
             .route("/api/financial/summary", web::get().to(handlers::financial::get_summary))
             .route("/api/financial/extract", web::post().to(handlers::financial::trigger_extraction))
+            .route("/api/financial/extractions/summary", web::get().to(handlers::financial::get_extraction_summary))
+            .route("/api/financial/extractions/attempts", web::get().to(handlers::financial::list_extraction_attempts))
             .route("/api/financial/patterns", web::get().to(handlers::financial::list_patterns))
             .route("/api/financial/patterns", web::post().to(handlers::financial::create_pattern))
             .route("/api/financial/patterns/{id}", web::get().to(handlers::financial::get_pattern))

@@ -6,6 +6,7 @@ import App from "./App";
 import BackgroundJobs from "./pages/BackgroundJobs";
 import Calendar from "./pages/Calendar";
 import Emails from "./pages/Emails";
+import FinancialExtractions from "./pages/FinancialExtractions";
 import FinancialHealth from "./pages/FinancialHealth";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
@@ -30,6 +31,7 @@ render(
       <Route path="/emails/account/:accountId/label/:labelId" component={Emails} />
       <Route path="/calendar" component={Calendar} />
       <Route path="/financial" component={FinancialHealth} />
+      <Route path="/financial/extractions" component={FinancialExtractions} />
       <Route path="/jobs" component={BackgroundJobs} />
       <Route path="/settings" component={Settings} />
       <Route path="/settings/:tab" component={Settings} />

@@ -1,6 +1,7 @@
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use rusqlite::params;
+use shared_types::FinancialExtractionSummary;
 
 pub async fn mark_source_processed(
     conn: AsyncDbConnection,
@@ -113,6 +114,28 @@ pub async fn delete_processed_source(
     )?;
 
     Ok(())
+}
+
+pub async fn get_extraction_summary(
+    conn: AsyncDbConnection,
+) -> Result<FinancialExtractionSummary> {
+    let conn = conn.lock().await;
+
+    let (source_count, transaction_count, last_extracted_at): (i64, i64, Option<i64>) =
+        conn.query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(transaction_count), 0),
+                    MAX(extracted_at)
+             FROM financial_extraction_sources",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+
+    Ok(FinancialExtractionSummary {
+        source_count,
+        transaction_count,
+        last_extracted_at,
+    })
 }
 
 #[derive(Debug)]

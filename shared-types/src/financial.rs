@@ -81,6 +81,33 @@ pub struct FinancialSummary {
     pub period_end: String,
 }
 
+/// Financial extraction source summary
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct FinancialExtractionSummary {
+    pub source_count: i64,
+    pub transaction_count: i64,
+    pub last_extracted_at: Option<i64>,
+}
+
+/// Financial extraction attempt details
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct FinancialExtractionAttempt {
+    pub id: i64,
+    pub source_type: String,
+    pub source_account_id: i64,
+    pub attempted_at: i64,
+    pub total_items_scanned: i64,
+    pub transactions_extracted: i64,
+    pub status: String,
+    pub error_message: Option<String>,
+}
+
+/// Response for extraction attempt history
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct FinancialExtractionAttemptsResponse {
+    pub attempts: Vec<FinancialExtractionAttempt>,
+}
+
 /// Financial health metrics
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct FinancialHealth {

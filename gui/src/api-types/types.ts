@@ -306,7 +306,7 @@ export type DownloadJobStatus = "pending" | "running" | "paused" | "completed" |
 export type DownloadProgress = { total_items: bigint, downloaded_items: bigint, failed_items: bigint, skipped_items: bigint, in_progress_items: bigint, remaining_items: bigint, percent_complete: number, bytes_downloaded: bigint, items_per_second: number, estimated_completion_secs: bigint | null, };
 
 
-export type SourceType = "imap" | "google-drive" | "dropbox" | "one-drive";
+export type SourceType = "imap" | "google-drive" | "dropbox" | "one-drive" | "local-file";
 
 
 import type { ImapFolderStatus } from "./ImapFolderStatus";

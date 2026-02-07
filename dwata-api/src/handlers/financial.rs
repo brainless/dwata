@@ -1,10 +1,17 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use crate::database::{financial_patterns as patterns_db, financial_transactions as db};
+use crate::database::{
+    financial_extraction_attempts as attempts_db,
+    financial_extraction_sources as sources_db,
+    financial_patterns as patterns_db,
+    financial_transactions as db,
+};
 use crate::database::Database;
 use crate::helpers::pattern_validator;
 use crate::jobs::financial_extraction_manager::FinancialExtractionManager;
 use serde::Deserialize;
-use shared_types::FinancialPattern;
+use shared_types::{
+    FinancialExtractionAttemptsResponse, FinancialExtractionSummary, FinancialPattern,
+};
 use std::sync::Arc;
 use tracing::info;
 
@@ -70,6 +77,30 @@ pub async fn trigger_extraction(
         "extracted_count": count,
         "status": "completed"
     })))
+}
+
+pub async fn get_extraction_summary(
+    db: web::Data<Arc<Database>>,
+) -> ActixResult<HttpResponse> {
+    let summary: FinancialExtractionSummary = sources_db::get_extraction_summary(
+        db.async_connection.clone(),
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(summary))
+}
+
+pub async fn list_extraction_attempts(
+    db: web::Data<Arc<Database>>,
+) -> ActixResult<HttpResponse> {
+    let attempts = attempts_db::list_attempts(db.async_connection.clone(), 50)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(FinancialExtractionAttemptsResponse {
+        attempts,
+    }))
 }
 
 #[derive(Deserialize)]

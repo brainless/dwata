@@ -593,6 +593,26 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         [],
     )?;
 
+    // Track financial extraction attempts by source system/account
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS financial_extraction_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_type VARCHAR NOT NULL,
+            source_account_id INTEGER NOT NULL,
+            attempted_at BIGINT NOT NULL,
+            total_items_scanned INTEGER NOT NULL DEFAULT 0,
+            transactions_extracted INTEGER NOT NULL DEFAULT 0,
+            status VARCHAR NOT NULL,
+            error_message VARCHAR
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_extraction_attempts_source ON financial_extraction_attempts(source_type, source_account_id, attempted_at DESC)",
+        [],
+    )?;
+
     // Create financial_patterns table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS financial_patterns (

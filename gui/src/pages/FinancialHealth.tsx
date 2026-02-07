@@ -8,6 +8,7 @@ import {
   HiOutlineClock,
   HiOutlineArrowPath,
 } from "solid-icons/hi";
+import { A } from "@solidjs/router";
 import { createSignal, createEffect, For, Show } from "solid-js";
 import type {
   FinancialTransaction,
@@ -210,6 +211,9 @@ export default function FinancialHealth() {
             )}
             {isExtracting() ? "Extracting..." : "Run Extraction"}
           </button>
+          <A href="/financial/extractions" class="btn btn-ghost">
+            Extraction History
+          </A>
         </div>
       </div>
 

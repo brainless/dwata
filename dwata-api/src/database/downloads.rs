@@ -114,6 +114,7 @@ pub async fn get_download_job(
             "google-drive" => SourceType::GoogleDrive,
             "dropbox" => SourceType::Dropbox,
             "onedrive" => SourceType::OneDrive,
+            "local-file" => SourceType::LocalFile,
             _ => SourceType::Imap,
         };
 
@@ -571,5 +572,6 @@ fn source_type_to_string(source_type: &SourceType) -> &'static str {
         SourceType::GoogleDrive => "google-drive",
         SourceType::Dropbox => "dropbox",
         SourceType::OneDrive => "onedrive",
+        SourceType::LocalFile => "local-file",
     }
 }
