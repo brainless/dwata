@@ -2,7 +2,9 @@ use crate::financial_extractor::types::{SavePatternParams, TestPatternParams};
 use anyhow::Result;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
-use shared_types::{FinancialTransaction, FinancialDocumentType, TransactionStatus};
+use shared_types::{
+    DataSourceType, FinancialDocumentType, FinancialTransaction, TransactionStatus,
+};
 
 pub struct DwataToolExecutor {
     conn: Arc<Mutex<Connection>>,
@@ -46,8 +48,8 @@ impl DwataToolExecutor {
             if let Some(amount) = amount {
                 transactions.push(FinancialTransaction {
                     id: 0,
-                    source_type: "email".to_string(),
-                    source_id: "test".to_string(),
+                    data_source_type: DataSourceType::Email,
+                    data_source_id: "test".to_string(),
                     document_type: FinancialDocumentType::Receipt,
                     description: caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string(),
                     amount,
@@ -57,10 +59,13 @@ impl DwataToolExecutor {
                     }),
                     category: None,
                     vendor,
+                    source_vendor_id: None,
+                    destination_vendor_id: None,
                     status: TransactionStatus::Pending,
                     source_file: None,
                     extracted_at: chrono::Utc::now().timestamp(),
                     notes: None,
+                    transaction_reference: None,
                 });
             }
         }

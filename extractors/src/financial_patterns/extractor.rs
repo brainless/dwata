@@ -2,7 +2,8 @@ use crate::financial_patterns::{create_financial_patterns, FinancialPattern};
 use chrono::Utc;
 use regex::Regex;
 use shared_types::{
-    FinancialDocumentType, FinancialTransaction, TransactionCategory, TransactionStatus,
+    DataSourceType, FinancialDocumentType, FinancialTransaction, TransactionCategory,
+    TransactionStatus,
 };
 
 pub struct FinancialPatternExtractor {
@@ -117,8 +118,8 @@ impl FinancialPatternExtractor {
 
         Some(FinancialTransaction {
             id: 0,
-            source_type: String::new(),
-            source_id: String::new(),
+            data_source_type: DataSourceType::Unknown,
+            data_source_id: String::new(),
             document_type: self.parse_document_type(&pattern.document_type),
             description: captures.get(0)?.as_str().to_string(),
             amount,
@@ -127,10 +128,13 @@ impl FinancialPatternExtractor {
                 .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string()),
             category,
             vendor,
+            source_vendor_id: None,
+            destination_vendor_id: None,
             status: self.parse_status(&pattern.status),
             source_file: None,
             extracted_at: 0,
             notes: None,
+            transaction_reference: None,
         })
     }
 

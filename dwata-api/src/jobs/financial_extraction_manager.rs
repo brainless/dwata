@@ -8,6 +8,7 @@ use crate::database::{
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use extractors::FinancialPatternExtractor;
+use shared_types::DataSourceType;
 use std::collections::HashMap;
 
 struct AttemptStats {
@@ -92,13 +93,13 @@ impl FinancialExtractionManager {
         let mut total_extracted = 0;
 
         for email in emails {
-            let source_type = "email";
-            let source_id = email.id.to_string();
+            let data_source_type = "email";
+            let data_source_id = email.id.to_string();
 
             let is_processed = sources_db::is_source_processed(
                 self.db_conn.clone(),
-                source_type,
-                &source_id,
+                data_source_type,
+                &data_source_id,
             ).await.unwrap_or(false);
 
             if is_processed {
@@ -119,8 +120,8 @@ impl FinancialExtractionManager {
             }
 
             for (mut transaction, pattern_id) in results {
-                transaction.source_type = source_type.to_string();
-                transaction.source_id = source_id.clone();
+                transaction.data_source_type = DataSourceType::Email;
+                transaction.data_source_id = data_source_id.clone();
 
                 db::insert_financial_transaction(
                     self.db_conn.clone(),
@@ -145,8 +146,8 @@ impl FinancialExtractionManager {
             if transaction_count > 0 {
                 sources_db::mark_source_processed(
                     self.db_conn.clone(),
-                    source_type,
-                    &source_id,
+                    data_source_type,
+                    &data_source_id,
                     None,
                     transaction_count as i32,
                 ).await?;

@@ -4,7 +4,8 @@ pub use extractor::FinancialPatternExtractor;
 
 use regex::Regex;
 use shared_types::{
-    FinancialDocumentType, FinancialTransaction, TransactionCategory, TransactionStatus,
+    DataSourceType, FinancialDocumentType, FinancialTransaction, TransactionCategory,
+    TransactionStatus,
 };
 
 pub struct FinancialPattern {
@@ -46,8 +47,8 @@ impl FinancialPattern {
 
         Some(FinancialTransaction {
             id: 0,
-            source_type: String::new(),
-            source_id: String::new(),
+            data_source_type: DataSourceType::Unknown,
+            data_source_id: String::new(),
             document_type: self.transaction_type,
             description: format!(
                 "{} from {}",
@@ -60,10 +61,13 @@ impl FinancialPattern {
                 .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string()),
             category,
             vendor,
+            source_vendor_id: None,
+            destination_vendor_id: None,
             status: self.status,
             source_file: None,
             extracted_at: 0,
             notes: None,
+            transaction_reference: None,
         })
     }
 }

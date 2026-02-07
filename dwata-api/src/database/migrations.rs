@@ -1,5 +1,33 @@
 use rusqlite::Connection;
 
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> anyhow::Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn migrate_financial_schema(conn: &Connection) -> anyhow::Result<()> {
+    let has_data_source_type =
+        table_has_column(conn, "financial_transactions", "data_source_type")?;
+    if !has_data_source_type {
+        conn.execute("DROP TABLE IF EXISTS financial_transactions", [])?;
+    }
+
+    let has_data_source_type =
+        table_has_column(conn, "financial_extraction_sources", "data_source_type")?;
+    if !has_data_source_type {
+        conn.execute("DROP TABLE IF EXISTS financial_extraction_sources", [])?;
+    }
+
+    Ok(())
+}
+
 /// Run all database migrations
 #[allow(dead_code)]
 pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
@@ -523,14 +551,39 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     conn.execute("CREATE INDEX IF NOT EXISTS idx_linkedin_connections_extraction_job ON linkedin_connections(extraction_job_id)", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_linkedin_connections_date ON linkedin_connections(connected_date DESC)", [])?;
 
+    migrate_financial_schema(conn)?;
+
+    // Create transaction_vendors table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS transaction_vendors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vendor_type VARCHAR NOT NULL,
+            vendor_name VARCHAR NOT NULL,
+            vendor_external_id VARCHAR,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            UNIQUE(vendor_type, vendor_name, vendor_external_id)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transaction_vendors_name ON transaction_vendors(vendor_name)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transaction_vendors_type ON transaction_vendors(vendor_type)",
+        [],
+    )?;
+
     // Create financial_transactions table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS financial_transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
 
             -- Source tracking (agnostic to source type)
-            source_type VARCHAR NOT NULL,
-            source_id VARCHAR NOT NULL,
+            data_source_type VARCHAR NOT NULL,
+            data_source_id VARCHAR NOT NULL,
             extraction_job_id INTEGER,
 
             -- Transaction data
@@ -543,6 +596,8 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             -- Additional fields
             category VARCHAR,
             vendor VARCHAR,
+            source_vendor_id INTEGER,
+            destination_vendor_id INTEGER,
             status VARCHAR NOT NULL,
 
             -- Metadata
@@ -556,13 +611,17 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             updated_at BIGINT NOT NULL,
 
             notes VARCHAR,
-            UNIQUE(source_type, source_id, amount, vendor, transaction_date, document_type)
+            transaction_reference VARCHAR,
+            UNIQUE(data_source_type, data_source_id, transaction_reference),
+            UNIQUE(data_source_type, data_source_id, amount, vendor, transaction_date, document_type),
+            FOREIGN KEY (source_vendor_id) REFERENCES transaction_vendors (id),
+            FOREIGN KEY (destination_vendor_id) REFERENCES transaction_vendors (id)
         )",
         [],
     )?;
 
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_source ON financial_transactions(source_type, source_id)",
+        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_data_source ON financial_transactions(data_source_type, data_source_id)",
         [],
     )?;
     conn.execute(
@@ -573,17 +632,29 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_financial_transactions_vendor ON financial_transactions(vendor)",
         [],
     )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_source_vendor ON financial_transactions(source_vendor_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_destination_vendor ON financial_transactions(destination_vendor_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_reference ON financial_transactions(transaction_reference)",
+        [],
+    )?;
 
     // Track which sources have been processed for financial extraction
     conn.execute(
         "CREATE TABLE IF NOT EXISTS financial_extraction_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_type VARCHAR NOT NULL,
-            source_id VARCHAR NOT NULL,
+            data_source_type VARCHAR NOT NULL,
+            data_source_id VARCHAR NOT NULL,
             extraction_job_id INTEGER,
             extracted_at BIGINT NOT NULL,
             transaction_count INTEGER NOT NULL DEFAULT 0,
-            UNIQUE(source_type, source_id)
+            UNIQUE(data_source_type, data_source_id)
         )",
         [],
     )?;
