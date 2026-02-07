@@ -187,6 +187,10 @@ port = 8080
 # client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 # client_secret = "YOUR_CLIENT_SECRET"
 # redirect_uri = "http://localhost:8080/api/oauth/google/callback"
+
+[downloads]
+# When false, the API will not auto-start download jobs on startup.
+auto_start = false
 ```
 
 ## Database Storage

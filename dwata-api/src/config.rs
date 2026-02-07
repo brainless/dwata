@@ -9,6 +9,7 @@ pub struct ApiConfig {
     pub cors: Option<CorsConfig>,
     pub server: Option<ServerConfig>,
     pub google_oauth: Option<GoogleOAuthConfig>,
+    pub downloads: Option<DownloadsConfig>,
 }
 
 impl Default for ApiConfig {
@@ -24,6 +25,7 @@ impl Default for ApiConfig {
                 port: 8080,
             }),
             google_oauth: Some(GoogleOAuthConfig::default()),
+            downloads: Some(DownloadsConfig::default()),
         }
     }
 }
@@ -54,6 +56,17 @@ pub struct ServerConfig {
 pub struct GoogleOAuthConfig {
     pub client_id: String,
     pub client_secret: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct DownloadsConfig {
+    pub auto_start: bool,
+}
+
+impl Default for DownloadsConfig {
+    fn default() -> Self {
+        Self { auto_start: false }
+    }
 }
 
 impl Default for GoogleOAuthConfig {
@@ -98,6 +111,10 @@ port = 8080
 # client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 # client_secret = "YOUR_CLIENT_SECRET" # Optional, for Desktop apps
 # Redirect URI is automatically constructed from server host and port
+
+[downloads]
+# When false, the API will not auto-start download jobs on startup.
+auto_start = false
 "#;
             std::fs::write(&config_path, default_config).map_err(|e| {
                 ConfigError::Message(format!("Failed to write default config: {e}"))

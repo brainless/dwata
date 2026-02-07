@@ -179,81 +179,103 @@ async fn main() -> std::io::Result<()> {
         tracing::warn!("Failed to ensure jobs for all credentials: {}", e);
     }
 
-    // Spawn background task for initial sync (delayed to allow full initialization)
-    let manager_clone_startup = download_manager.clone();
-    let extraction_manager_clone_startup = financial_extraction_manager.clone();
-    tokio::spawn(async move {
-        // Wait 2 seconds for server to fully initialize
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let downloads_auto_start = config
+        .downloads
+        .as_ref()
+        .map(|downloads| downloads.auto_start)
+        .unwrap_or(false);
 
-        if manager_clone_startup.is_shutting_down() {
-            return;
-        }
+    if downloads_auto_start {
+        // Spawn background task for initial sync (delayed to allow full initialization)
+        let manager_clone_startup = download_manager.clone();
+        let extraction_manager_clone_startup = financial_extraction_manager.clone();
+        tokio::spawn(async move {
+            // Wait 2 seconds for server to fully initialize
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-        tracing::info!("Running initial sync after startup delay");
-
-        // Run initial sync to check for new emails
-        if let Err(e) = manager_clone_startup.sync_all_jobs().await {
-            tracing::warn!("Failed to run initial sync: {}", e);
-        }
-
-        // Run initial financial extraction
-        match extraction_manager_clone_startup.extract_from_emails(None, None).await {
-            Ok(count) => {
-                tracing::info!("Financial extraction completed on startup: {} transactions extracted", count);
+            if manager_clone_startup.is_shutting_down() {
+                return;
             }
-            Err(e) => {
-                tracing::warn!("Failed to run initial financial extraction: {}", e);
+
+            tracing::info!("Running initial sync after startup delay");
+
+            // Run initial sync to check for new emails
+            if let Err(e) = manager_clone_startup.sync_all_jobs().await {
+                tracing::warn!("Failed to run initial sync: {}", e);
             }
-        }
-    });
 
-    // Spawn historical backfill on startup
-    let manager_clone_backfill = download_manager.clone();
-    tokio::spawn(async move {
-        // Wait 10 seconds to allow recent sync to complete first
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            // Run initial financial extraction
+            match extraction_manager_clone_startup.extract_from_emails(None, None).await {
+                Ok(count) => {
+                    tracing::info!(
+                        "Financial extraction completed on startup: {} transactions extracted",
+                        count
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to run initial financial extraction: {}", e);
+                }
+            }
+        });
 
-        if manager_clone_backfill.is_shutting_down() {
-            return;
-        }
+        // Spawn historical backfill on startup
+        let manager_clone_backfill = download_manager.clone();
+        tokio::spawn(async move {
+            // Wait 10 seconds to allow recent sync to complete first
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
 
-        tracing::info!("Starting historical backfill on startup");
+            if manager_clone_backfill.is_shutting_down() {
+                return;
+            }
 
-        // Get all credentials and start historical backfill for each
-        match crate::database::credentials::list_credentials(
-            manager_clone_backfill.get_db_connection(),
-            false,
-        ).await {
-            Ok(credentials) => {
-                for credential in credentials {
-                    if credential.credential_type.requires_keychain() {
-                        if let Err(e) = manager_clone_backfill.start_historical_backfill(credential.id).await {
-                            tracing::warn!("Failed to start historical backfill for credential {}: {}", credential.id, e);
+            tracing::info!("Starting historical backfill on startup");
+
+            // Get all credentials and start historical backfill for each
+            match crate::database::credentials::list_credentials(
+                manager_clone_backfill.get_db_connection(),
+                false,
+            )
+            .await
+            {
+                Ok(credentials) => {
+                    for credential in credentials {
+                        if credential.credential_type.requires_keychain() {
+                            if let Err(e) = manager_clone_backfill
+                                .start_historical_backfill(credential.id)
+                                .await
+                            {
+                                tracing::warn!(
+                                    "Failed to start historical backfill for credential {}: {}",
+                                    credential.id,
+                                    e
+                                );
+                            }
                         }
                     }
                 }
+                Err(e) => {
+                    tracing::warn!("Failed to get credentials for historical backfill: {}", e);
+                }
             }
-            Err(e) => {
-                tracing::warn!("Failed to get credentials for historical backfill: {}", e);
-            }
-        }
-    });
+        });
 
-    // Spawn periodic sync task (every 5 minutes)
-    let manager_clone = download_manager.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
-        loop {
-            interval.tick().await;
-            if manager_clone.is_shutting_down() {
-                break;
+        // Spawn periodic sync task (every 5 minutes)
+        let manager_clone = download_manager.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+            loop {
+                interval.tick().await;
+                if manager_clone.is_shutting_down() {
+                    break;
+                }
+                if let Err(e) = manager_clone.sync_all_jobs().await {
+                    tracing::error!("Periodic sync failed: {}", e);
+                }
             }
-            if let Err(e) = manager_clone.sync_all_jobs().await {
-                tracing::error!("Periodic sync failed: {}", e);
-            }
-        }
-    });
+        });
+    } else {
+        tracing::info!("Download auto-start disabled (downloads.auto_start = false)");
+    }
 
     println!("Starting server on {}:{}", host, port);
 
