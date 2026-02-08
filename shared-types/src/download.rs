@@ -7,6 +7,7 @@ pub struct DownloadJob {
     pub id: i64,
     pub source_type: SourceType,
     pub credential_id: i64,
+    pub job_type: JobType,
     pub status: DownloadJobStatus,
     pub progress: DownloadProgress,
     #[ts(skip)]
@@ -21,11 +22,19 @@ pub struct DownloadJob {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
+pub enum JobType {
+    RecentSync,
+    HistoricalBackfill,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
 pub enum SourceType {
     Imap,
     GoogleDrive,
     Dropbox,
     OneDrive,
+    LocalFile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq)]
@@ -121,6 +130,7 @@ pub struct FileFilter {
 pub struct CreateDownloadJobRequest {
     pub credential_id: i64,
     pub source_type: SourceType,
+    #[serde(default)]
     #[ts(skip)]
     pub source_config: serde_json::Value,
 }

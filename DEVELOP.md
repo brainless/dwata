@@ -4,7 +4,7 @@
 
 - **Rust**: Required for building the API server (`dwata-api`) and shared types
 - **Node.js and npm**: Required for running the GUI application
-- **DuckDB CLI**: Optional, if you want to run SQL queries directly against the database
+- **SQLite CLI**: Optional, if you want to run SQL queries directly against the database
 
 ## Project Structure
 
@@ -27,14 +27,14 @@ exclude = [
 
 Location: `/dwata-api/`
 
-The API server is built with Actix-web and uses DuckDB for data storage.
+The API server is built with Actix-web and uses SQLite for data storage.
 
 #### Key Dependencies
 
 From `dwata-api/Cargo.toml`:
 ```toml
 actix-web.workspace = true
-duckdb = { version = "1.1", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 shared-types = { path = "../shared-types" }
 config = { version = "0.14", default-features = false, features = ["toml"] }
 dirs = "5.0"
@@ -187,27 +187,31 @@ port = 8080
 # client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 # client_secret = "YOUR_CLIENT_SECRET"
 # redirect_uri = "http://localhost:8080/api/oauth/google/callback"
+
+[downloads]
+# When false, the API will not auto-start download jobs on startup.
+auto_start = false
 ```
 
 ## Database Storage
 
 ### Database Location
 
-The API server uses DuckDB for storage. The database path is determined by the OS.
+The API server uses SQLite for storage. The database path is determined by the OS.
 
 From `dwata-api/src/helpers/database.rs`:
 
 ```rust
 /// Platform-specific paths
 ///
-/// - **macOS**: `~/Library/Application Support/dwata/db.duckdb`
-/// - **Linux**: `~/.local/share/dwata/db.duckdb`
-/// - **Windows**: `%LOCALAPPDATA%\dwata\db.duckdb`
+/// - **macOS**: `~/Library/Application Support/dwata/db.sqlite`
+/// - **Linux**: `~/.local/share/dwata/db.sqlite`
+/// - **Windows**: `%LOCALAPPDATA%\dwata\db.sqlite`
 pub fn get_db_path() -> anyhow::Result<PathBuf> {
     let data_dir = dirs::data_local_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?;
 
-    let db_path = data_dir.join("dwata").join("db.duckdb");
+    let db_path = data_dir.join("dwata").join("db.sqlite");
 
     Ok(db_path)
 }
@@ -257,6 +261,75 @@ println!(
     helpers::database::get_db_path().unwrap()
 );
 ```
+
+## Credential Security and Caching
+
+### OS Keychain Integration
+
+dwata uses the OS native keychain for secure credential storage:
+- **macOS**: Keychain Access
+- **Linux**: Secret Service (libsecret/gnome-keyring)
+- **Windows**: Credential Manager
+
+Credentials are stored in the SQLite database as metadata only (without passwords). Passwords and sensitive tokens are stored separately in the OS keychain using the `keyring` crate.
+
+### In-Memory Caching
+
+To reduce keychain prompts (especially on macOS), dwata implements an in-memory password cache:
+
+- **Cache TTL**: 1 hour (configurable via `KeyringService::with_ttl()`)
+- **Preloading**: At startup, all active credentials are preloaded into cache
+- **Thread-safe**: Uses `Arc<RwLock<HashMap>>` for concurrent access
+- **Automatic expiration**: Cached passwords expire after the TTL
+
+From `dwata-api/src/helpers/keyring_service.rs`:
+```rust
+// Initialize with default 1 hour TTL
+let keyring_service = KeyringService::new();
+
+// Or customize the TTL
+let keyring_service = KeyringService::with_ttl(Duration::from_secs(7200)); // 2 hours
+```
+
+### First-Time Setup: macOS Keychain Prompts
+
+On macOS, the first time dwata accesses a credential from the keychain, you'll see a system prompt:
+
+```
+"dwata-api" wants to access the keychain item "dwata:imap:gmail:user@example.com"
+[ Deny ] [ Allow ] [ Always Allow ]
+```
+
+**Important**: Select **"Always Allow"** to avoid repeated prompts for each credential.
+
+If you accidentally selected "Allow" (temporary access), you can fix this:
+1. Open **Keychain Access** app
+2. Search for "dwata"
+3. Double-click each dwata entry
+4. Go to "Access Control" tab
+5. Add `dwata-api` to the "Always allow access" list
+
+### Cache Management
+
+The `KeyringService` provides methods for cache management:
+
+```rust
+// Invalidate a specific credential
+keyring_service.invalidate(&credential_type, &identifier, &username).await;
+
+// Clear entire cache (useful after password changes)
+keyring_service.clear_cache().await;
+
+// Get cache statistics
+let (total, expired) = keyring_service.cache_stats().await;
+```
+
+### Security Considerations
+
+- Cache is memory-only (never written to disk)
+- Cache is cleared when the server stops
+- Individual credentials are invalidated when updated or deleted
+- TTL ensures passwords don't stay in memory indefinitely
 
 ## Running the Project
 
@@ -317,14 +390,16 @@ This generates `gui/src/api-types/types.ts` with TypeScript definitions.
 
 ## Accessing the Database Directly
 
-If you have the DuckDB CLI installed, you can query the database directly:
+If you have the SQLite CLI installed, you can query the database directly:
 
 ```bash
 # On macOS
-duckdb ~/Library/Application\ Support/dwata/db.duckdb
+sqlite3 ~/Library/Application\ Support/dwata/db.sqlite
 
 # Example queries
-SELECT * FROM credentials;
+SELECT * FROM credentials_metadata;
 SELECT * FROM download_jobs;
 SELECT * FROM emails;
+.tables  # List all tables
+.schema credentials_metadata  # Show table schema
 ```

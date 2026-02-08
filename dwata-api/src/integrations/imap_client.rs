@@ -9,12 +9,14 @@ pub async fn connect_gmail_oauth(
     _credential: &shared_types::credential::CredentialMetadata,
     _token_cache: &crate::helpers::token_cache::TokenCache,
     _oauth_client: &crate::helpers::google_oauth::GoogleOAuthClient,
+    _keyring_service: &crate::helpers::keyring_service::KeyringService,
 ) -> Result<()> {
     let _access_token = get_access_token_for_imap(
         _credential_id,
         _credential,
         _token_cache,
         _oauth_client,
+        _keyring_service,
     )
     .await?;
 

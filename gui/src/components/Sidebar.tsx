@@ -2,9 +2,12 @@ import { A } from "@solidjs/router";
 import {
   HiOutlineBars3,
   HiOutlineCalendar,
+  HiOutlineEnvelope,
   HiOutlineFolder,
   HiOutlineClipboardDocumentCheck,
   HiOutlineCog6Tooth,
+  HiOutlineCurrencyDollar,
+  HiOutlineCpuChip,
 } from "solid-icons/hi";
 
 export default function Sidebar() {
@@ -52,6 +55,18 @@ export default function Sidebar() {
             </A>
           </div>
 
+          {/* Emails */}
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/emails"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineEnvelope class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Emails</span>
+            </A>
+          </div>
+
           {/* Calendar */}
           <div class="px-4 py-2 w-full">
             <A
@@ -64,8 +79,32 @@ export default function Sidebar() {
             </A>
           </div>
 
+          {/* Financial Health */}
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/financial"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineCurrencyDollar class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Financial</span>
+            </A>
+          </div>
+
           {/* Spacer */}
           <div class="flex-grow"></div>
+
+          {/* Background Jobs */}
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/jobs"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineCpuChip class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Background Jobs</span>
+            </A>
+          </div>
 
           {/* Settings at bottom */}
           <div class="px-4 py-2 w-full">

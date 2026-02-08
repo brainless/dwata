@@ -9,6 +9,7 @@ pub enum CredentialType {
     OAuth,
     ApiKey,
     Database,
+    LocalFile,
     Custom,
 }
 
@@ -100,6 +101,17 @@ pub struct ApiKeySettings {
     pub timeout_secs: u32,
 }
 
+/// Local file path settings
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct LocalFileSettings {
+    /// Absolute path to the file or directory
+    pub file_path: String,
+    /// Optional description of what this file contains
+    pub description: Option<String>,
+    /// File type hint (e.g., "linkedin-archive", "email-export")
+    pub file_type: Option<String>,
+}
+
 impl CredentialType {
     pub fn service_name(&self) -> String {
         format!("dwata:{}", self.as_str())
@@ -112,8 +124,14 @@ impl CredentialType {
             CredentialType::OAuth => "oauth",
             CredentialType::ApiKey => "apikey",
             CredentialType::Database => "database",
+            CredentialType::LocalFile => "localfile",
             CredentialType::Custom => "custom",
         }
+    }
+
+    /// Check if this credential type requires keychain storage
+    pub fn requires_keychain(&self) -> bool {
+        !matches!(self, CredentialType::LocalFile)
     }
 }
 
@@ -128,7 +146,8 @@ pub struct CreateCredentialRequest {
     pub credential_type: CredentialType,
     pub identifier: String,
     pub username: String,
-    pub password: String,
+    /// Password is optional for credential types that don't require keychain storage (e.g., LocalFile)
+    pub password: Option<String>,
     pub service_name: Option<String>,
     pub port: Option<i32>,
     pub use_tls: Option<bool>,
@@ -153,10 +172,35 @@ impl CreateImapCredentialRequest {
             credential_type: CredentialType::Imap,
             identifier: self.identifier,
             username: self.username,
-            password: self.password,
+            password: Some(self.password),
             service_name: Some(self.settings.host.clone()),
             port: Some(self.settings.port),
             use_tls: Some(self.settings.use_tls),
+            notes: self.notes,
+            extra_metadata: Some(self.settings.to_json_string()?),
+        })
+    }
+}
+
+/// Type-safe request for creating local file credentials
+#[derive(Debug, Deserialize, TS)]
+pub struct CreateLocalFileCredentialRequest {
+    pub identifier: String,
+    pub settings: LocalFileSettings,
+    pub notes: Option<String>,
+}
+
+impl CreateLocalFileCredentialRequest {
+    /// Convert to generic CreateCredentialRequest
+    pub fn into_generic(self) -> Result<CreateCredentialRequest, serde_json::Error> {
+        Ok(CreateCredentialRequest {
+            credential_type: CredentialType::LocalFile,
+            identifier: self.identifier,
+            username: "local".to_string(),
+            password: None,
+            service_name: None,
+            port: None,
+            use_tls: None,
             notes: self.notes,
             extra_metadata: Some(self.settings.to_json_string()?),
         })
@@ -271,6 +315,18 @@ impl ApiKeySettings {
     }
 }
 
+impl LocalFileSettings {
+    /// Serialize to JSON string for storage in extra_metadata
+    pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Deserialize from JSON string stored in extra_metadata
+    pub fn from_json_string(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+}
+
 impl CredentialMetadata {
     /// Parse IMAP settings from extra_metadata
     pub fn parse_imap_settings(&self) -> Result<ImapAccountSettings, String> {
@@ -296,6 +352,15 @@ impl CredentialMetadata {
             Some(json) => ApiKeySettings::from_json_string(json)
                 .map_err(|e| format!("Failed to parse API key settings: {}", e)),
             None => Err("No API key settings found".to_string()),
+        }
+    }
+
+    /// Parse local file settings from extra_metadata
+    pub fn parse_local_file_settings(&self) -> Result<LocalFileSettings, String> {
+        match &self.extra_metadata {
+            Some(json) => LocalFileSettings::from_json_string(json)
+                .map_err(|e| format!("Failed to parse local file settings: {}", e)),
+            None => Err("No local file settings found".to_string()),
         }
     }
 }

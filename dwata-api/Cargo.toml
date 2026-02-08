@@ -11,11 +11,12 @@ actix-web.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-# nocodo-llm-sdk.workspace = true
-# nocodo-agents.workspace = true
+nocodo-llm-sdk = { path = "../../nocodo/nocodo-llm-sdk" }
+dwata-agents = { path = "../dwata-agents" }
 # manager-tools.workspace = true
 shared-types = { path = "../shared-types" }
-duckdb = { version = "1.1", features = ["bundled"] }
+extractors = { path = "../extractors" }
+rusqlite = { version = "0.32", features = ["bundled"] }
 chrono.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
@@ -25,8 +26,8 @@ toml = "0.8"
 tracing.workspace = true
   tracing-subscriber.workspace = true
   tracing-appender = "0.2"
-  clap.workspace = true
-  actix-cors = "0.6"
+clap.workspace = true
+actix-cors = "0.6"
 keyring = { version = "2.3" }
 rand = "0.8"
 tempfile = "3.8"
@@ -35,3 +36,7 @@ reqwest = { version = "0.11", features = ["json"] }
 imap = "3.0.0-alpha.15"
 native-tls = "0.2"
 mail-parser = "0.9"
+regex = "1.10"
+futures = "0.3"
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"

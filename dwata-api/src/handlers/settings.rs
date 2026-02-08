@@ -33,11 +33,21 @@ pub async fn get_settings(data: web::Data<SettingsAppState>) -> Result<HttpRespo
     })?;
 
     let api_keys = if let Some(ref keys) = config.api_keys {
-        vec![ApiKeyConfig {
+        let mut keys_vec = vec![ApiKeyConfig {
             name: "gemini".to_string(),
             key: mask_api_key(&keys.gemini_api_key),
             is_configured: keys.gemini_api_key.is_some(),
-        }]
+        }];
+
+        if let Some(claude_key) = &keys.claude_api_key {
+            keys_vec.push(ApiKeyConfig {
+                name: "claude".to_string(),
+                key: mask_api_key(&Some(claude_key.clone())),
+                is_configured: true,
+            });
+        }
+
+        keys_vec
     } else {
         vec![]
     };
@@ -70,9 +80,13 @@ pub async fn update_api_keys(
         if let Some(gemini_key) = req.gemini_api_key {
             keys.gemini_api_key = Some(gemini_key);
         }
+        if let Some(claude_key) = req.claude_api_key {
+            keys.claude_api_key = Some(claude_key);
+        }
     } else {
         config.api_keys = Some(crate::config::ApiKeysConfig {
             gemini_api_key: req.gemini_api_key,
+            claude_api_key: req.claude_api_key,
         });
     }
 

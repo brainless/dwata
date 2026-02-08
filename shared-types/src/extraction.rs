@@ -44,22 +44,23 @@ pub enum DataType {
     Event,
     Contact,
     Location,
-    Date,     // Standalone dates needing context
-    Priority, // Task priority indicators
-    Status,   // Project/task status
-              // Future: Company, Bank, BankAccount, etc.
+    Date,
+    Priority,
+    Status,
+    Company,
+    Position,
 }
 
 /// Extraction methods available
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExtractionMethod {
-    AttachmentParsing, // ICS, VCF, PDF parsing
-    PatternBased,      // Regex and keyword matching
-    GlinerNER,         // GLiNER named entity recognition
-    BertNER,           // BERT-based NER
-    LLMBased,          // LLM reasoning for complex cases
-    Hybrid,            // Combination of methods
+    AttachmentParsing,
+    PatternBased,
+    GlinerNER,
+    BertNER,
+    LLMBased,
+    Hybrid,
 }
 
 /// Input provided to extractors
@@ -166,6 +167,8 @@ pub enum ExtractedEntity {
     Event(ExtractedEvent),
     Contact(ExtractedContact),
     Location(ExtractedLocation),
+    Company(ExtractedCompany),
+    Position(ExtractedPosition),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -203,6 +206,8 @@ pub struct ExtractedContact {
     pub email: Option<String>,
     pub phone: Option<String>,
     pub organization: Option<String>,
+    #[serde(default)]
+    pub profile_urls: Vec<ProfileUrl>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -210,6 +215,34 @@ pub struct ExtractedLocation {
     pub name: String,
     pub address: Option<String>,
     pub coordinates: Option<(f64, f64)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct ProfileUrl {
+    pub url: String,
+    pub link_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct ExtractedCompany {
+    pub name: String,
+    pub description: Option<String>,
+    pub industry: Option<String>,
+    pub location: Option<String>,
+    pub website: Option<String>,
+    pub linkedin_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct ExtractedPosition {
+    pub contact_name: String,
+    pub company_name: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub location: Option<String>,
+    pub started_on: Option<String>,
+    pub finished_on: Option<String>,
+    pub is_current: bool,
 }
 
 /// Location of text in email

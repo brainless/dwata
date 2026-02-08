@@ -1,4 +1,5 @@
 use shared_types::*;
+use shared_types::credential::{LocalFileSettings, CreateLocalFileCredentialRequest};
 use std::fs;
 use std::path::Path;
 use ts_rs::TS;
@@ -60,6 +61,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // API Key credential types
     types.push(clean_type(ApiKeySettings::export_to_string()?));
 
+    // Local File credential types
+    types.push(clean_type(LocalFileSettings::export_to_string()?));
+    types.push(clean_type(CreateLocalFileCredentialRequest::export_to_string()?));
+
     // Download types
     types.push(clean_type(DownloadJob::export_to_string()?));
     types.push(clean_type(DownloadJobStatus::export_to_string()?));
@@ -84,6 +89,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(ListEmailsRequest::export_to_string()?));
     types.push(clean_type(ListEmailsResponse::export_to_string()?));
 
+    // Email Folder and Label types
+    types.push(clean_type(EmailFolder::export_to_string()?));
+    types.push(clean_type(ListFoldersRequest::export_to_string()?));
+    types.push(clean_type(ListFoldersResponse::export_to_string()?));
+    types.push(clean_type(EmailLabel::export_to_string()?));
+    types.push(clean_type(ListLabelsRequest::export_to_string()?));
+    types.push(clean_type(ListLabelsResponse::export_to_string()?));
+
     // Extraction types
     types.push(clean_type(DataType::export_to_string()?));
     types.push(clean_type(ExtractionMethod::export_to_string()?));
@@ -102,6 +115,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(EntityRef::export_to_string()?));
     types.push(clean_type(Ambiguity::export_to_string()?));
     types.push(clean_type(AmbiguityOption::export_to_string()?));
+
+    // Extraction Job types
+    types.push(clean_type(ExtractionJob::export_to_string()?));
+    types.push(clean_type(ExtractionJobStatus::export_to_string()?));
+    types.push(clean_type(ExtractionSourceType::export_to_string()?));
+    types.push(clean_type(ExtractorType::export_to_string()?));
+    types.push(clean_type(ExtractionProgress::export_to_string()?));
+    types.push(clean_type(ExtractionSourceConfig::export_to_string()?));
+    types.push(clean_type(AttachmentExtractionFilter::export_to_string()?));
+    types.push(clean_type(CreateExtractionJobRequest::export_to_string()?));
+    types.push(clean_type(ExtractionJobListResponse::export_to_string()?));
+
+    // Contact types
+    types.push(clean_type(Contact::export_to_string()?));
+    types.push(clean_type(CreateContactRequest::export_to_string()?));
+    types.push(clean_type(UpdateContactRequest::export_to_string()?));
+    types.push(clean_type(ContactsResponse::export_to_string()?));
+
+    // Financial types
+    types.push(clean_type(FinancialDocumentType::export_to_string()?));
+    types.push(clean_type(FinancialTransaction::export_to_string()?));
+    types.push(clean_type(TransactionCategory::export_to_string()?));
+    types.push(clean_type(TransactionStatus::export_to_string()?));
+    types.push(clean_type(FinancialSummary::export_to_string()?));
+    types.push(clean_type(FinancialHealth::export_to_string()?));
+    types.push(clean_type(CategoryBreakdown::export_to_string()?));
 
     let output_dir = Path::new("../gui/src/api-types");
     fs::create_dir_all(output_dir)?;

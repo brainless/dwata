@@ -24,21 +24,26 @@ gui/src/pages/
 ## Components
 
 ### Settings.tsx
+
 Main container that:
+
 - Renders tab navigation using `<A>` components from SolidJS Router
 - Determines active tab from URL pathname
 - Conditionally renders tab content using `<Show>` components
 
 ### SettingsGeneral (settings/General.tsx)
+
 - Placeholder for general application settings
 - Future: app preferences, UI settings, etc.
 
 ### SettingsApiKeys (settings/ApiKeys.tsx)
+
 - Manages API keys for external services (e.g., Google Gemini)
 - Stores keys in backend configuration file
 - Shows configuration status for each key
 
 ### SettingsAccounts (settings/Accounts.tsx)
+
 - **Credentials List Table:**
   - Displays existing email accounts
   - Shows identifier, username, type, server, and status
@@ -62,6 +67,7 @@ Main container that:
 ## IMAP Account Form
 
 ### Required Fields
+
 - Account Name: Unique identifier (e.g., "work_email")
 - Email Address: Full email address
 - Password: Account password (stored in OS keychain)
@@ -69,6 +75,7 @@ Main container that:
 - Port: Server port (typically 993 for SSL)
 
 ### Optional/Advanced Fields
+
 - Use TLS/SSL: Enable secure connection (default: true)
 - Validate SSL Certificates: Verify server certificates (default: true)
 - Authentication Method: Plain/OAuth2/XOAUTH2 (default: Plain)
@@ -83,6 +90,7 @@ The form submits to the credential storage API:
 **Endpoint**: `POST http://localhost:8080/api/credentials`
 
 **Request Format**:
+
 ```json
 {
   "credential_type": "imap",
@@ -98,11 +106,13 @@ The form submits to the credential storage API:
 ```
 
 **Storage**:
+
 - Password: Stored in OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
 - Metadata: Stored in DuckDB database
 - Settings: Serialized as JSON in `extra_metadata` field
 
 **Security**:
+
 - Passwords never stored in database
 - Credentials isolated per credential type
 - OS-level encryption and access control
@@ -128,7 +138,10 @@ The form submits to the credential storage API:
 1. Create new component in `src/pages/settings/YourTab.tsx`
 2. Add route handler in `Settings.tsx`:
    ```tsx
-   <A href="/settings/your-tab" class={`tab ${activeTab() === "your-tab" ? "tab-active" : ""}`}>
+   <A
+     href="/settings/your-tab"
+     class={`tab ${activeTab() === "your-tab" ? "tab-active" : ""}`}
+   >
      Your Tab
    </A>
    ```
@@ -143,11 +156,13 @@ The form submits to the credential storage API:
 ## Common Patterns
 
 ### Form State Management
+
 ```tsx
 const [fieldName, setFieldName] = createSignal("default");
 ```
 
 ### API Calls
+
 ```tsx
 const response = await fetch("http://localhost:8080/api/endpoint", {
   method: "POST",
@@ -157,6 +172,7 @@ const response = await fetch("http://localhost:8080/api/endpoint", {
 ```
 
 ### Loading States
+
 ```tsx
 const [isLoading, setIsLoading] = createSignal(false);
 
@@ -166,16 +182,23 @@ disabled={isLoading()}
 ```
 
 ### Success/Error Messages
+
 ```tsx
 const [message, setMessage] = createSignal("");
-const [messageType, setMessageType] = createSignal<"success" | "error">("success");
+const [messageType, setMessageType] = createSignal<"success" | "error">(
+  "success",
+);
 
 // Display
-{message() && (
-  <div class={`alert ${messageType() === "success" ? "alert-success" : "alert-error"}`}>
-    <span>{message()}</span>
-  </div>
-)}
+{
+  message() && (
+    <div
+      class={`alert ${messageType() === "success" ? "alert-success" : "alert-error"}`}
+    >
+      <span>{message()}</span>
+    </div>
+  );
+}
 ```
 
 ## Future Enhancements

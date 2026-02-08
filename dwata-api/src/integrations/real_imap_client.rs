@@ -8,7 +8,7 @@ pub struct RealImapClient {
 }
 
 impl RealImapClient {
-    pub async fn connect_with_password(
+    pub fn connect_with_password(
         host: &str,
         port: u16,
         username: &str,
@@ -25,7 +25,7 @@ impl RealImapClient {
         Ok(Self { session })
     }
 
-    pub async fn connect_with_oauth(
+    pub fn connect_with_oauth(
         host: &str,
         port: u16,
         username: &str,
@@ -69,6 +69,31 @@ impl RealImapClient {
             .iter()
             .map(|m| m.name().to_string())
             .collect())
+    }
+
+    pub fn list_folders_with_metadata(&mut self) -> Result<Vec<FolderMetadata>> {
+        let mailboxes = self.session.list(None, Some("*"))?;
+        let mut folders = Vec::new();
+
+        for mailbox in mailboxes.iter() {
+            let name = mailbox.name().to_string();
+            let delim = mailbox.delimiter();
+
+            // Assume folders are selectable and subscribed by default
+            // TODO: Properly parse NameAttribute when API is stabilized
+            let is_selectable = true;
+            let is_subscribed = false;
+
+            folders.push(FolderMetadata {
+                name: name.clone(),
+                imap_path: name,
+                delimiter: delim.map(|d| d.to_string()),
+                is_selectable,
+                is_subscribed,
+            });
+        }
+
+        Ok(folders)
     }
 
     pub fn mailbox_status(&mut self, mailbox: &str) -> Result<u32> {
@@ -171,6 +196,7 @@ impl RealImapClient {
 
         let date_received = message.internal_date()
             .map(|dt| dt.timestamp_millis())
+            .or(date_sent)
             .unwrap_or_else(|| Utc::now().timestamp_millis());
 
         let size_bytes = message.size;
@@ -226,4 +252,13 @@ pub struct ParsedEmail {
     pub attachment_count: i32,
     pub size_bytes: Option<i32>,
     pub labels: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FolderMetadata {
+    pub name: String,
+    pub imap_path: String,
+    pub delimiter: Option<String>,
+    pub is_selectable: bool,
+    pub is_subscribed: bool,
 }

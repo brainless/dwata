@@ -72,48 +72,77 @@ fn add_security_header(mut response: HttpResponse) -> HttpResponse {
 
 pub async fn create_credential(
     db: web::Data<Arc<crate::database::Database>>,
+    keyring: web::Data<Arc<KeyringService>>,
     request: web::Json<CreateCredentialRequest>,
 ) -> Result<HttpResponse> {
     let req = request.into_inner();
 
+    // Validate identifier
     if req.identifier.trim().is_empty() {
         return Err(CredentialError::Validation(
             "Identifier cannot be empty".to_string(),
         )
         .into());
     }
+
+    // Validate username
     if req.username.trim().is_empty() {
         return Err(CredentialError::Validation(
             "Username cannot be empty".to_string(),
         )
         .into());
     }
-    if req.password.trim().is_empty() {
-        return Err(CredentialError::Validation(
-            "Password cannot be empty".to_string(),
-        )
-        .into());
+
+    // Validate password requirements based on credential type
+    if req.credential_type.requires_keychain() {
+        match &req.password {
+            None => {
+                return Err(CredentialError::Validation(
+                    format!("Password is required for {} credentials", req.credential_type)
+                )
+                .into());
+            }
+            Some(pwd) if pwd.trim().is_empty() => {
+                return Err(CredentialError::Validation(
+                    "Password cannot be empty".to_string(),
+                )
+                .into());
+            }
+            _ => {}
+        }
     }
 
-    KeyringService::set_password(
-        &req.credential_type,
-        &req.identifier,
-        &req.username,
-        &req.password,
-    )
-    .map_err(|e| match e {
-        KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
-        _ => CredentialError::Internal(format!("Failed to store password: {}", e)),
-    })?;
+    // Store password in keychain only if credential type requires it and password is provided
+    if req.credential_type.requires_keychain() {
+        if let Some(password) = &req.password {
+            keyring
+                .set_password(
+                    &req.credential_type,
+                    &req.identifier,
+                    &req.username,
+                    password,
+                )
+                .await
+                .map_err(|e| match e {
+                    KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
+                    _ => CredentialError::Internal(format!("Failed to store password: {}", e)),
+                })?;
+        }
+    }
 
     let metadata = db::insert_credential(db.async_connection.clone(), &req)
         .await
         .map_err(|e| {
-            let _ = KeyringService::delete_password(
-                &req.credential_type,
-                &req.identifier,
-                &req.username,
-            );
+            // Rollback: delete keychain entry if database insert fails
+            if req.credential_type.requires_keychain() {
+                let keyring = keyring.clone();
+                let credential_type = req.credential_type.clone();
+                let identifier = req.identifier.clone();
+                let username = req.username.clone();
+                tokio::spawn(async move {
+                    let _ = keyring.delete_password(&credential_type, &identifier, &username).await;
+                });
+            }
 
             match e {
                 db::CredentialDbError::DuplicateIdentifier => CredentialError::Duplicate,
@@ -161,6 +190,7 @@ pub async fn get_credential(
 
 pub async fn get_password(
     db: web::Data<Arc<crate::database::Database>>,
+    keyring: web::Data<Arc<KeyringService>>,
     path: web::Path<i64>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
@@ -171,18 +201,28 @@ pub async fn get_password(
             _ => CredentialError::Internal(e.to_string()),
         })?;
 
-    let password = KeyringService::get_password(
-        &credential.credential_type,
-        &credential.identifier,
-        &credential.username,
-    )
-    .map_err(|e| match e {
-        KeyringError::NotFound => CredentialError::InconsistentState(
-            "Credential exists in database but not in keychain".to_string(),
-        ),
-        KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
-        KeyringError::OperationFailed(msg) => CredentialError::Internal(msg),
-    })?;
+    // LocalFile credentials don't store passwords in keychain
+    if !credential.credential_type.requires_keychain() {
+        return Err(CredentialError::Validation(
+            format!("Credential type {} does not have a password", credential.credential_type)
+        )
+        .into());
+    }
+
+    let password = keyring
+        .get_password(
+            &credential.credential_type,
+            &credential.identifier,
+            &credential.username,
+        )
+        .await
+        .map_err(|e| match e {
+            KeyringError::NotFound => CredentialError::InconsistentState(
+                "Credential exists in database but not in keychain".to_string(),
+            ),
+            KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
+            KeyringError::OperationFailed(msg) => CredentialError::Internal(msg),
+        })?;
 
     let _ = db::update_last_accessed(db.async_connection.clone(), id).await;
 
@@ -193,6 +233,7 @@ pub async fn get_password(
 
 pub async fn update_credential(
     db: web::Data<Arc<crate::database::Database>>,
+    keyring: web::Data<Arc<KeyringService>>,
     path: web::Path<i64>,
     request: web::Json<UpdateCredentialRequest>,
 ) -> Result<HttpResponse> {
@@ -206,17 +247,27 @@ pub async fn update_credential(
             _ => CredentialError::Internal(e.to_string()),
         })?;
 
+    // Update password in keychain only if credential type requires it
     if let Some(ref new_password) = req.password {
-        KeyringService::update_password(
-            &existing.credential_type,
-            &existing.identifier,
-            &existing.username,
-            new_password,
-        )
-        .map_err(|e| match e {
-            KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
-            _ => CredentialError::Internal(format!("Failed to update password: {}", e)),
-        })?;
+        if existing.credential_type.requires_keychain() {
+            keyring
+                .update_password(
+                    &existing.credential_type,
+                    &existing.identifier,
+                    &existing.username,
+                    new_password,
+                )
+                .await
+                .map_err(|e| match e {
+                    KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
+                    _ => CredentialError::Internal(format!("Failed to update password: {}", e)),
+                })?;
+        } else {
+            return Err(CredentialError::Validation(
+                format!("Credential type {} does not support password updates", existing.credential_type)
+            )
+            .into());
+        }
     }
 
     let updated = db::update_credential(
@@ -243,6 +294,7 @@ pub struct DeleteQuery {
 
 pub async fn delete_credential(
     db: web::Data<Arc<crate::database::Database>>,
+    keyring: web::Data<Arc<KeyringService>>,
     path: web::Path<i64>,
     query: web::Query<DeleteQuery>,
 ) -> Result<HttpResponse> {
@@ -255,21 +307,26 @@ pub async fn delete_credential(
         })?;
 
     if query.hard {
-        let _ = KeyringService::delete_password(
-            &credential.credential_type,
-            &credential.identifier,
-            &credential.username,
-        )
-        .map_err(|e| match e {
-            KeyringError::NotFound => {
-                CredentialError::InconsistentState(
-                    "Keychain entry not found, deleting database record".to_string(),
+        // Delete keychain entry only if credential type uses keychain
+        if credential.credential_type.requires_keychain() {
+            let _ = keyring
+                .delete_password(
+                    &credential.credential_type,
+                    &credential.identifier,
+                    &credential.username,
                 )
-            }
-            KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
-            KeyringError::OperationFailed(msg) => CredentialError::Internal(msg),
-        })
-        .ok();
+                .await
+                .map_err(|e| match e {
+                    KeyringError::NotFound => {
+                        CredentialError::InconsistentState(
+                            "Keychain entry not found, deleting database record".to_string(),
+                        )
+                    }
+                    KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
+                    KeyringError::OperationFailed(msg) => CredentialError::Internal(msg),
+                })
+                .ok();
+        }
 
         db::hard_delete_credential(db.async_connection.clone(), id)
             .await

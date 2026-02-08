@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use ical::parser::ical::component::IcalEvent;
 use shared_types::{
-    DataType, ExtractionMethod, ExtractionResult, ExtractedEntity, ExtractedEvent, TextSource,
+    DataType, ExtractedEntity, ExtractedEvent, ExtractionMethod, ExtractionResult, TextSource,
     TextSpan,
 };
 use std::collections::HashMap;
@@ -153,7 +153,11 @@ impl IcsParser {
         }))
     }
 
-    fn parse_ics_date(&self, date_str: &str, _user_timezone: &str) -> anyhow::Result<DateTime<Utc>> {
+    fn parse_ics_date(
+        &self,
+        date_str: &str,
+        _user_timezone: &str,
+    ) -> anyhow::Result<DateTime<Utc>> {
         // Parse ICS date format: 20260125T140000Z or 20260125T140000
         // Remove separators
         let date_str = date_str.replace([':', '-'], "");

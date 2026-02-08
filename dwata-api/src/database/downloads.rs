@@ -1,8 +1,10 @@
 use shared_types::download::{
     CreateDownloadJobRequest, DownloadJob, DownloadJobStatus, DownloadProgress,
-    SourceType,
+    SourceType, JobType,
 };
+use shared_types::email::EmailAddress;
 use std::fmt;
+use rusqlite::OptionalExtension;
 
 pub use crate::database::AsyncDbConnection;
 
@@ -26,6 +28,7 @@ impl std::error::Error for DownloadDbError {}
 pub async fn insert_download_job(
     conn: AsyncDbConnection,
     request: &CreateDownloadJobRequest,
+    job_type: JobType,
 ) -> Result<DownloadJob, DownloadDbError> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
@@ -33,15 +36,21 @@ pub async fn insert_download_job(
     let source_state_json = serde_json::to_string(&request.source_config)
         .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize config: {}", e)))?;
 
+    let job_type_str = match job_type {
+        JobType::RecentSync => "recent-sync",
+        JobType::HistoricalBackfill => "historical-backfill",
+    };
+
     let id: i64 = conn
         .query_row(
             "INSERT INTO download_jobs
-             (source_type, credential_id, status, source_state, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)
-             RETURNING id",
-            duckdb::params![
+             (source_type, credential_id, job_type, status, source_state, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               RETURNING id",
+            rusqlite::params![
                 source_type_to_string(&request.source_type),
                 &request.credential_id,
+                job_type_str,
                 "pending",
                 &source_state_json,
                 now,
@@ -55,6 +64,7 @@ pub async fn insert_download_job(
         id,
         source_type: request.source_type.clone(),
         credential_id: request.credential_id,
+        job_type,
         status: DownloadJobStatus::Pending,
         progress: DownloadProgress {
             total_items: 0,
@@ -86,7 +96,7 @@ pub async fn get_download_job(
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, source_type, credential_id, status, total_items, downloaded_items,
+            "SELECT id, source_type, credential_id, job_type, status, total_items, downloaded_items,
                     failed_items, skipped_items, in_progress_items, bytes_downloaded,
                     source_state, error_message, created_at, started_at, updated_at,
                     completed_at, last_sync_at
@@ -97,15 +107,24 @@ pub async fn get_download_job(
 
     stmt.query_row([id], |row| {
         let source_type_str: String = row.get(1)?;
+        let job_type_str: String = row.get(3)?;
+
         let source_type = match source_type_str.as_str() {
             "imap" => SourceType::Imap,
             "google-drive" => SourceType::GoogleDrive,
             "dropbox" => SourceType::Dropbox,
             "onedrive" => SourceType::OneDrive,
+            "local-file" => SourceType::LocalFile,
             _ => SourceType::Imap,
         };
 
-        let status_str: String = row.get(3)?;
+        let job_type = match job_type_str.as_str() {
+            "recent-sync" => JobType::RecentSync,
+            "historical-backfill" => JobType::HistoricalBackfill,
+            _ => JobType::RecentSync,
+        };
+
+        let status_str: String = row.get(4)?;
         let status = match status_str.as_str() {
             "pending" => DownloadJobStatus::Pending,
             "running" => DownloadJobStatus::Running,
@@ -116,11 +135,11 @@ pub async fn get_download_job(
             _ => DownloadJobStatus::Pending,
         };
 
-        let total_items: i64 = row.get(4)?;
-        let downloaded_items: i64 = row.get(5)?;
-        let failed_items: i64 = row.get(6)?;
-        let skipped_items: i64 = row.get(7)?;
-        let in_progress_items: i64 = row.get(8)?;
+        let total_items: i64 = row.get(5)?;
+        let downloaded_items: i64 = row.get(6)?;
+        let failed_items: i64 = row.get(7)?;
+        let skipped_items: i64 = row.get(8)?;
+        let in_progress_items: i64 = row.get(9)?;
 
         let remaining = total_items.saturating_sub(downloaded_items + failed_items + skipped_items);
         let percent = if total_items > 0 {
@@ -129,13 +148,14 @@ pub async fn get_download_job(
             0.0
         };
 
-        let source_state_json: String = row.get(10)?;
+        let source_state_json: String = row.get(11)?;
         let source_state: serde_json::Value = serde_json::from_str(&source_state_json).unwrap_or(serde_json::json!({}));
 
         Ok(DownloadJob {
             id: row.get(0)?,
             source_type,
             credential_id: row.get(2)?,
+            job_type,
             status,
             progress: DownloadProgress {
                 total_items: total_items as u64,
@@ -150,16 +170,16 @@ pub async fn get_download_job(
                 estimated_completion_secs: None,
             },
             source_state,
-            error_message: row.get(11)?,
-            created_at: row.get(12)?,
-            started_at: row.get(13)?,
-            updated_at: row.get(14)?,
-            completed_at: row.get(15)?,
-            last_sync_at: row.get(16)?,
+            error_message: row.get(12)?,
+            created_at: row.get(13)?,
+            started_at: row.get(14)?,
+            updated_at: row.get(15)?,
+            completed_at: row.get(16)?,
+            last_sync_at: row.get(17)?,
         })
     })
     .map_err(|e| match e {
-        duckdb::Error::QueryReturnedNoRows => DownloadDbError::NotFound,
+        rusqlite::Error::QueryReturnedNoRows => DownloadDbError::NotFound,
         _ => DownloadDbError::DatabaseError(e.to_string()),
     })
 }
@@ -171,31 +191,28 @@ pub async fn list_download_jobs(
 ) -> Result<Vec<DownloadJob>, DownloadDbError> {
     let conn_ref = conn.clone();
 
-    // Collect all IDs first, then drop the lock
+    let query = if let Some(status) = status_filter {
+        format!(
+            "SELECT id FROM download_jobs WHERE status = '{}' ORDER BY created_at DESC LIMIT {}",
+            status, limit
+        )
+    } else {
+        format!("SELECT id FROM download_jobs ORDER BY created_at DESC LIMIT {}", limit)
+    };
+
     let ids = {
         let conn = conn.lock().await;
-
-        let query = if let Some(status) = status_filter {
-            format!(
-                "SELECT id FROM download_jobs WHERE status = '{}' ORDER BY created_at DESC LIMIT {}",
-                status, limit
-            )
-        } else {
-            format!("SELECT id FROM download_jobs ORDER BY created_at DESC LIMIT {}", limit)
-        };
-
         let mut stmt = conn
             .prepare(&query)
             .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
-        let ids_result: Result<Vec<i64>, duckdb::Error> = stmt
+        let result: Vec<i64> = stmt
             .query_map([], |row| row.get::<_, i64>(0))
             .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?
-            .collect();
-
-        ids_result.map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?
-    }; // Lock is dropped here
-
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+        result
+    };
     let mut jobs = Vec::new();
     for id in ids {
         if let Ok(job) = get_download_job(conn_ref.clone(), id).await {
@@ -226,9 +243,9 @@ pub async fn update_job_status(
 
     conn.execute(
         "UPDATE download_jobs
-         SET status = ?, error_message = ?, updated_at = ?
-         WHERE id = ?",
-        duckdb::params![status_str, &error_message, now, job_id],
+          SET status = ?, error_message = ?, updated_at = ?
+          WHERE id = ?",
+        rusqlite::params![status_str, &error_message, now, job_id],
     )
     .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
@@ -248,7 +265,7 @@ pub async fn update_job_progress(
     let now = chrono::Utc::now().timestamp_millis();
 
     let mut updates = vec!["updated_at = ?"];
-    let mut params: Vec<Box<dyn duckdb::ToSql>> = vec![Box::new(now)];
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now)];
 
     if let Some(total) = total_items {
         updates.push("total_items = ?");
@@ -278,7 +295,7 @@ pub async fn update_job_progress(
         updates.join(", ")
     );
 
-    let params_refs: Vec<&dyn duckdb::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     conn.execute(&query, params_refs.as_slice())
         .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
@@ -299,9 +316,9 @@ pub async fn update_source_state(
 
     conn.execute(
         "UPDATE download_jobs
-         SET source_state = ?, updated_at = ?
-         WHERE id = ?",
-        duckdb::params![&source_state_json, now, job_id],
+          SET source_state = ?, updated_at = ?
+          WHERE id = ?",
+        rusqlite::params![&source_state_json, now, job_id],
     )
     .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
@@ -353,8 +370,8 @@ pub async fn insert_download_item(
          (job_id, source_identifier, source_folder, item_type, status, size_bytes,
           mime_type, metadata, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id",
-        duckdb::params![
+          RETURNING id",
+        rusqlite::params![
             job_id as i32,
             source_identifier,
             source_folder,
@@ -372,11 +389,189 @@ pub async fn insert_download_item(
     Ok(item_id)
 }
 
+/// Insert email download with transaction support
+/// This ensures download_item, email record, and progress update are atomic
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_email_download_transactional(
+    conn: AsyncDbConnection,
+    job_id: i64,
+    credential_id: i64,
+    uid: u32,
+    folder_id: i64,
+    message_id: Option<&str>,
+    subject: Option<&str>,
+    from_address: &str,
+    from_name: Option<&str>,
+    to_addresses: &[EmailAddress],
+    cc_addresses: &[EmailAddress],
+    bcc_addresses: &[EmailAddress],
+    reply_to: Option<&str>,
+    date_sent: Option<i64>,
+    date_received: i64,
+    body_text: Option<&str>,
+    body_html: Option<&str>,
+    is_read: bool,
+    is_flagged: bool,
+    is_draft: bool,
+    is_answered: bool,
+    has_attachments: bool,
+    attachment_count: i32,
+    size_bytes: Option<i32>,
+    labels: &[String],
+) -> Result<(i64, i64), DownloadDbError> {
+    let conn = conn.lock().await;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    // Skip if we already have this UID for the folder
+    let existing_email_id: Option<i64> = conn.query_row(
+        "SELECT id FROM emails WHERE credential_id = ? AND folder_id = ? AND uid = ?",
+        rusqlite::params![credential_id, folder_id, uid as i32],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to check existing email: {}", e)))?;
+
+    if let Some(email_id) = existing_email_id {
+        return Ok((0, email_id));
+    }
+
+    // Begin transaction
+    conn.execute("BEGIN TRANSACTION", [])
+        .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
+
+    let result = (|| -> Result<(i64, i64), DownloadDbError> {
+        // 1. Insert download_item
+        let metadata_json: Option<String> = None;
+        let download_item_id: i64 = conn.query_row(
+            "INSERT INTO download_items
+             (job_id, source_identifier, source_folder_id, item_type, status, size_bytes,
+               mime_type, metadata, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              RETURNING id",
+            rusqlite::params![
+                job_id as i32,
+                &uid.to_string(),
+                folder_id,
+                "email",
+                "completed",
+                size_bytes,
+                Some("message/rfc822"),
+                metadata_json.as_deref(),
+                now,
+                now
+            ],
+            |row| row.get(0)
+        ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to insert download_item: {}", e)))?;
+
+        // 2. Insert email
+        let to_json = serde_json::to_string(to_addresses)
+            .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize to_addresses: {}", e)))?;
+        let cc_json = serde_json::to_string(cc_addresses)
+            .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize cc_addresses: {}", e)))?;
+        let bcc_json = serde_json::to_string(bcc_addresses)
+            .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize bcc_addresses: {}", e)))?;
+
+        let email_id: i64 = conn.query_row(
+            "INSERT INTO emails
+             (download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+               to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+               body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+               has_attachments, attachment_count, size_bytes, thread_id, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(credential_id, folder_id, uid) DO UPDATE SET
+                updated_at = excluded.updated_at
+              RETURNING id",
+            rusqlite::params![
+                download_item_id,
+                credential_id,
+                uid as i32,
+                folder_id,
+                message_id,
+                subject,
+                from_address,
+                from_name,
+                &to_json,
+                &cc_json,
+                &bcc_json,
+                reply_to,
+                date_sent,
+                date_received,
+                body_text,
+                body_html,
+                is_read,
+                is_flagged,
+                is_draft,
+                is_answered,
+                has_attachments,
+                attachment_count,
+                size_bytes,
+                None::<String>,
+                now,
+                now
+            ],
+            |row| row.get(0)
+        ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to insert email: {}", e)))?;
+
+        // 3. Insert labels if present
+        for label_name in labels {
+            if !label_name.is_empty() {
+                let label_id: i64 = conn.query_row(
+                    "INSERT INTO email_labels (credential_id, name, label_type, created_at, updated_at)
+                     VALUES (?, ?, 'user', ?, ?)
+                     ON CONFLICT(credential_id, name) DO UPDATE SET
+                         updated_at = excluded.updated_at
+                     RETURNING id",
+                    rusqlite::params![credential_id, label_name, now, now],
+                    |row| row.get(0)
+                ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to get/create label: {}", e)))?;
+
+                // Insert label association
+                conn.execute(
+                    "INSERT OR IGNORE INTO email_label_associations (email_id, label_id, created_at)
+                     VALUES (?, ?, ?)",
+                    rusqlite::params![email_id, label_id, now],
+                ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to insert label association: {}", e)))?;
+            }
+        }
+
+        // 3. Update job progress (increment downloaded_items by 1)
+        conn.execute(
+            "UPDATE download_jobs
+              SET downloaded_items = downloaded_items + 1,
+                  bytes_downloaded = bytes_downloaded + ?,
+                  updated_at = ?
+              WHERE id = ?",
+            rusqlite::params![
+                size_bytes.unwrap_or(0) as i64,
+                now,
+                job_id
+            ],
+        ).map_err(|e| DownloadDbError::DatabaseError(format!("Failed to update progress: {}", e)))?;
+
+        Ok((download_item_id, email_id))
+    })();
+
+    match result {
+        Ok(ids) => {
+            // Commit transaction
+            conn.execute("COMMIT", [])
+                .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
+            Ok(ids)
+        }
+        Err(e) => {
+            // Rollback transaction
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
+}
+
 fn source_type_to_string(source_type: &SourceType) -> &'static str {
     match source_type {
         SourceType::Imap => "imap",
         SourceType::GoogleDrive => "google-drive",
         SourceType::Dropbox => "dropbox",
         SourceType::OneDrive => "onedrive",
+        SourceType::LocalFile => "local-file",
     }
 }

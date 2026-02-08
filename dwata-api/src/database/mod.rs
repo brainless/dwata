@@ -1,17 +1,50 @@
+pub mod companies;
+pub mod contact_links;
+pub mod contacts;
 pub mod credentials;
 pub mod downloads;
 pub mod emails;
+pub mod events;
+pub mod extraction_jobs;
+pub mod financial_extraction_sources;
+pub mod financial_extraction_attempts;
+pub mod financial_patterns;
+pub mod financial_transactions;
+pub mod folders;
+pub mod labels;
+pub mod linkedin_connections;
 pub mod migrations;
 pub mod models;
+pub mod positions;
 pub mod queries;
 
-use duckdb::{params, Connection};
+use rusqlite::{params, Connection};
+use r2d2::{Pool, PooledConnection};
+use r2d2_sqlite::SqliteConnectionManager;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tokio::sync::Mutex as TokioMutex;
+use std::time::Duration;
 
 pub type DbConnection = Arc<Mutex<Connection>>;
-pub type AsyncDbConnection = Arc<TokioMutex<Connection>>;
+
+#[derive(Clone)]
+pub struct AsyncDbConnection {
+    pool: Arc<Pool<SqliteConnectionManager>>,
+}
+
+impl AsyncDbConnection {
+    pub fn new(pool: Pool<SqliteConnectionManager>) -> Self {
+        Self {
+            pool: Arc::new(pool),
+        }
+    }
+
+    pub async fn lock(&self) -> PooledConnection<SqliteConnectionManager> {
+        self.pool
+            .get()
+            .expect("Failed to get DB connection from pool")
+    }
+}
 
 pub struct Database {
     pub connection: DbConnection,
@@ -33,16 +66,23 @@ impl Database {
 
         // Run migrations on sync connection before opening async connection
         {
-            let conn = sync_mutex.lock().unwrap();
+            let mut conn = sync_mutex.lock().unwrap();
             migrations::run_migrations(&conn)?;
+            migrations::migrate_folders_and_labels(&mut *conn)?;
         }
 
-        // Now open async connection - it will see the migrated schema
-        let async_conn = Connection::open(db_path)?;
+        // Now open pooled connections - they will see the migrated schema
+        let manager = SqliteConnectionManager::file(db_path).with_init(|conn| {
+            conn.busy_timeout(Duration::from_secs(5))?;
+            conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+            Ok(())
+        });
+
+        let pool = Pool::builder().max_size(8).build(manager)?;
 
         let database = Database {
             connection: sync_mutex,
-            async_connection: Arc::new(TokioMutex::new(async_conn)),
+            async_connection: AsyncDbConnection::new(pool),
         };
 
         Ok(database)

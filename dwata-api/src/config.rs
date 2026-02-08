@@ -5,15 +5,18 @@ use std::path::PathBuf;
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ApiConfig {
     pub api_keys: Option<ApiKeysConfig>,
+    pub database: Option<DatabaseConfig>,
     pub cors: Option<CorsConfig>,
     pub server: Option<ServerConfig>,
     pub google_oauth: Option<GoogleOAuthConfig>,
+    pub downloads: Option<DownloadsConfig>,
 }
 
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
             api_keys: None,
+            database: None,
             cors: Some(CorsConfig {
                 allowed_origins: vec!["http://localhost:3000".to_string()],
             }),
@@ -22,6 +25,7 @@ impl Default for ApiConfig {
                 port: 8080,
             }),
             google_oauth: Some(GoogleOAuthConfig::default()),
+            downloads: Some(DownloadsConfig::default()),
         }
     }
 }
@@ -29,6 +33,12 @@ impl Default for ApiConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ApiKeysConfig {
     pub gemini_api_key: Option<String>,
+    pub claude_api_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct DatabaseConfig {
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -46,7 +56,17 @@ pub struct ServerConfig {
 pub struct GoogleOAuthConfig {
     pub client_id: String,
     pub client_secret: Option<String>,
-    pub redirect_uri: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct DownloadsConfig {
+    pub auto_start: bool,
+}
+
+impl Default for DownloadsConfig {
+    fn default() -> Self {
+        Self { auto_start: false }
+    }
 }
 
 impl Default for GoogleOAuthConfig {
@@ -54,7 +74,6 @@ impl Default for GoogleOAuthConfig {
         Self {
             client_id: "".to_string(),
             client_secret: None,
-            redirect_uri: "http://localhost:8000/api/oauth/google/callback".to_string(),
         }
     }
 }
@@ -75,6 +94,10 @@ impl ApiConfig {
             let default_config = r#"
 [api_keys]
 # gemini_api_key = "your-gemini-key"
+# claude_api_key = "your-claude-key"
+
+[database]
+# path = "/absolute/path/to/db.sqlite"
 
 [cors]
 allowed_origins = ["http://localhost:3030"]
@@ -87,7 +110,11 @@ port = 8080
 # Google Cloud Console OAuth2 client ID for Gmail
 # client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 # client_secret = "YOUR_CLIENT_SECRET" # Optional, for Desktop apps
-# redirect_uri = "http://localhost:8080/api/oauth/google/callback"
+# Redirect URI is automatically constructed from server host and port
+
+[downloads]
+# When false, the API will not auto-start download jobs on startup.
+auto_start = false
 "#;
             std::fs::write(&config_path, default_config).map_err(|e| {
                 ConfigError::Message(format!("Failed to write default config: {e}"))

@@ -3,6 +3,7 @@ import { Show } from "solid-js";
 import SettingsGeneral from "./settings/General";
 import SettingsApiKeys from "./settings/ApiKeys";
 import SettingsAccounts from "./settings/Accounts";
+import SettingsFolders from "./settings/Folders";
 
 export default function Settings() {
   const location = useLocation();
@@ -12,6 +13,7 @@ export default function Settings() {
     const path = location.pathname;
     if (path === "/settings/api-keys") return "api-keys";
     if (path === "/settings/accounts") return "accounts";
+    if (path === "/settings/folders") return "folders";
     return "general";
   };
 
@@ -37,7 +39,13 @@ export default function Settings() {
           href="/settings/accounts"
           class={`tab ${activeTab() === "accounts" ? "tab-active" : ""}`}
         >
-          Accounts
+          Email Accounts
+        </A>
+        <A
+          href="/settings/folders"
+          class={`tab ${activeTab() === "folders" ? "tab-active" : ""}`}
+        >
+          Folders
         </A>
       </div>
 
@@ -53,6 +61,10 @@ export default function Settings() {
 
         <Show when={activeTab() === "accounts"}>
           <SettingsAccounts />
+        </Show>
+
+        <Show when={activeTab() === "folders"}>
+          <SettingsFolders />
         </Show>
       </div>
     </div>

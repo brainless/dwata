@@ -1,4 +1,14 @@
+pub mod companies;
+pub mod contacts;
 pub mod credentials;
 pub mod downloads;
-pub mod settings;
+pub mod emails;
+pub mod events;
+pub mod extraction_jobs;
+pub mod financial;
+pub mod folders;
+pub mod labels;
 pub mod oauth;
+pub mod pattern_generation;
+pub mod positions;
+pub mod settings;

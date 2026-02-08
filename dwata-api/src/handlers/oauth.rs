@@ -40,6 +40,7 @@ pub async fn google_oauth_callback(
     state_manager: web::Data<Arc<OAuthStateManager>>,
     db: web::Data<Arc<crate::database::Database>>,
     token_cache: web::Data<Arc<crate::helpers::token_cache::TokenCache>>,
+    keyring: web::Data<Arc<KeyringService>>,
 ) -> Result<HttpResponse> {
     if let Some(error) = &query.error {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
@@ -79,7 +80,7 @@ pub async fn google_oauth_callback(
         credential_type: CredentialType::OAuth,
         identifier: format!("gmail_{}", email.replace('@', "_at_")),
         username: email.clone(),
-        password: refresh_token.clone(),
+        password: Some(refresh_token.clone()),
         service_name: Some("imap.gmail.com".to_string()),
         port: Some(993),
         use_tls: Some(true),
@@ -90,17 +91,43 @@ pub async fn google_oauth_callback(
         }).to_string()),
     };
 
-    let metadata = db::insert_credential(db.async_connection.clone(), &credential_request)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to store credential: {}", e)))?;
+    let metadata = match db::insert_credential(db.async_connection.clone(), &credential_request).await {
+        Ok(cred) => cred,
+        Err(db::CredentialDbError::DuplicateIdentifier) => {
+            tracing::info!("Credential with identifier {} already exists, updating", credential_request.identifier);
+            
+            let credentials = db::list_credentials(db.async_connection.clone(), false).await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to list credentials: {}", e)))?;
+            
+            let existing = credentials.iter()
+                .find(|c| c.identifier == credential_request.identifier)
+                .ok_or_else(|| actix_web::error::ErrorInternalServerError("Credential not found"))?;
+            
+            db::update_credential(
+                db.async_connection.clone(),
+                existing.id,
+                None,
+                credential_request.service_name,
+                credential_request.port,
+                credential_request.use_tls,
+                credential_request.notes,
+                credential_request.extra_metadata,
+            )
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to update credential: {}", e)))?
+        },
+        Err(e) => return Err(actix_web::error::ErrorInternalServerError(format!("Failed to store credential: {}", e))),
+    };
 
-    KeyringService::set_password(
-        &CredentialType::OAuth,
-        &credential_request.identifier,
-        &email,
-        refresh_token,
-    )
-    .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to store refresh token: {}", e)))?;
+    keyring
+        .update_password(
+            &CredentialType::OAuth,
+            &credential_request.identifier,
+            &email,
+            refresh_token,
+        )
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to store refresh token: {}", e)))?;
 
     token_cache.store_token(metadata.id, access_token.to_string(), expires_in).await;
 

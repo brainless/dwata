@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
 use std::sync::Arc;
 use shared_types::download::{
-    CreateDownloadJobRequest, DownloadJobListResponse, DownloadJobStatus,
+    CreateDownloadJobRequest, DownloadJobListResponse, DownloadJobStatus, JobType,
 };
 
 use crate::database::downloads as db;
@@ -12,12 +12,24 @@ use crate::jobs::download_manager::DownloadManager;
 pub async fn create_download_job(
     db: web::Data<Arc<Database>>,
     request: web::Json<CreateDownloadJobRequest>,
+    query: web::Query<CreateJobQuery>,
 ) -> ActixResult<HttpResponse> {
-    let job = db::insert_download_job(db.async_connection.clone(), &request)
+    let job_type = match query.job_type.as_str() {
+        "historical-backfill" => JobType::HistoricalBackfill,
+        _ => JobType::RecentSync,
+    };
+
+    let job = db::insert_download_job(db.async_connection.clone(), &request, job_type)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::Created().json(job))
+}
+
+#[derive(Deserialize)]
+pub struct CreateJobQuery {
+    #[serde(default)]
+    job_type: String,
 }
 
 #[derive(Deserialize)]
