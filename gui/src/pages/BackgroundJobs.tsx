@@ -190,6 +190,9 @@ export default function BackgroundJobs() {
         // IMAP credentials (whether using OAuth2 or plain auth) are for IMAP downloads
         return "imap";
       case "oauth":
+        if (credential.service_name?.includes("imap")) {
+          return "imap";
+        }
         // Pure OAuth credentials for cloud storage
         // TODO: Determine OAuth provider from credential metadata
         // For now, assume Google Drive

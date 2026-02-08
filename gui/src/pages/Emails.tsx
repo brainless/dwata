@@ -27,6 +27,7 @@ import {
 } from "../api/emails";
 import FolderIcon from "../components/emails/FolderIcon";
 import EmailPageLayout from "../components/EmailPageLayout";
+import { getApiUrl } from "../config/api";
 
 export default function Emails() {
   // Account & navigation state
@@ -40,6 +41,7 @@ export default function Emails() {
   const [error, setError] = createSignal<string | null>(null);
   const [totalCount, setTotalCount] = createSignal<bigint>(0n);
   const [hasMore, setHasMore] = createSignal(false);
+  const [checkEmailsLoading, setCheckEmailsLoading] = createSignal(false);
 
   // UI state
   const [searchQuery, setSearchQuery] = createSignal("");
@@ -149,6 +151,60 @@ export default function Emails() {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
+  const getSourceTypeForCredential = (
+    credential: CredentialMetadata,
+  ): string | null => {
+    switch (credential.credential_type) {
+      case "imap":
+        return "imap";
+      case "oauth":
+        if (credential.service_name?.includes("imap")) {
+          return "imap";
+        }
+        return "google-drive";
+      default:
+        return null;
+    }
+  };
+
+  const checkEmails = async () => {
+    setCheckEmailsLoading(true);
+    try {
+      for (const cred of accounts()) {
+        const sourceType = getSourceTypeForCredential(cred);
+        if (!sourceType) continue;
+
+        const response = await fetch(getApiUrl("/api/downloads"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            credential_id: Number(cred.id),
+            source_type: sourceType,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(
+            "Failed to create download job:",
+            response.status,
+            errorText,
+          );
+          continue;
+        }
+
+        const job = await response.json();
+        await fetch(getApiUrl(`/api/downloads/${job.id}/start`), {
+          method: "POST",
+        });
+      }
+    } catch (err) {
+      console.error("Failed to check emails:", err);
+    } finally {
+      setCheckEmailsLoading(false);
+    }
+  };
+
   // Get email preview text
   const getPreviewText = (email: Email): string => {
     const text = email.body_text || email.body_html || "";
@@ -212,10 +268,23 @@ export default function Emails() {
       <div class="text-sm text-base-content/60">
         Showing {emails().length} of {totalCount().toString()} emails
       </div>
-      <div class="join">
-        <button class="join-item btn btn-sm">«</button>
-        <button class="join-item btn btn-sm">Page 1</button>
-        <button class="join-item btn btn-sm">»</button>
+      <div class="flex items-center gap-3">
+        <div class="join">
+          <button class="join-item btn btn-sm">«</button>
+          <button class="join-item btn btn-sm">Page 1</button>
+          <button class="join-item btn btn-sm">»</button>
+        </div>
+        <button
+          class="btn btn-primary btn-sm"
+          onClick={checkEmails}
+          disabled={checkEmailsLoading()}
+        >
+          {checkEmailsLoading() ? (
+            <span class="loading loading-spinner loading-sm"></span>
+          ) : (
+            "Check Emails"
+          )}
+        </button>
       </div>
     </div>
   );
