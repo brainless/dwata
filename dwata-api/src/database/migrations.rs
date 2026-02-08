@@ -12,6 +12,105 @@ fn table_has_column(conn: &Connection, table: &str, column: &str) -> anyhow::Res
     Ok(false)
 }
 
+fn table_sql_contains(conn: &Connection, table: &str, needle: &str) -> anyhow::Result<bool> {
+    let sql: Option<String> = conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table],
+        |row| row.get(0),
+    )?;
+    Ok(sql.map(|s| s.contains(needle)).unwrap_or(false))
+}
+
+fn rebuild_financial_patterns_table(conn: &mut Connection) -> anyhow::Result<()> {
+    let tx = conn.transaction()?;
+
+    tx.execute(
+        "ALTER TABLE financial_patterns RENAME TO financial_patterns_old",
+        [],
+    )?;
+
+    tx.execute(
+        "CREATE TABLE financial_patterns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            -- Pattern identity
+            name VARCHAR NOT NULL,
+            regex_pattern VARCHAR NOT NULL,
+            description VARCHAR,
+            sender_email VARCHAR,
+
+            -- Pattern metadata
+            document_type VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            confidence FLOAT NOT NULL,
+
+            -- Capture group indices (which regex group contains each field)
+            amount_group INTEGER NOT NULL,
+            vendor_group INTEGER,
+            source_vendor_group INTEGER,
+            destination_vendor_group INTEGER,
+            date_group INTEGER,
+            reference_group INTEGER,
+
+            -- Management flags
+            is_default BOOLEAN DEFAULT false,
+            is_active BOOLEAN DEFAULT true,
+
+            -- Usage statistics
+            match_count INTEGER DEFAULT 0,
+            last_matched_at BIGINT,
+
+            -- Timestamps
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+
+            -- Uniqueness constraints
+            UNIQUE(name)
+        )",
+        [],
+    )?;
+
+    tx.execute(
+        "INSERT INTO financial_patterns (
+            id, name, regex_pattern, description, sender_email, document_type, status, confidence,
+            amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group,
+            reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at
+        )
+        SELECT
+            id, name, regex_pattern, description, sender_email, document_type, status, confidence,
+            amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group,
+            reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at
+        FROM financial_patterns_old",
+        [],
+    )?;
+
+    tx.execute("DROP TABLE financial_patterns_old", [])?;
+
+    tx.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_patterns_active ON financial_patterns(is_active)",
+        [],
+    )?;
+    tx.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_patterns_type ON financial_patterns(document_type)",
+        [],
+    )?;
+    tx.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_financial_patterns_regex_sender_unique
+         ON financial_patterns(regex_pattern, sender_email)
+         WHERE sender_email IS NOT NULL",
+        [],
+    )?;
+    tx.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_financial_patterns_regex_unique_null_sender
+         ON financial_patterns(regex_pattern)
+         WHERE sender_email IS NULL",
+        [],
+    )?;
+
+    tx.commit()?;
+    Ok(())
+}
+
 fn migrate_financial_schema(conn: &Connection) -> anyhow::Result<()> {
     let has_data_source_type =
         table_has_column(conn, "financial_transactions", "data_source_type")?;
@@ -30,7 +129,7 @@ fn migrate_financial_schema(conn: &Connection) -> anyhow::Result<()> {
 
 /// Run all database migrations
 #[allow(dead_code)]
-pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
+pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
     // Create agent_sessions table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_sessions (
@@ -693,6 +792,8 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             name VARCHAR NOT NULL,
             regex_pattern VARCHAR NOT NULL,
             description VARCHAR,
+            sender_email VARCHAR,
+            sender_email VARCHAR,
 
             -- Pattern metadata
             document_type VARCHAR NOT NULL,
@@ -720,19 +821,8 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             updated_at BIGINT NOT NULL,
 
             -- Uniqueness constraints
-            UNIQUE(name),
-            UNIQUE(regex_pattern)
+            UNIQUE(name)
         )",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_financial_patterns_active ON financial_patterns(is_active)",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_financial_patterns_type ON financial_patterns(document_type)",
         [],
     )?;
 
@@ -756,6 +846,41 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             [],
         )?;
     }
+
+    if !table_has_column(conn, "financial_patterns", "sender_email")? {
+        conn.execute(
+            "ALTER TABLE financial_patterns ADD COLUMN sender_email VARCHAR",
+            [],
+        )?;
+    }
+
+    if table_sql_contains(conn, "financial_patterns", "UNIQUE(regex_pattern)")? {
+        rebuild_financial_patterns_table(conn)?;
+    }
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_patterns_active ON financial_patterns(is_active)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_patterns_type ON financial_patterns(document_type)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_financial_patterns_regex_sender_unique
+         ON financial_patterns(regex_pattern, sender_email)
+         WHERE sender_email IS NOT NULL",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_financial_patterns_regex_unique_null_sender
+         ON financial_patterns(regex_pattern)
+         WHERE sender_email IS NULL",
+        [],
+    )?;
 
     // Create email_folders table
     conn.execute(
@@ -841,141 +966,6 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_email_label_assoc_email ON email_label_associations(email_id)", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_email_label_assoc_label ON email_label_associations(label_id)", [])?;
-
-    // Seed default financial patterns
-    conn.execute(
-        "INSERT INTO financial_patterns
-            (name, regex_pattern, description, document_type, status, confidence,
-             amount_group, vendor_group, source_vendor_group, destination_vendor_group,
-             date_group, reference_group, is_default, is_active,
-             match_count, created_at, updated_at)
-        VALUES
-            -- Payment Confirmation Patterns (5)
-            ('payment_to_vendor',
-             '(?i)payment of \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
-             'Matches: \"payment of $150.00 to Comcast\"',
-             'payment-confirmation', 'paid', 0.90,
-             1, NULL, NULL, 2, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('paid_amount_to_vendor',
-             '(?i)paid \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
-             'Matches: \"paid $99 to Adobe\"',
-             'payment-confirmation', 'paid', 0.88,
-             1, NULL, NULL, 2, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('your_payment_to_vendor',
-             '(?i)your \\$?([\\d,]+\\.?\\d{0,2}) payment to ([A-Za-z\\s]+)',
-             'Matches: \"Your $50.00 payment to Netflix\"',
-             'payment-confirmation', 'paid', 0.87,
-             1, NULL, NULL, 2, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('successfully_paid_to_vendor',
-             '(?i)successfully paid \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
-             'Matches: \"successfully paid $1,200.00 to Chase\"',
-             'payment-confirmation', 'paid', 0.92,
-             1, NULL, NULL, 2, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('payment_processed_to_vendor',
-             '(?i)payment processed:? \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
-             'Matches: \"payment processed: $45.99 to Spotify\"',
-             'payment-confirmation', 'paid', 0.91,
-             1, NULL, NULL, 2, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            -- Bill/Invoice Due Patterns (4)
-            ('bill_due_explicit',
-             '(?i)bill (?:of|for) \\$?([\\d,]+\\.?\\d{0,2}) (?:is )?due (?:on )?([A-Za-z]+ \\d{1,2})',
-             'Matches: \"bill of $99.99 is due on Feb 10\"',
-             'bill', 'pending', 0.88,
-             1, NULL, NULL, NULL, 2, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('invoice_due_date',
-             '(?i)invoice for \\$?([\\d,]+\\.?\\d{0,2}) due ([A-Za-z]+ \\d{1,2})',
-             'Matches: \"invoice for $3,500 due January 25\"',
-             'invoice', 'pending', 0.89,
-             1, NULL, NULL, NULL, 2, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('vendor_bill_due',
-             '(?i)(?:your )?([A-Za-z]+) bill (?:\\(?\\$?([\\d,]+\\.?\\d{0,2})\\)?) is due ([A-Za-z]+ \\d{1,2})',
-             'Matches: \"Your Adobe bill ($99) is due Feb 10\"',
-             'bill', 'pending', 0.87,
-             2, NULL, NULL, 1, 3, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('due_amount_by_date',
-             '(?i)due:? \\$?([\\d,]+\\.?\\d{0,2}) by (\\d{2}/\\d{2}/\\d{4})',
-             'Matches: \"due: $150.00 by 02/05/2026\"',
-             'bill', 'pending', 0.86,
-             1, NULL, NULL, NULL, 2, NULL,
-             true, true,
-             0, 0, 0),
-
-            -- Payment Received Patterns (3)
-            ('received_payment_from',
-             '(?i)received (?:a payment of )?\\$?([\\d,]+\\.?\\d{0,2}) from ([A-Za-z\\s]+)',
-             'Matches: \"received $3,500.00 from Acme Corp\"',
-             'invoice', 'paid', 0.92,
-             1, NULL, NULL, 2, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('payment_of_from',
-             '(?i)payment of \\$?([\\d,]+\\.?\\d{0,2}) from ([A-Za-z\\s]+)',
-             'Matches: \"payment of $2,000 from TechStart Inc\"',
-             'invoice', 'paid', 0.90,
-             1, NULL, NULL, 2, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('you_received_payment',
-             '(?i)you received (?:a payment:? )?\\$?([\\d,]+\\.?\\d{0,2}) from ([A-Za-z\\s]+)',
-             'Matches: \"You received a payment: $1,500 from Client Name\"',
-             'invoice', 'paid', 0.91,
-             1, NULL, NULL, 2, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            -- Overdue/Late Patterns (3)
-            ('payment_overdue',
-             '(?i)payment of \\$?([\\d,]+\\.?\\d{0,2}) (?:is |to ([A-Za-z\\s]+) )?(?:is )?overdue',
-             'Matches: \"payment of $1,200 is overdue\" or \"payment of $1,200 to Chase is overdue\"',
-             'bill', 'overdue', 0.93,
-             1, NULL, NULL, 2, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('amount_past_due',
-             '(?i)\\$?([\\d,]+\\.?\\d{0,2}) payment past due',
-             'Matches: \"$450.00 payment past due\"',
-             'bill', 'overdue', 0.91,
-             1, NULL, NULL, NULL, NULL, NULL,
-             true, true,
-             0, 0, 0),
-
-            ('overdue_bill_days',
-             '(?i)overdue bill:? \\$?([\\d,]+\\.?\\d{0,2})(?: \\((\\d+) days? late\\))?',
-             'Matches: \"overdue bill: $99 (3 days late)\"',
-             'bill', 'overdue', 0.90,
-             1, NULL, NULL, NULL, NULL, NULL,
-             true, true,
-             0, 0, 0)
-        ON CONFLICT (regex_pattern) DO NOTHING",
-        [],
-    )?;
 
     tracing::info!("Database migrations completed successfully");
 

@@ -173,6 +173,7 @@ pub struct FinancialPattern {
     pub name: String,
     pub regex_pattern: String,
     pub description: Option<String>,
+    pub sender_email: Option<String>,
     pub document_type: String,
     pub status: String,
     pub confidence: f32,

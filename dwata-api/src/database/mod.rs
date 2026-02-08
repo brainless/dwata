@@ -44,6 +44,12 @@ impl AsyncDbConnection {
             .get()
             .expect("Failed to get DB connection from pool")
     }
+
+    pub fn get_blocking(&self) -> PooledConnection<SqliteConnectionManager> {
+        self.pool
+            .get()
+            .expect("Failed to get DB connection from pool")
+    }
 }
 
 pub struct Database {
@@ -67,14 +73,14 @@ impl Database {
         // Run migrations on sync connection before opening async connection
         {
             let mut conn = sync_mutex.lock().unwrap();
-            migrations::run_migrations(&conn)?;
+        migrations::run_migrations(&mut conn)?;
             migrations::migrate_folders_and_labels(&mut *conn)?;
         }
 
         // Now open pooled connections - they will see the migrated schema
         let manager = SqliteConnectionManager::file(db_path).with_init(|conn| {
             conn.busy_timeout(Duration::from_secs(5))?;
-            conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+            conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
             Ok(())
         });
 

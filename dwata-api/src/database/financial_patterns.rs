@@ -2,6 +2,7 @@ use crate::database::AsyncDbConnection;
 use shared_types::FinancialPattern;
 use rusqlite::{params, Row};
 use anyhow::Result;
+use tokio::task;
 
 pub async fn list_patterns(
     db_conn: AsyncDbConnection,
@@ -9,71 +10,71 @@ pub async fn list_patterns(
     is_default: Option<bool>,
     document_type: Option<String>,
 ) -> Result<Vec<FinancialPattern>> {
-    let conn = db_conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = db_conn.get_blocking();
+        let mut patterns = Vec::new();
+        let columns = "id, name, regex_pattern, description, sender_email, document_type, status, confidence, \
+            amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
+            reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
 
-    let mut patterns = Vec::new();
-    let columns = "id, name, regex_pattern, description, document_type, status, confidence, \
-        amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
-        reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
+        if active_only || is_default.is_some() || document_type.is_some() {
+            let mut query = format!("SELECT {} FROM financial_patterns WHERE 1=1", columns);
 
-    if active_only || is_default.is_some() || document_type.is_some() {
-        let mut query = format!("SELECT {} FROM financial_patterns WHERE 1=1", columns);
+            if active_only {
+                query.push_str(" AND is_active = true");
+            }
 
-        if active_only {
-            query.push_str(" AND is_active = true");
+            if let Some(default_val) = is_default {
+                query.push_str(&format!(
+                    " AND is_default = {}",
+                    if default_val { "true" } else { "false" }
+                ));
+            }
+
+            if let Some(doc_type) = document_type {
+                query.push_str(&format!(" AND document_type = '{}'", doc_type));
+            }
+
+            query.push_str(" ORDER BY id");
+
+            let mut stmt = conn.prepare(&query)?;
+            let rows = stmt.query_map([], |row| map_row_to_pattern(row))?;
+            for row in rows {
+                patterns.push(row?);
+            }
+        } else {
+            let mut stmt =
+                conn.prepare(&format!("SELECT {} FROM financial_patterns ORDER BY id", columns))?;
+            let rows = stmt.query_map([], |row| map_row_to_pattern(row))?;
+            for row in rows {
+                patterns.push(row?);
+            }
         }
 
-        if let Some(default_val) = is_default {
-            query.push_str(&format!(" AND is_default = {}", if default_val { "true" } else { "false" }));
-        }
-
-        if let Some(doc_type) = document_type {
-            query.push_str(&format!(" AND document_type = '{}'", doc_type));
-        }
-
-        query.push_str(" ORDER BY id");
-
-        let mut stmt = conn.prepare(&query)?;
-
-        let rows = stmt.query_map([], |row| map_row_to_pattern(row))?;
-
-        for row in rows {
-            patterns.push(row?);
-        }
-    } else {
-        let mut stmt = conn.prepare(&format!(
-            "SELECT {} FROM financial_patterns ORDER BY id",
-            columns
-        ))?;
-
-        let rows = stmt.query_map([], |row| map_row_to_pattern(row))?;
-
-        for row in rows {
-            patterns.push(row?);
-        }
-    }
-
-    Ok(patterns)
+        Ok(patterns)
+    })
+    .await?
 }
 
 pub async fn get_pattern(
     db_conn: AsyncDbConnection,
     id: i64,
 ) -> Result<FinancialPattern> {
-    let conn = db_conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = db_conn.get_blocking();
+        let columns = "id, name, regex_pattern, description, sender_email, document_type, status, confidence, \
+            amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
+            reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
 
-    let columns = "id, name, regex_pattern, description, document_type, status, confidence, \
-        amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
-        reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {} FROM financial_patterns WHERE id = ?1",
+            columns
+        ))?;
 
-    let mut stmt = conn.prepare(&format!(
-        "SELECT {} FROM financial_patterns WHERE id = ?1",
-        columns
-    ))?;
-
-    let pattern = stmt.query_row(params![id], |row| map_row_to_pattern(row))?;
-
-    Ok(pattern)
+        let pattern = stmt.query_row(params![id], |row| map_row_to_pattern(row))?;
+        Ok(pattern)
+    })
+    .await?
 }
 
 pub async fn list_active_patterns(
@@ -86,38 +87,42 @@ pub async fn insert_pattern(
     db_conn: AsyncDbConnection,
     pattern: &FinancialPattern,
 ) -> Result<i64> {
-    let conn = db_conn.lock().await;
+    let pattern = pattern.clone();
+    task::spawn_blocking(move || {
+        let conn = db_conn.get_blocking();
+        let id: i64 = conn.query_row(
+            "INSERT INTO financial_patterns (name, regex_pattern, description, sender_email, document_type, status, confidence,
+             amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, reference_group,
+             is_default, is_active, match_count, last_matched_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+             RETURNING id",
+            params![
+                pattern.name,
+                pattern.regex_pattern,
+                pattern.description.as_deref(),
+                pattern.sender_email.as_deref(),
+                &pattern.document_type,
+                &pattern.status,
+                pattern.confidence,
+                pattern.amount_group,
+                pattern.vendor_group,
+                pattern.source_vendor_group,
+                pattern.destination_vendor_group,
+                pattern.date_group,
+                pattern.reference_group,
+                pattern.is_default,
+                pattern.is_active,
+                pattern.match_count,
+                pattern.last_matched_at,
+                pattern.created_at,
+                pattern.updated_at,
+            ],
+            |row| row.get(0),
+        )?;
 
-    let id: i64 = conn.query_row(
-        "INSERT INTO financial_patterns (name, regex_pattern, description, document_type, status, confidence,
-         amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, reference_group,
-         is_default, is_active, match_count, last_matched_at, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
-         RETURNING id",
-        params![
-            pattern.name,
-            pattern.regex_pattern,
-            pattern.description.as_deref(),
-            &pattern.document_type,
-            &pattern.status,
-            pattern.confidence,
-            pattern.amount_group,
-            pattern.vendor_group,
-            pattern.source_vendor_group,
-            pattern.destination_vendor_group,
-            pattern.date_group,
-            pattern.reference_group,
-            pattern.is_default,
-            pattern.is_active,
-            pattern.match_count,
-            pattern.last_matched_at,
-            pattern.created_at,
-            pattern.updated_at,
-        ],
-        |row| row.get(0),
-    )?;
-
-    Ok(id)
+        Ok(id)
+    })
+    .await?
 }
 
 pub async fn update_pattern(
@@ -125,35 +130,39 @@ pub async fn update_pattern(
     id: i64,
     pattern: &FinancialPattern,
 ) -> Result<()> {
-    let conn = db_conn.lock().await;
+    let pattern = pattern.clone();
+    task::spawn_blocking(move || {
+        let conn = db_conn.get_blocking();
+        conn.execute(
+            "UPDATE financial_patterns
+             SET name = ?1, regex_pattern = ?2, description = ?3, sender_email = ?4, document_type = ?5, status = ?6,
+                 confidence = ?7, amount_group = ?8, vendor_group = ?9, source_vendor_group = ?10,
+                 destination_vendor_group = ?11, date_group = ?12, reference_group = ?13,
+                 is_active = ?14, updated_at = ?15
+             WHERE id = ?16",
+            params![
+                pattern.name,
+                pattern.regex_pattern,
+                pattern.description.as_deref(),
+                pattern.sender_email.as_deref(),
+                &pattern.document_type,
+                &pattern.status,
+                pattern.confidence,
+                pattern.amount_group,
+                pattern.vendor_group,
+                pattern.source_vendor_group,
+                pattern.destination_vendor_group,
+                pattern.date_group,
+                pattern.reference_group,
+                pattern.is_active,
+                pattern.updated_at,
+                id,
+            ],
+        )?;
 
-    conn.execute(
-        "UPDATE financial_patterns
-         SET name = ?1, regex_pattern = ?2, description = ?3, document_type = ?4, status = ?5,
-             confidence = ?6, amount_group = ?7, vendor_group = ?8, source_vendor_group = ?9,
-             destination_vendor_group = ?10, date_group = ?11, reference_group = ?12,
-             is_active = ?13, updated_at = ?14
-         WHERE id = ?15",
-        params![
-            pattern.name,
-            pattern.regex_pattern,
-            pattern.description.as_deref(),
-            &pattern.document_type,
-            &pattern.status,
-            pattern.confidence,
-            pattern.amount_group,
-            pattern.vendor_group,
-            pattern.source_vendor_group,
-            pattern.destination_vendor_group,
-            pattern.date_group,
-            pattern.reference_group,
-            pattern.is_active,
-            pattern.updated_at,
-            id,
-        ],
-    )?;
-
-    Ok(())
+        Ok(())
+    })
+    .await?
 }
 
 pub async fn toggle_pattern_active(
@@ -161,15 +170,18 @@ pub async fn toggle_pattern_active(
     id: i64,
     is_active: bool,
 ) -> Result<()> {
-    let conn = db_conn.lock().await;
-    let now = chrono::Utc::now().timestamp();
+    task::spawn_blocking(move || {
+        let conn = db_conn.get_blocking();
+        let now = chrono::Utc::now().timestamp();
 
-    conn.execute(
-        "UPDATE financial_patterns SET is_active = ?1, updated_at = ?2 WHERE id = ?3",
-        params![is_active, now, id],
-    )?;
+        conn.execute(
+            "UPDATE financial_patterns SET is_active = ?1, updated_at = ?2 WHERE id = ?3",
+            params![is_active, now, id],
+        )?;
 
-    Ok(())
+        Ok(())
+    })
+    .await?
 }
 
 pub async fn pattern_name_exists(
@@ -177,61 +189,84 @@ pub async fn pattern_name_exists(
     name: &str,
     exclude_id: Option<i64>,
 ) -> Result<bool> {
-    let conn = db_conn.lock().await;
+    let name = name.to_string();
+    task::spawn_blocking(move || {
+        let conn = db_conn.get_blocking();
+        let count: i64 = if let Some(exclude_id) = exclude_id {
+            conn.query_row(
+                "SELECT COUNT(*) FROM financial_patterns WHERE name = ?1 AND id != ?2",
+                params![name, exclude_id],
+                |row| row.get(0),
+            )?
+        } else {
+            conn.query_row(
+                "SELECT COUNT(*) FROM financial_patterns WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )?
+        };
 
-    let count: i64 = if let Some(exclude_id) = exclude_id {
-        conn.query_row(
-            "SELECT COUNT(*) FROM financial_patterns WHERE name = ?1 AND id != ?2",
-            params![name, exclude_id],
-            |row| row.get(0)
-        )?
-    } else {
-        conn.query_row(
-            "SELECT COUNT(*) FROM financial_patterns WHERE name = ?1",
-            params![name],
-            |row| row.get(0)
-        )?
-    };
-
-    Ok(count > 0)
+        Ok(count > 0)
+    })
+    .await?
 }
 
 pub async fn pattern_regex_exists(
     db_conn: AsyncDbConnection,
     regex_pattern: &str,
+    sender_email: Option<&str>,
     exclude_id: Option<i64>,
 ) -> Result<bool> {
-    let conn = db_conn.lock().await;
+    let regex_pattern = regex_pattern.to_string();
+    let sender_email = sender_email.map(|v| v.to_string());
+    task::spawn_blocking(move || {
+        let conn = db_conn.get_blocking();
+        let count: i64 = match (sender_email, exclude_id) {
+            (Some(sender), Some(exclude)) => conn.query_row(
+                "SELECT COUNT(*) FROM financial_patterns
+                 WHERE regex_pattern = ?1 AND sender_email = ?2 AND id != ?3",
+                params![regex_pattern, sender, exclude],
+                |row| row.get(0),
+            )?,
+            (Some(sender), None) => conn.query_row(
+                "SELECT COUNT(*) FROM financial_patterns
+                 WHERE regex_pattern = ?1 AND sender_email = ?2",
+                params![regex_pattern, sender],
+                |row| row.get(0),
+            )?,
+            (None, Some(exclude)) => conn.query_row(
+                "SELECT COUNT(*) FROM financial_patterns
+                 WHERE regex_pattern = ?1 AND sender_email IS NULL AND id != ?2",
+                params![regex_pattern, exclude],
+                |row| row.get(0),
+            )?,
+            (None, None) => conn.query_row(
+                "SELECT COUNT(*) FROM financial_patterns
+                 WHERE regex_pattern = ?1 AND sender_email IS NULL",
+                params![regex_pattern],
+                |row| row.get(0),
+            )?,
+        };
 
-    let count: i64 = if let Some(exclude_id) = exclude_id {
-        conn.query_row(
-            "SELECT COUNT(*) FROM financial_patterns WHERE regex_pattern = ?1 AND id != ?2",
-            params![regex_pattern, exclude_id],
-            |row| row.get(0)
-        )?
-    } else {
-        conn.query_row(
-            "SELECT COUNT(*) FROM financial_patterns WHERE regex_pattern = ?1",
-            params![regex_pattern],
-            |row| row.get(0)
-        )?
-    };
-
-    Ok(count > 0)
+        Ok(count > 0)
+    })
+    .await?
 }
 
 pub async fn increment_match_count(
     db_conn: AsyncDbConnection,
     id: i64,
 ) -> Result<()> {
-    let conn = db_conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = db_conn.get_blocking();
+        conn.execute(
+            "UPDATE financial_patterns SET match_count = match_count + 1 WHERE id = ?1",
+            params![id],
+        )?;
 
-    conn.execute(
-        "UPDATE financial_patterns SET match_count = match_count + 1 WHERE id = ?1",
-        params![id],
-    )?;
-
-    Ok(())
+        Ok(())
+    })
+    .await?
 }
 
 pub async fn update_last_matched(
@@ -239,14 +274,16 @@ pub async fn update_last_matched(
     id: i64,
     timestamp: i64,
 ) -> Result<()> {
-    let conn = db_conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = db_conn.get_blocking();
+        conn.execute(
+            "UPDATE financial_patterns SET last_matched_at = ?1 WHERE id = ?2",
+            params![timestamp, id],
+        )?;
 
-    conn.execute(
-        "UPDATE financial_patterns SET last_matched_at = ?1 WHERE id = ?2",
-        params![timestamp, id],
-    )?;
-
-    Ok(())
+        Ok(())
+    })
+    .await?
 }
 
 fn map_row_to_pattern(row: &Row) -> rusqlite::Result<FinancialPattern> {
@@ -255,20 +292,21 @@ fn map_row_to_pattern(row: &Row) -> rusqlite::Result<FinancialPattern> {
         name: row.get(1)?,
         regex_pattern: row.get(2)?,
         description: row.get(3)?,
-        document_type: row.get(4)?,
-        status: row.get(5)?,
-        confidence: row.get(6)?,
-        amount_group: row.get(7)?,
-        vendor_group: row.get(8)?,
-        source_vendor_group: row.get(9)?,
-        destination_vendor_group: row.get(10)?,
-        date_group: row.get(11)?,
-        reference_group: row.get(12)?,
-        is_default: row.get(13)?,
-        is_active: row.get(14)?,
-        match_count: row.get(15)?,
-        last_matched_at: row.get(16)?,
-        created_at: row.get(17)?,
-        updated_at: row.get(18)?,
+        sender_email: row.get(4)?,
+        document_type: row.get(5)?,
+        status: row.get(6)?,
+        confidence: row.get(7)?,
+        amount_group: row.get(8)?,
+        vendor_group: row.get(9)?,
+        source_vendor_group: row.get(10)?,
+        destination_vendor_group: row.get(11)?,
+        date_group: row.get(12)?,
+        reference_group: row.get(13)?,
+        is_default: row.get(14)?,
+        is_active: row.get(15)?,
+        match_count: row.get(16)?,
+        last_matched_at: row.get(17)?,
+        created_at: row.get(18)?,
+        updated_at: row.get(19)?,
     })
 }

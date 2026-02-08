@@ -34,8 +34,8 @@ pub use download::{
     FileFilter, ImapDownloadState, ImapFolderStatus, ImapSyncStrategy, SourceType,
 };
 pub use email::{
-    AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, ListEmailsRequest,
-    ListEmailsResponse,
+    AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, FinancialEmailScanRequest,
+    FinancialEmailScanResponse, FinancialEmailScanSender, ListEmailsRequest, ListEmailsResponse,
 };
 pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
 pub use extraction_job::{

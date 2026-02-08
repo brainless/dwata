@@ -8,11 +8,14 @@ use crate::database::{
 use crate::database::Database;
 use crate::helpers::pattern_validator;
 use crate::jobs::financial_extraction_manager::FinancialExtractionManager;
+use regex::Regex;
 use serde::Deserialize;
 use shared_types::{
+    FinancialEmailScanRequest, FinancialEmailScanResponse, FinancialEmailScanSender,
     FinancialExtractionAttemptsResponse, FinancialExtractionSummary, FinancialPattern,
 };
 use std::sync::Arc;
+use std::collections::HashMap;
 use tracing::info;
 
 pub async fn list_transactions(
@@ -147,6 +150,7 @@ pub struct CreatePatternRequest {
     pub name: String,
     pub regex_pattern: String,
     pub description: Option<String>,
+    pub sender_email: Option<String>,
     pub document_type: String,
     pub status: String,
     pub confidence: f32,
@@ -193,6 +197,7 @@ pub async fn create_pattern(
     let regex_exists = patterns_db::pattern_regex_exists(
         db.async_connection.clone(),
         &request.regex_pattern,
+        request.sender_email.as_deref(),
         None,
     )
     .await
@@ -209,6 +214,7 @@ pub async fn create_pattern(
         name: request.name.clone(),
         regex_pattern: request.regex_pattern.clone(),
         description: request.description.clone(),
+        sender_email: request.sender_email.clone(),
         document_type: request.document_type.clone(),
         status: request.status.clone(),
         confidence: request.confidence,
@@ -245,6 +251,7 @@ pub struct UpdatePatternRequest {
     pub name: Option<String>,
     pub regex_pattern: Option<String>,
     pub description: Option<String>,
+    pub sender_email: Option<String>,
     pub document_type: Option<String>,
     pub status: Option<String>,
     pub confidence: Option<f32>,
@@ -281,6 +288,7 @@ pub async fn update_pattern(
         name: request.name.clone().unwrap_or(existing.name),
         regex_pattern: request.regex_pattern.clone().unwrap_or(existing.regex_pattern),
         description: request.description.clone().or(existing.description),
+        sender_email: request.sender_email.clone().or(existing.sender_email),
         document_type: request.document_type.clone().unwrap_or(existing.document_type),
         status: request.status.clone().unwrap_or(existing.status),
         confidence: request.confidence.unwrap_or(existing.confidence),
@@ -329,6 +337,219 @@ pub async fn update_pattern(
         "pattern": updated_pattern,
         "message": "Pattern updated successfully"
     })))
+}
+
+const DEFAULT_FINANCIAL_KEYWORDS: &[&str] = &[
+    "payment",
+    "paid",
+    "invoice",
+    "receipt",
+    "transaction",
+    "transfer",
+    "deposit",
+    "withdrawal",
+    "charge",
+    "charged",
+    "refund",
+    "statement",
+    "balance",
+    "credit",
+    "debit",
+];
+
+const DEFAULT_FINANCIAL_REGEXES: &[&str] = &[
+    r"(?i)\btransaction\s*(id|#|no\.?|number)\b",
+    r"(?i)\bconfirmation\s*(id|#|no\.?|number)\b",
+    r"(?i)\bpayment\s*(id|#|no\.?|number)\b",
+    r"(?i)\binvoice\s*(id|#|no\.?|number)\b",
+    r"(?i)\border\s*(id|#|no\.?|number)\b",
+    r"(?i)\b(auth|authorization)\s*(code|id|#|no\.?)\b",
+    r"(?i)\b(ref|reference)\s*(id|#|no\.?|number)\b",
+    r"(?i)\b(ach|sepa|swift|wire)\b",
+    r"(?i)\b(transfer|deposit|withdrawal)\b",
+    r"(?i)\b(card)\s*(ending|ends?)\s*in\s*\d{2,4}\b",
+    r"(?i)\b(last\s*4|ending)\s*\d{2,4}\b",
+    r"(?i)\b(balance|amount\s*due|amount\s*paid|total\s*paid)\b",
+    r"(?i)\b(refund|chargeback)\b",
+];
+
+const TEMPLATE_SIMILARITY_THRESHOLD: f32 = 0.45;
+
+pub async fn scan_financial_emails(
+    db: web::Data<Arc<Database>>,
+    request: web::Json<FinancialEmailScanRequest>,
+) -> ActixResult<HttpResponse> {
+    let keywords: Vec<String> = DEFAULT_FINANCIAL_KEYWORDS
+        .iter()
+        .map(|k| k.to_string())
+        .collect();
+    let keywords_lower: Vec<String> = keywords
+        .iter()
+        .map(|k| k.to_lowercase())
+        .collect();
+
+    let mut regexes = Vec::new();
+    for pattern in DEFAULT_FINANCIAL_REGEXES {
+        match Regex::new(pattern) {
+            Ok(re) => regexes.push(re),
+            Err(e) => {
+                return Err(actix_web::error::ErrorBadRequest(format!(
+                    "Invalid regex pattern '{}': {}",
+                    pattern, e
+                )));
+            }
+        }
+    }
+
+    let rows = crate::database::emails::list_email_scan_rows(
+        db.async_connection.clone(),
+        request.credential_id,
+        request.max_emails,
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    let mut sender_counts: HashMap<String, i64> = HashMap::new();
+    let mut sender_tokens: HashMap<String, Vec<Vec<String>>> = HashMap::new();
+
+    for row in rows.iter() {
+        let mut content = String::new();
+        if let Some(subject) = &row.subject {
+            content.push_str(subject);
+            content.push('\n');
+        }
+        if let Some(body_text) = &row.body_text {
+            content.push_str(body_text);
+            content.push('\n');
+        }
+        if let Some(body_html) = &row.body_html {
+            content.push_str(body_html);
+        }
+
+        let mut matched = false;
+
+        if !keywords_lower.is_empty() {
+            let content_lower = content.to_lowercase();
+            matched = keywords_lower.iter().any(|k| content_lower.contains(k));
+        }
+
+        if !matched && !regexes.is_empty() {
+            matched = regexes.iter().any(|re| re.is_match(&content));
+        }
+
+        if matched {
+            let sender = row.from_address.clone();
+            *sender_counts.entry(sender.clone()).or_insert(0) += 1;
+            sender_tokens
+                .entry(sender)
+                .or_insert_with(Vec::new)
+                .push(tokenize_words(&content));
+        }
+    }
+
+    // If a sender's matched emails differ too much at a word level, they are likely not
+    // templated transaction emails. We drop them for now (may miss manual emails).
+    let mut total_matched = 0i64;
+    sender_counts.retain(|sender, count| {
+        let keep = sender_tokens
+            .get(sender)
+            .and_then(|tokens| {
+                if tokens.len() < 2 {
+                    return Some(true);
+                }
+                let avg = average_normalized_distance(tokens);
+                Some(avg <= TEMPLATE_SIMILARITY_THRESHOLD)
+            })
+            .unwrap_or(true);
+
+        if keep {
+            total_matched += *count;
+        }
+        keep
+    });
+
+    let mut senders: Vec<FinancialEmailScanSender> = sender_counts
+        .into_iter()
+        .map(|(sender_email, matched_count)| FinancialEmailScanSender {
+            sender_email,
+            matched_count,
+        })
+        .collect();
+
+    senders.sort_by(|a, b| {
+        b.matched_count
+            .cmp(&a.matched_count)
+            .then_with(|| a.sender_email.cmp(&b.sender_email))
+    });
+
+    if let Some(max_senders) = request.max_senders {
+        if senders.len() > max_senders {
+            senders.truncate(max_senders);
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(FinancialEmailScanResponse {
+        total_emails_scanned: rows.len() as i64,
+        total_matched_emails: total_matched,
+        senders,
+    }))
+}
+
+fn tokenize_words(text: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            current.push(ch.to_ascii_lowercase());
+        } else if !current.is_empty() {
+            words.push(current);
+            current = String::new();
+        }
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
+fn average_normalized_distance(samples: &[Vec<String>]) -> f32 {
+    let baseline = &samples[0];
+    let mut total = 0f32;
+    let mut count = 0f32;
+    for candidate in samples.iter().skip(1) {
+        total += normalized_word_distance(baseline, candidate);
+        count += 1.0;
+    }
+    if count == 0.0 {
+        0.0
+    } else {
+        total / count
+    }
+}
+
+fn normalized_word_distance(a: &[String], b: &[String]) -> f32 {
+    let dist = word_edit_distance(a, b) as f32;
+    let denom = a.len().max(b.len()).max(1) as f32;
+    dist / denom
+}
+
+fn word_edit_distance(a: &[String], b: &[String]) -> usize {
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut curr = vec![0usize; b.len() + 1];
+
+    for (i, aw) in a.iter().enumerate() {
+        curr[0] = i + 1;
+        for (j, bw) in b.iter().enumerate() {
+            let cost = if aw == bw { 0 } else { 1 };
+            let insert = curr[j] + 1;
+            let delete = prev[j + 1] + 1;
+            let replace = prev[j] + cost;
+            curr[j + 1] = insert.min(delete).min(replace);
+        }
+        prev.copy_from_slice(&curr);
+    }
+
+    prev[b.len()]
 }
 
 #[derive(Deserialize)]

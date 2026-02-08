@@ -390,199 +390,240 @@ impl DownloadManager {
                     return Ok(());
                 }
 
-                let mut imap_client = match auth_info.as_ref() {
-                    AuthInfo::OAuth(token) => RealImapClient::connect_with_oauth(&server, port, &username, token)?,
-                    AuthInfo::Password(password) => RealImapClient::connect_with_password(&server, port, &username, password)?,
-                };
-
-                tracing::info!("Processing folder: {}", db_folder.imap_path);
-
-                let resume_uid = db_folder.last_synced_uid;
-                let uids = match job.job_type {
-                    JobType::RecentSync => {
-                        // Download new emails (UID > last_synced_uid)
-                        match imap_client.search_emails(
-                            &db_folder.imap_path,
-                            resume_uid,
-                            None,
-                            max_age_months,
-                            Some(fetch_batch_size),
-                        ) {
-                            Ok(uids) => uids,
-                            Err(e) => {
-                                tracing::warn!("Failed to search emails in folder '{}': {}. Skipping.", db_folder.imap_path, e);
-                                return Ok(());
-                            }
-                        }
-                    }
-                    JobType::HistoricalBackfill => {
-                        // Download historical emails using a persistent oldest UID cursor per folder.
-                        let mut oldest_uid = db_folder.oldest_synced_uid;
-                        if oldest_uid.is_none() {
-                            oldest_uid = emails::get_oldest_uid_for_folder(
-                                db_conn.clone(),
-                                job.credential_id,
-                                db_folder.id,
-                            ).await?;
-                            if let Some(uid) = oldest_uid {
-                                // Seed backfill cursor from existing data.
-                                folders::update_folder_backfill_state(
-                                    db_conn.clone(),
-                                    db_folder.id,
-                                    uid,
-                                ).await?;
-                            }
-                        }
-
-                        let before_uid = match oldest_uid {
-                            Some(uid) if uid > 1 => Some(uid),
-                            _ => None,
-                        };
-
-                        if before_uid.is_none() {
-                            tracing::debug!("No older UIDs to backfill for {}", db_folder.imap_path);
-                            return Ok(());
-                        }
-
-                        let all_uids = match imap_client.search_emails(
-                            &db_folder.imap_path,
-                            None,
-                            before_uid,
-                            None,
-                            None,
-                        ) {
-                            Ok(uids) => uids,
-                            Err(e) => {
-                                tracing::warn!("Failed to search emails in folder '{}': {}. Skipping.", db_folder.imap_path, e);
-                                return Ok(());
-                            }
-                        };
-
-                        let mut historical_uids = all_uids;
-                        historical_uids.sort_unstable_by(|a, b| b.cmp(a));
-                        historical_uids.truncate(fetch_batch_size);
-                        historical_uids
-                    }
-                };
-
-                let uids = emails::filter_new_uids(
-                    db_conn.clone(),
-                    job.credential_id,
-                    db_folder.id,
-                    &uids,
-                ).await?;
-
-                tracing::info!("Found {} new emails to download in {}", uids.len(), db_folder.imap_path);
-
-                let mut highest_uid = db_folder.last_synced_uid;
-                let mut lowest_uid: Option<u32> = None;
-
-                for uid in uids {
+                let handle = tokio::runtime::Handle::current();
+                let result = tokio::task::spawn_blocking(move || {
                     if shutdown_flag.load(Ordering::SeqCst) {
                         return Ok(());
                     }
 
-                    match imap_client.fetch_email(&db_folder.imap_path, uid) {
-                        Ok(parsed_email) => {
-                            let to_addresses: Vec<EmailAddress> = parsed_email.to_addresses
-                                .iter()
-                                .filter_map(|(addr, name)| {
-                                    addr.as_ref().map(|a| EmailAddress {
-                                        email: a.clone(),
-                                        name: name.clone(),
-                                    })
-                                })
-                                .collect();
+                    let mut imap_client = match auth_info.as_ref() {
+                        AuthInfo::OAuth(token) => {
+                            RealImapClient::connect_with_oauth(&server, port, &username, token)?
+                        }
+                        AuthInfo::Password(password) => {
+                            RealImapClient::connect_with_password(&server, port, &username, password)?
+                        }
+                    };
 
-                            // Use transactional insert to ensure atomicity
-                            match db::insert_email_download_transactional(
-                                db_conn.clone(),
-                                job.id,
-                                job.credential_id,
-                                parsed_email.uid,
-                                db_folder.id,
-                                parsed_email.message_id.as_deref(),
-                                parsed_email.subject.as_deref(),
-                                &parsed_email.from_address.unwrap_or_default(),
-                                parsed_email.from_name.as_deref(),
-                                &to_addresses,
-                                &[],
-                                &[],
-                                parsed_email.reply_to.as_deref(),
-                                parsed_email.date_sent,
-                                parsed_email.date_received,
-                                parsed_email.body_text.as_deref(),
-                                parsed_email.body_html.as_deref(),
-                                parsed_email.is_read,
-                                parsed_email.is_flagged,
-                                parsed_email.is_draft,
-                                parsed_email.is_answered,
-                                parsed_email.has_attachments,
-                                parsed_email.attachment_count,
-                                parsed_email.size_bytes,
-                                &parsed_email.labels,
-                            ).await {
-                                Ok((_download_item_id, email_id)) => {
-                                    tracing::info!("Downloaded and stored email UID {} (id: {}) in transaction", uid, email_id);
-                                    // Track highest UID for updating folder sync state
-                                    highest_uid = Some(highest_uid.map_or(uid, |last| last.max(uid)));
-                                    lowest_uid = Some(lowest_uid.map_or(uid, |last| last.min(uid)));
-                                }
+                    tracing::info!("Processing folder: {}", db_folder.imap_path);
+
+                    let resume_uid = db_folder.last_synced_uid;
+                    let uids = match job.job_type {
+                        JobType::RecentSync => {
+                            match imap_client.search_emails(
+                                &db_folder.imap_path,
+                                resume_uid,
+                                None,
+                                max_age_months,
+                                Some(fetch_batch_size),
+                            ) {
+                                Ok(uids) => uids,
                                 Err(e) => {
-                                    tracing::error!("Failed to store email UID {} in transaction: {}", uid, e);
-                                    // Update failed count
-                                    db::update_job_progress(
-                                        db_conn.clone(),
-                                        job.id,
-                                        None,
-                                        None,
-                                        Some(1),
-                                        None,
-                                        None,
-                                    )
-                                    .await?;
+                                    tracing::warn!(
+                                        "Failed to search emails in folder '{}': {}. Skipping.",
+                                        db_folder.imap_path,
+                                        e
+                                    );
+                                    return Ok(());
                                 }
                             }
                         }
-                        Err(e) => {
-                            tracing::error!("Failed to download email UID {}: {}", uid, e);
+                        JobType::HistoricalBackfill => {
+                            let mut oldest_uid = db_folder.oldest_synced_uid;
+                            if oldest_uid.is_none() {
+                                oldest_uid = handle.block_on(emails::get_oldest_uid_for_folder(
+                                    db_conn.clone(),
+                                    job.credential_id,
+                                    db_folder.id,
+                                ))?;
+                                if let Some(uid) = oldest_uid {
+                                    handle.block_on(folders::update_folder_backfill_state(
+                                        db_conn.clone(),
+                                        db_folder.id,
+                                        uid,
+                                    ))?;
+                                }
+                            }
 
-                            db::update_job_progress(
-                                db_conn.clone(),
-                                job.id,
+                            let before_uid = match oldest_uid {
+                                Some(uid) if uid > 1 => Some(uid),
+                                _ => None,
+                            };
+
+                            if before_uid.is_none() {
+                                tracing::debug!(
+                                    "No older UIDs to backfill for {}",
+                                    db_folder.imap_path
+                                );
+                                return Ok(());
+                            }
+
+                            let all_uids = match imap_client.search_emails(
+                                &db_folder.imap_path,
+                                None,
+                                before_uid,
                                 None,
                                 None,
-                                Some(1),
-                                None,
-                                None,
-                            )
-                            .await?;
+                            ) {
+                                Ok(uids) => uids,
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to search emails in folder '{}': {}. Skipping.",
+                                        db_folder.imap_path,
+                                        e
+                                    );
+                                    return Ok(());
+                                }
+                            };
+
+                            let mut historical_uids = all_uids;
+                            historical_uids.sort_unstable_by(|a, b| b.cmp(a));
+                            historical_uids.truncate(fetch_batch_size);
+                            historical_uids
+                        }
+                    };
+
+                    let uids = handle.block_on(emails::filter_new_uids(
+                        db_conn.clone(),
+                        job.credential_id,
+                        db_folder.id,
+                        &uids,
+                    ))?;
+
+                    tracing::info!(
+                        "Found {} new emails to download in {}",
+                        uids.len(),
+                        db_folder.imap_path
+                    );
+
+                    let mut highest_uid = db_folder.last_synced_uid;
+                    let mut lowest_uid: Option<u32> = None;
+
+                    for uid in uids {
+                        if shutdown_flag.load(Ordering::SeqCst) {
+                            return Ok(());
+                        }
+
+                        match imap_client.fetch_email(&db_folder.imap_path, uid) {
+                            Ok(parsed_email) => {
+                                let to_addresses: Vec<EmailAddress> = parsed_email
+                                    .to_addresses
+                                    .iter()
+                                    .filter_map(|(addr, name)| {
+                                        addr.as_ref().map(|a| EmailAddress {
+                                            email: a.clone(),
+                                            name: name.clone(),
+                                        })
+                                    })
+                                    .collect();
+
+                                let insert_result = handle.block_on(
+                                    db::insert_email_download_transactional(
+                                        db_conn.clone(),
+                                        job.id,
+                                        job.credential_id,
+                                        parsed_email.uid,
+                                        db_folder.id,
+                                        parsed_email.message_id.as_deref(),
+                                        parsed_email.subject.as_deref(),
+                                        &parsed_email.from_address.unwrap_or_default(),
+                                        parsed_email.from_name.as_deref(),
+                                        &to_addresses,
+                                        &[],
+                                        &[],
+                                        parsed_email.reply_to.as_deref(),
+                                        parsed_email.date_sent,
+                                        parsed_email.date_received,
+                                        parsed_email.body_text.as_deref(),
+                                        parsed_email.body_html.as_deref(),
+                                        parsed_email.is_read,
+                                        parsed_email.is_flagged,
+                                        parsed_email.is_draft,
+                                        parsed_email.is_answered,
+                                        parsed_email.has_attachments,
+                                        parsed_email.attachment_count,
+                                        parsed_email.size_bytes,
+                                        &parsed_email.labels,
+                                    ),
+                                );
+
+                                match insert_result {
+                                    Ok((_download_item_id, email_id)) => {
+                                        tracing::info!(
+                                            "Downloaded and stored email UID {} (id: {}) in transaction",
+                                            uid,
+                                            email_id
+                                        );
+                                        highest_uid =
+                                            Some(highest_uid.map_or(uid, |last| last.max(uid)));
+                                        lowest_uid =
+                                            Some(lowest_uid.map_or(uid, |last| last.min(uid)));
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(
+                                            "Failed to store email UID {} in transaction: {}",
+                                            uid,
+                                            e
+                                        );
+                                        let _ = handle.block_on(db::update_job_progress(
+                                            db_conn.clone(),
+                                            job.id,
+                                            None,
+                                            None,
+                                            Some(1),
+                                            None,
+                                            None,
+                                        ));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to download email UID {}: {}", uid, e);
+                                let _ = handle.block_on(db::update_job_progress(
+                                    db_conn.clone(),
+                                    job.id,
+                                    None,
+                                    None,
+                                    Some(1),
+                                    None,
+                                    None,
+                                ));
+                            }
                         }
                     }
-                }
 
-                // Update folder sync state with highest UID processed
-                if let Some(uid) = highest_uid {
-                    folders::update_folder_sync_state(
-                        db_conn.clone(),
-                        db_folder.id,
-                        uid,
-                        uid,
-                    ).await?;
-                    tracing::info!("Updated folder {} sync state to UID {}", db_folder.imap_path, uid);
-                }
-
-                if matches!(job.job_type, JobType::HistoricalBackfill) {
-                    if let Some(uid) = lowest_uid {
-                        folders::update_folder_backfill_state(
+                    if let Some(uid) = highest_uid {
+                        handle.block_on(folders::update_folder_sync_state(
                             db_conn.clone(),
                             db_folder.id,
                             uid,
-                        ).await?;
+                            uid,
+                        ))?;
+                        tracing::info!(
+                            "Updated folder {} sync state to UID {}",
+                            db_folder.imap_path,
+                            uid
+                        );
                     }
-                }
 
-                Ok::<(), anyhow::Error>(())
+                    if matches!(job.job_type, JobType::HistoricalBackfill) {
+                        if let Some(uid) = lowest_uid {
+                            handle.block_on(folders::update_folder_backfill_state(
+                                db_conn.clone(),
+                                db_folder.id,
+                                uid,
+                            ))?;
+                        }
+                    }
+
+                    Ok::<(), anyhow::Error>(())
+                })
+                .await;
+
+                match result {
+                    Ok(inner) => inner,
+                    Err(e) => Err(anyhow::anyhow!("IMAP blocking task failed: {}", e)),
+                }
             });
         }
 
