@@ -33,17 +33,27 @@ impl DwataToolExecutor {
                 None
             };
 
-            let vendor = params.vendor_group.and_then(|g| caps.get(g)).map(|m| {
-                m.as_str()
-                    .trim()
-                    .to_string()
-            });
+            let source_vendor = params
+                .source_vendor_group
+                .and_then(|g| caps.get(g))
+                .map(|m| m.as_str().trim().to_string());
+            let destination_vendor = params
+                .destination_vendor_group
+                .and_then(|g| caps.get(g))
+                .map(|m| m.as_str().trim().to_string());
+            let vendor = destination_vendor
+                .clone()
+                .or_else(|| source_vendor.clone());
 
             let transaction_date = params.date_group.and_then(|g| caps.get(g)).map(|m| {
                 m.as_str()
                     .trim()
                     .to_string()
             });
+            let reference = params
+                .reference_group
+                .and_then(|g| caps.get(g))
+                .map(|m| m.as_str().trim().to_string());
 
             if let Some(amount) = amount {
                 transactions.push(FinancialTransaction {
@@ -65,7 +75,7 @@ impl DwataToolExecutor {
                     source_file: None,
                     extracted_at: chrono::Utc::now().timestamp(),
                     notes: None,
-                    transaction_reference: None,
+                    transaction_reference: reference,
                 });
             }
         }
@@ -74,15 +84,20 @@ impl DwataToolExecutor {
     }
 
     pub async fn save_pattern(&self, params: SavePatternParams) -> Result<i64> {
+        if std::env::var("DWATA_SKIP_PATTERN_SAVE").ok().as_deref() == Some("1") {
+            return Ok(0);
+        }
+
         let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().timestamp();
 
         conn.execute(
             "INSERT INTO financial_patterns
              (name, regex_pattern, description, document_type, status, confidence,
-              amount_group, vendor_group, date_group, is_default, is_active,
+              amount_group, vendor_group, source_vendor_group, destination_vendor_group,
+              date_group, reference_group, is_default, is_active,
               match_count, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, false, false, 0, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, true, 0, ?, ?)",
             rusqlite::params![
                 params.name,
                 params.regex_pattern,
@@ -91,8 +106,11 @@ impl DwataToolExecutor {
                 params.status,
                 params.confidence,
                 params.amount_group as i64,
-                params.vendor_group.map(|v| v as i64),
+                None::<i64>,
+                params.source_vendor_group.map(|v| v as i64),
+                params.destination_vendor_group.map(|v| v as i64),
                 params.date_group.map(|v| v as i64),
+                params.reference_group.map(|v| v as i64),
                 now,
                 now,
             ],

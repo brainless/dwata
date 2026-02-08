@@ -5,6 +5,7 @@ use nocodo_llm_sdk::Tool;
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::types::{CompletionRequest, ContentBlock, Message as LlmMessage};
 use shared_types::FinancialPattern;
+use std::hash::Hasher;
 use std::sync::Arc;
 
 pub struct FinancialExtractorAgent {
@@ -75,6 +76,8 @@ impl FinancialExtractorAgent {
             let mut saw_tool_call = false;
             let mut test_calls = 0usize;
             let mut successful_test = false;
+            let mut saw_save_call = false;
+            let mut last_test_params: Option<TestPatternParams> = None;
 
             for iteration in 0..4 {
                 tracing::info!("Agent attempt {} iteration {}", attempt + 1, iteration + 1);
@@ -131,14 +134,14 @@ impl FinancialExtractorAgent {
                         match tool_call.name().as_ref() {
                             "test_pattern" => {
                                 test_calls += 1;
-                                if test_calls > 1 {
+                                if test_calls > 5 {
                                     return Err(anyhow::anyhow!(
-                                        "Multiple test_pattern calls in a single attempt"
+                                        "Too many test_pattern calls in a single attempt"
                                     ));
                                 }
 
                                 let params: TestPatternParams = tool_call.parse_arguments()?;
-                                let transactions = self.tool_executor.test_pattern(params).await?;
+                                let transactions = self.tool_executor.test_pattern(params.clone()).await?;
                                 if transactions.is_empty() {
                                     self.storage
                                         .create_message(Message {
@@ -178,6 +181,7 @@ impl FinancialExtractorAgent {
                                     .await?;
 
                                 successful_test = true;
+                                last_test_params = Some(params);
                                 let save_hint = format!(
                                     "Test succeeded. Now call save_pattern using the same regex and group indices. Suggested defaults: name=cerebras_receipt, description=Receipt from vendor with amount and paid date, document_type=receipt, status=paid, confidence=0.9."
                                 );
@@ -191,6 +195,7 @@ impl FinancialExtractorAgent {
                                     .await?;
                             }
                             "save_pattern" => {
+                                saw_save_call = true;
                                 let params: SavePatternParams = tool_call.parse_arguments()?;
                                 let pattern_id = self.tool_executor.save_pattern(params).await?;
                                 self.storage
@@ -221,6 +226,27 @@ impl FinancialExtractorAgent {
 
                     if retry_attempt {
                         continue 'attempts;
+                    }
+
+                    if successful_test && !saw_save_call {
+                        if let Some(params) = last_test_params {
+                            let fallback_name = generate_fallback_name(&params.regex_pattern);
+                            let auto_params = SavePatternParams {
+                                name: fallback_name,
+                                regex_pattern: params.regex_pattern,
+                                description: "Auto-saved pattern from successful test".to_string(),
+                                document_type: "receipt".to_string(),
+                                status: "paid".to_string(),
+                                confidence: 0.9,
+                                amount_group: params.amount_group,
+                                source_vendor_group: params.source_vendor_group,
+                                destination_vendor_group: params.destination_vendor_group,
+                                date_group: params.date_group,
+                                reference_group: params.reference_group,
+                            };
+                            let pattern_id = self.tool_executor.save_pattern(auto_params).await?;
+                            return Ok(format!("Pattern saved with ID: {}", pattern_id));
+                        }
                     }
 
                     continue;
@@ -269,4 +295,61 @@ fn find_high_signal_line(body: &str) -> Option<String> {
     re.captures(body)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().trim().to_string())
+}
+
+fn generate_fallback_name(regex_pattern: &str) -> String {
+    let mut slug = String::new();
+    let mut last_was_underscore = false;
+
+    for ch in regex_pattern.chars() {
+        let is_alnum = ch.is_ascii_alphanumeric();
+        if is_alnum {
+            slug.push(ch.to_ascii_lowercase());
+            last_was_underscore = false;
+        } else if !last_was_underscore {
+            slug.push('_');
+            last_was_underscore = true;
+        }
+    }
+
+    let slug = slug.trim_matches('_');
+    let mut slug = if slug.is_empty() {
+        "pattern".to_string()
+    } else {
+        slug.to_string()
+    };
+    if slug.len() > 32 {
+        slug.truncate(32);
+    }
+
+    let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    std::hash::Hash::hash(&regex_pattern, &mut hasher);
+    std::hash::Hash::hash(&now, &mut hasher);
+    let hash = hasher.finish();
+    let suffix = to_base36(hash % 36_u64.pow(4));
+
+    if suffix.is_empty() {
+        slug
+    } else {
+        format!("{slug}_{suffix}")
+    }
+}
+
+fn to_base36(mut value: u64) -> String {
+    if value == 0 {
+        return "0".to_string();
+    }
+    let mut out = Vec::new();
+    while value > 0 {
+        let rem = (value % 36) as u8;
+        let ch = if rem < 10 {
+            (b'0' + rem) as char
+        } else {
+            (b'a' + (rem - 10)) as char
+        };
+        out.push(ch);
+        value /= 36;
+    }
+    out.iter().rev().collect()
 }

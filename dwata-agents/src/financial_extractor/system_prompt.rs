@@ -14,8 +14,10 @@ pub fn build_system_prompt(
 
 You will extract a FinancialTransaction with these fields:
 - **amount** (f64, REQUIRED): The transaction amount (e.g., 1234.56)
-- **vendor** (String, OPTIONAL): Who the payment is to/from
+- **source_vendor** (String, OPTIONAL): The sender/payer (who money comes from)
+- **destination_vendor** (String, OPTIONAL): The receiver/merchant (who money goes to)
 - **transaction_date** (String, OPTIONAL): When the transaction occurred
+- **reference** (String, OPTIONAL): Invoice ID, confirmation code, or other reference
 - **document_type**: One of [invoice, bill, receipt, payment-confirmation, bank-statement, tax-document]
 - **status**: One of [paid, pending, overdue, cancelled, refunded]
 
@@ -25,20 +27,24 @@ Your regex pattern must:
 1. Use standard Rust regex syntax (the `regex` crate)
 2. Use numbered capture groups: (pattern) creates group 1, (pattern) creates group 2, etc.
 3. The amount_group must capture numeric amounts (e.g., "1,234.56" or "1234.56")
-4. The vendor_group (optional) should capture company/vendor names
-5. The date_group (optional) should capture date strings
+4. You MUST provide at least one of source_vendor_group or destination_vendor_group
+5. source_vendor_group captures the payer/sender name
+6. destination_vendor_group captures the merchant/receiver name
+7. The date_group (optional) should capture date strings
+8. The reference_group (optional) should capture IDs like invoice numbers, confirmation codes, or order IDs
 
 ### Examples of Good Patterns
 
 Pattern: `payment of \$?([\d,]+\.?\d{{0,2}}) to ([A-Za-z\s]+)`
 - Group 1 (amount_group): captures "1,234.56"
-- Group 2 (vendor_group): captures "Stripe Inc"
+- Group 2 (destination_vendor_group): captures "Stripe Inc"
 - Matches: "payment of $1,234.56 to Stripe Inc"
 
-Pattern: `invoice for \$?([\d,]+\.?\d{{0,2}}) due ([A-Za-z]+ \d{{1,2}})`
-- Group 1 (amount_group): captures "500.00"
-- Group 2 (date_group): captures "January 15"
-- Matches: "invoice for $500.00 due January 15"
+Pattern: `invoice ([A-Z0-9-]+) for \$?([\d,]+\.?\d{{0,2}}) due ([A-Za-z]+ \d{{1,2}})`
+- Group 1 (reference_group): captures "INV-1234"
+- Group 2 (amount_group): captures "500.00"
+- Group 3 (date_group): captures "January 15"
+- Matches: "invoice INV-1234 for $500.00 due January 15"
 
 ## Existing Patterns (for reference)
 
@@ -65,8 +71,10 @@ Test a regex pattern against the email content.
 Parameters:
 - regex_pattern: The regex to test
 - amount_group: Which capture group contains the amount (starting from 1)
-- vendor_group: Optional - which capture group contains the vendor
+- source_vendor_group: Optional - which capture group contains the payer/sender
+- destination_vendor_group: Optional - which capture group contains the merchant/receiver
 - date_group: Optional - which capture group contains the date
+- reference_group: Optional - which capture group contains the reference
 
 Returns: JSON list of extracted transactions. An empty list means no match.
 
@@ -80,8 +88,10 @@ Parameters:
 - status: Transaction status (paid, pending, overdue, etc.)
 - confidence: How confident you are in this pattern (0.0 to 1.0)
 - amount_group: Which capture group has the amount
-- vendor_group: Optional - which capture group has the vendor
+- source_vendor_group: Optional - which capture group has the payer/sender
+- destination_vendor_group: Optional - which capture group has the merchant/receiver
 - date_group: Optional - which capture group has the date
+- reference_group: Optional - which capture group has the reference
 
 Returns: Pattern ID
 
@@ -148,8 +158,8 @@ fn format_existing_patterns(patterns: &[FinancialPattern]) -> String {
 
 fn first_attempt_guidance(improved_attempt: bool) -> &'static str {
     if improved_attempt {
-        "Use the high-signal line as the anchor if available. Avoid `.*` across lines. Prefer a single-line regex like: `(?i)Receipt from\\s+([A-Za-z0-9 .,&-]+)\\s+\\$?([\\d,]+\\.\\d{2})\\s+Paid\\s+([A-Za-z]+\\s+\\d{1,2},\\s+\\d{4})` and then adjust minimally."
+        "Use the high-signal line as the anchor if available. Avoid `.*` across lines. Prefer a single-line regex like: `(?i)Receipt from\\s+([A-Za-z0-9 .,&-]+)\\s+\\$?([\\d,]+\\.\\d{2})\\s+Paid\\s+([A-Za-z]+\\s+\\d{1,2},\\s+\\d{4})` and then adjust minimally. Ensure at least one of source_vendor_group or destination_vendor_group is set."
     } else {
-        "First attempt must anchor on a high-signal line that includes vendor, amount, and date. Avoid `.*` across lines and keep the regex single-line when possible. If the test succeeds, immediately save the pattern."
+        "First attempt must anchor on a high-signal line that includes vendor, amount, and date. Avoid `.*` across lines and keep the regex single-line when possible. Include at least one of source_vendor_group or destination_vendor_group. If the test succeeds, immediately save the pattern."
     }
 }

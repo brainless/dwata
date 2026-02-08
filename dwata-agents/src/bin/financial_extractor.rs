@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use dwata_agents::financial_extractor::FinancialExtractorAgent;
-use dwata_agents::storage::{sqlite_storage::SqliteAgentStorage, Session};
+use dwata_agents::storage::{InMemoryAgentStorage, sqlite_storage::SqliteAgentStorage, Session};
 use dwata_agents::tools::DwataToolExecutor;
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::gemini::GeminiClient;
@@ -72,10 +72,28 @@ async fn main() -> Result<()> {
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("Missing gemini_api_key in config at {:?}", config_path))?;
 
-    let db_path = resolve_db_path(&config)?;
-    let conn = Arc::new(Mutex::new(
-        Connection::open(&db_path).with_context(|| format!("Failed to open db at {:?}", db_path))?,
-    ));
+    let use_memory_storage =
+        std::env::var("DWATA_MEMORY_AGENT").ok().as_deref() == Some("1");
+    let (conn, patterns, storage): (Arc<Mutex<Connection>>, Vec<FinancialPattern>, Arc<dyn dwata_agents::AgentStorage>) =
+        if use_memory_storage {
+            let conn = Arc::new(Mutex::new(Connection::open_in_memory()?));
+            let storage: Arc<dyn dwata_agents::AgentStorage> =
+                Arc::new(InMemoryAgentStorage::new());
+            (conn, Vec::new(), storage)
+        } else {
+            let db_path = resolve_db_path(&config)?;
+            println!("Financial extractor DB path: {}", db_path.display());
+            let conn = Arc::new(Mutex::new(
+                Connection::open(&db_path)
+                    .with_context(|| format!("Failed to open db at {:?}", db_path))?,
+            ));
+            let storage: Arc<dyn dwata_agents::AgentStorage> =
+                Arc::new(SqliteAgentStorage::new(conn.clone()));
+            let before_count = count_patterns(conn.clone())?;
+            println!("Financial patterns before run: {}", before_count);
+            let patterns = load_active_patterns(conn.clone())?;
+            (conn, patterns, storage)
+        };
 
     let (subject, body) = match (&cli.email_id, &cli.eml_path, &cli.email_body) {
         (Some(email_id), None, None) => load_email_from_db(conn.clone(), *email_id)?,
@@ -84,12 +102,9 @@ async fn main() -> Result<()> {
         _ => unreachable!("clap enforces exactly one input"),
     };
 
-    let patterns = load_active_patterns(conn.clone())?;
     let email_content = format!("{}\n\n{}", subject, body);
 
     let tool_executor = Arc::new(DwataToolExecutor::new(conn.clone(), email_content));
-    let storage: Arc<dyn dwata_agents::AgentStorage> =
-        Arc::new(SqliteAgentStorage::new(conn.clone()));
 
     let llm_client: Arc<dyn LlmClient> = Arc::new(GeminiClient::new(api_key)?);
 
@@ -143,6 +158,11 @@ async fn main() -> Result<()> {
             return Err(err);
         }
     };
+
+    if !use_memory_storage {
+        let after_count = count_patterns(conn.clone())?;
+        println!("Financial patterns after run: {}", after_count);
+    }
 
     let _ = storage
         .update_session(Session {
@@ -255,9 +275,44 @@ fn load_email_from_db(conn: Arc<Mutex<Connection>>, email_id: i64) -> Result<(St
 
 fn load_active_patterns(conn: Arc<Mutex<Connection>>) -> Result<Vec<FinancialPattern>> {
     let conn = conn.lock().unwrap();
-    let mut stmt = conn.prepare(
-        "SELECT id, name, regex_pattern, description, document_type, status, confidence,\n                amount_group, vendor_group, date_group, is_default, is_active,\n                match_count, last_matched_at, created_at, updated_at\n         FROM financial_patterns\n         WHERE is_active = true",
-    )?;
+    let mut stmt = match conn.prepare(
+        "SELECT id, name, regex_pattern, description, document_type, status, confidence,\n                amount_group, vendor_group, source_vendor_group, destination_vendor_group,\n                date_group, reference_group, is_default, is_active,\n                match_count, last_matched_at, created_at, updated_at\n         FROM financial_patterns\n         WHERE is_active = true",
+    ) {
+        Ok(stmt) => stmt,
+        Err(_) => {
+            let mut legacy_stmt = conn.prepare(
+                "SELECT id, name, regex_pattern, description, document_type, status, confidence,\n                    amount_group, vendor_group, date_group, is_default, is_active,\n                    match_count, last_matched_at, created_at, updated_at\n             FROM financial_patterns\n             WHERE is_active = true",
+            )?;
+
+            let patterns = legacy_stmt
+                .query_map([], |row| {
+                    Ok(FinancialPattern {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        regex_pattern: row.get(2)?,
+                        description: row.get(3)?,
+                        document_type: row.get(4)?,
+                        status: row.get(5)?,
+                        confidence: row.get(6)?,
+                        amount_group: row.get::<_, i64>(7)? as usize,
+                        vendor_group: row.get::<_, Option<i64>>(8)?.map(|v| v as usize),
+                        source_vendor_group: None,
+                        destination_vendor_group: None,
+                        date_group: row.get::<_, Option<i64>>(9)?.map(|v| v as usize),
+                        reference_group: None,
+                        is_default: row.get(10)?,
+                        is_active: row.get(11)?,
+                        match_count: row.get(12)?,
+                        last_matched_at: row.get(13)?,
+                        created_at: row.get(14)?,
+                        updated_at: row.get(15)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            return Ok(patterns);
+        }
+    };
 
     let patterns = stmt
         .query_map([], |row| {
@@ -271,16 +326,29 @@ fn load_active_patterns(conn: Arc<Mutex<Connection>>) -> Result<Vec<FinancialPat
                 confidence: row.get(6)?,
                 amount_group: row.get::<_, i64>(7)? as usize,
                 vendor_group: row.get::<_, Option<i64>>(8)?.map(|v| v as usize),
-                date_group: row.get::<_, Option<i64>>(9)?.map(|v| v as usize),
-                is_default: row.get(10)?,
-                is_active: row.get(11)?,
-                match_count: row.get(12)?,
-                last_matched_at: row.get(13)?,
-                created_at: row.get(14)?,
-                updated_at: row.get(15)?,
+                source_vendor_group: row.get::<_, Option<i64>>(9)?.map(|v| v as usize),
+                destination_vendor_group: row.get::<_, Option<i64>>(10)?.map(|v| v as usize),
+                date_group: row.get::<_, Option<i64>>(11)?.map(|v| v as usize),
+                reference_group: row.get::<_, Option<i64>>(12)?.map(|v| v as usize),
+                is_default: row.get(13)?,
+                is_active: row.get(14)?,
+                match_count: row.get(15)?,
+                last_matched_at: row.get(16)?,
+                created_at: row.get(17)?,
+                updated_at: row.get(18)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(patterns)
+}
+
+fn count_patterns(conn: Arc<Mutex<Connection>>) -> Result<i64> {
+    let conn = conn.lock().unwrap();
+    let count = conn.query_row(
+        "SELECT COUNT(*) FROM financial_patterns",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(count)
 }
