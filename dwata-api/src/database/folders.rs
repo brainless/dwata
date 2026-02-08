@@ -4,79 +4,84 @@ use crate::integrations::real_imap_client::FolderMetadata;
 
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
+use tokio::task;
 
 pub async fn list_folders(conn: AsyncDbConnection, credential_id: i64) -> Result<Vec<EmailFolder>> {
-    let conn = conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut stmt = conn.prepare(
+            "SELECT id, credential_id, name, display_name, imap_path, folder_type, parent_folder_id,
+                    uidvalidity, last_synced_uid, oldest_synced_uid, total_messages, unread_messages, is_subscribed,
+                    is_selectable, created_at, updated_at, last_synced_at
+             FROM email_folders
+             WHERE credential_id = ?
+             ORDER BY folder_type, name"
+        )?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, credential_id, name, display_name, imap_path, folder_type, parent_folder_id,
-                uidvalidity, last_synced_uid, oldest_synced_uid, total_messages, unread_messages, is_subscribed,
-                is_selectable, created_at, updated_at, last_synced_at
-         FROM email_folders
-         WHERE credential_id = ?
-         ORDER BY folder_type, name"
-    )?;
+        let folders = stmt.query_map([credential_id], |row| {
+            Ok(EmailFolder {
+                id: row.get(0)?,
+                credential_id: row.get(1)?,
+                name: row.get(2)?,
+                display_name: row.get(3)?,
+                imap_path: row.get(4)?,
+                folder_type: row.get(5)?,
+                parent_folder_id: row.get(6)?,
+                uidvalidity: row.get::<_, Option<i32>>(7)?.map(|v| v as u32),
+                last_synced_uid: row.get::<_, Option<i32>>(8)?.map(|v| v as u32),
+                oldest_synced_uid: row.get::<_, Option<i32>>(9)?.map(|v| v as u32),
+                total_messages: row.get(10)?,
+                unread_messages: row.get(11)?,
+                is_subscribed: row.get(12)?,
+                is_selectable: row.get(13)?,
+                created_at: row.get(14)?,
+                updated_at: row.get(15)?,
+                last_synced_at: row.get(16)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
-    let folders = stmt.query_map([credential_id], |row| {
-        Ok(EmailFolder {
-            id: row.get(0)?,
-            credential_id: row.get(1)?,
-            name: row.get(2)?,
-            display_name: row.get(3)?,
-            imap_path: row.get(4)?,
-            folder_type: row.get(5)?,
-            parent_folder_id: row.get(6)?,
-            uidvalidity: row.get::<_, Option<i32>>(7)?.map(|v| v as u32),
-            last_synced_uid: row.get::<_, Option<i32>>(8)?.map(|v| v as u32),
-            oldest_synced_uid: row.get::<_, Option<i32>>(9)?.map(|v| v as u32),
-            total_messages: row.get(10)?,
-            unread_messages: row.get(11)?,
-            is_subscribed: row.get(12)?,
-            is_selectable: row.get(13)?,
-            created_at: row.get(14)?,
-            updated_at: row.get(15)?,
-            last_synced_at: row.get(16)?,
-        })
-    })?
-    .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(folders)
+        Ok(folders)
+    })
+    .await?
 }
 
 pub async fn get_folder(conn: AsyncDbConnection, folder_id: i64) -> Result<EmailFolder> {
-    let conn = conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut stmt = conn.prepare(
+            "SELECT id, credential_id, name, display_name, imap_path, folder_type, parent_folder_id,
+                    uidvalidity, last_synced_uid, oldest_synced_uid, total_messages, unread_messages, is_subscribed,
+                    is_selectable, created_at, updated_at, last_synced_at
+             FROM email_folders
+             WHERE id = ?"
+        )?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, credential_id, name, display_name, imap_path, folder_type, parent_folder_id,
-                uidvalidity, last_synced_uid, oldest_synced_uid, total_messages, unread_messages, is_subscribed,
-                is_selectable, created_at, updated_at, last_synced_at
-         FROM email_folders
-         WHERE id = ?"
-    )?;
+        let folder = stmt.query_row([folder_id], |row| {
+            Ok(EmailFolder {
+                id: row.get(0)?,
+                credential_id: row.get(1)?,
+                name: row.get(2)?,
+                display_name: row.get(3)?,
+                imap_path: row.get(4)?,
+                folder_type: row.get(5)?,
+                parent_folder_id: row.get(6)?,
+                uidvalidity: row.get::<_, Option<i32>>(7)?.map(|v| v as u32),
+                last_synced_uid: row.get::<_, Option<i32>>(8)?.map(|v| v as u32),
+                oldest_synced_uid: row.get::<_, Option<i32>>(9)?.map(|v| v as u32),
+                total_messages: row.get(10)?,
+                unread_messages: row.get(11)?,
+                is_subscribed: row.get(12)?,
+                is_selectable: row.get(13)?,
+                created_at: row.get(14)?,
+                updated_at: row.get(15)?,
+                last_synced_at: row.get(16)?,
+            })
+        })?;
 
-    let folder = stmt.query_row([folder_id], |row| {
-        Ok(EmailFolder {
-            id: row.get(0)?,
-            credential_id: row.get(1)?,
-            name: row.get(2)?,
-            display_name: row.get(3)?,
-            imap_path: row.get(4)?,
-            folder_type: row.get(5)?,
-            parent_folder_id: row.get(6)?,
-            uidvalidity: row.get::<_, Option<i32>>(7)?.map(|v| v as u32),
-            last_synced_uid: row.get::<_, Option<i32>>(8)?.map(|v| v as u32),
-            oldest_synced_uid: row.get::<_, Option<i32>>(9)?.map(|v| v as u32),
-            total_messages: row.get(10)?,
-            unread_messages: row.get(11)?,
-            is_subscribed: row.get(12)?,
-            is_selectable: row.get(13)?,
-            created_at: row.get(14)?,
-            updated_at: row.get(15)?,
-            last_synced_at: row.get(16)?,
-        })
-    })?;
-
-    Ok(folder)
+        Ok(folder)
+    })
+    .await?
 }
 
 pub async fn upsert_folder(
@@ -212,41 +217,43 @@ pub async fn list_folders_for_credential(
     conn: AsyncDbConnection,
     credential_id: i64,
 ) -> Result<Vec<EmailFolder>> {
-    let conn = conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut stmt = conn.prepare(
+            "SELECT id, credential_id, name, display_name, imap_path, folder_type, parent_folder_id,
+                    uidvalidity, last_synced_uid, oldest_synced_uid, total_messages, unread_messages, is_subscribed,
+                    is_selectable, created_at, updated_at, last_synced_at
+             FROM email_folders
+             WHERE credential_id = ?
+             ORDER BY imap_path",
+        )?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, credential_id, name, display_name, imap_path, folder_type, parent_folder_id,
-                uidvalidity, last_synced_uid, oldest_synced_uid, total_messages, unread_messages, is_subscribed,
-                is_selectable, created_at, updated_at, last_synced_at
-         FROM email_folders
-         WHERE credential_id = ?
-         ORDER BY imap_path",
-    )?;
+        let folders = stmt.query_map([credential_id], |row| {
+            Ok(EmailFolder {
+                id: row.get(0)?,
+                credential_id: row.get(1)?,
+                name: row.get(2)?,
+                display_name: row.get(3)?,
+                imap_path: row.get(4)?,
+                folder_type: row.get(5)?,
+                parent_folder_id: row.get(6)?,
+                uidvalidity: row.get::<_, Option<i32>>(7)?.map(|v| v as u32),
+                last_synced_uid: row.get::<_, Option<i32>>(8)?.map(|v| v as u32),
+                oldest_synced_uid: row.get::<_, Option<i32>>(9)?.map(|v| v as u32),
+                total_messages: row.get(10)?,
+                unread_messages: row.get(11)?,
+                is_subscribed: row.get(12)?,
+                is_selectable: row.get(13)?,
+                created_at: row.get(14)?,
+                updated_at: row.get(15)?,
+                last_synced_at: row.get(16)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
-    let folders = stmt.query_map([credential_id], |row| {
-        Ok(EmailFolder {
-            id: row.get(0)?,
-            credential_id: row.get(1)?,
-            name: row.get(2)?,
-            display_name: row.get(3)?,
-            imap_path: row.get(4)?,
-            folder_type: row.get(5)?,
-            parent_folder_id: row.get(6)?,
-            uidvalidity: row.get::<_, Option<i32>>(7)?.map(|v| v as u32),
-            last_synced_uid: row.get::<_, Option<i32>>(8)?.map(|v| v as u32),
-            oldest_synced_uid: row.get::<_, Option<i32>>(9)?.map(|v| v as u32),
-            total_messages: row.get(10)?,
-            unread_messages: row.get(11)?,
-            is_subscribed: row.get(12)?,
-            is_selectable: row.get(13)?,
-            created_at: row.get(14)?,
-            updated_at: row.get(15)?,
-            last_synced_at: row.get(16)?,
-        })
-    })?
-    .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(folders)
+        Ok(folders)
+    })
+    .await?
 }
 
 pub async fn get_folder_by_path(
@@ -254,15 +261,20 @@ pub async fn get_folder_by_path(
     credential_id: i64,
     imap_path: &str,
 ) -> Result<Option<i64>> {
-    let conn = conn.lock().await;
+    let imap_path = imap_path.to_string();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let folder_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM email_folders WHERE credential_id = ? AND imap_path = ?",
+                params![credential_id, imap_path],
+                |row| row.get(0),
+            )
+            .ok();
 
-    let folder_id: Option<i64> = conn.query_row(
-        "SELECT id FROM email_folders WHERE credential_id = ? AND imap_path = ?",
-        params![credential_id, imap_path],
-        |row| row.get(0)
-    ).ok();
-
-    Ok(folder_id)
+        Ok(folder_id)
+    })
+    .await?
 }
 
 pub async fn sync_folders_from_imap(

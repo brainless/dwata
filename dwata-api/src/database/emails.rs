@@ -4,6 +4,7 @@ use anyhow::Result;
 use rusqlite::params_from_iter;
 use rusqlite::types::Value;
 use std::collections::HashSet;
+use tokio::task;
 
 #[derive(Debug, Clone)]
 pub struct EmailScanRow {
@@ -80,41 +81,45 @@ pub async fn filter_new_uids(
         return Ok(Vec::new());
     }
 
-    let conn = conn.lock().await;
-    let mut existing = HashSet::new();
-    let chunk_size = 900; // SQLite max variables is 999
+    let uids = uids.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut existing = HashSet::new();
+        let chunk_size = 900; // SQLite max variables is 999
 
-    for chunk in uids.chunks(chunk_size) {
-        let placeholders = std::iter::repeat("?")
-            .take(chunk.len())
-            .collect::<Vec<_>>()
-            .join(", ");
+        for chunk in uids.chunks(chunk_size) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
 
-        let query = format!(
-            "SELECT uid FROM emails
-             WHERE credential_id = ? AND folder_id = ? AND uid IN ({})",
-            placeholders
-        );
+            let query = format!(
+                "SELECT uid FROM emails
+                 WHERE credential_id = ? AND folder_id = ? AND uid IN ({})",
+                placeholders
+            );
 
-        let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(2 + chunk.len());
-        params.push(rusqlite::types::Value::from(credential_id));
-        params.push(rusqlite::types::Value::from(folder_id));
-        params.extend(chunk.iter().map(|uid| rusqlite::types::Value::from(*uid as i64)));
+            let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(2 + chunk.len());
+            params.push(rusqlite::types::Value::from(credential_id));
+            params.push(rusqlite::types::Value::from(folder_id));
+            params.extend(chunk.iter().map(|uid| rusqlite::types::Value::from(*uid as i64)));
 
-        let mut stmt = conn.prepare(&query)?;
-        let rows = stmt.query_map(params_from_iter(params), |row| row.get::<_, i32>(0))?;
-        for row in rows {
-            existing.insert(row? as u32);
+            let mut stmt = conn.prepare(&query)?;
+            let rows = stmt.query_map(params_from_iter(params), |row| row.get::<_, i32>(0))?;
+            for row in rows {
+                existing.insert(row? as u32);
+            }
         }
-    }
 
-    let filtered = uids
-        .iter()
-        .copied()
-        .filter(|uid| !existing.contains(uid))
-        .collect();
+        let filtered = uids
+            .iter()
+            .copied()
+            .filter(|uid| !existing.contains(uid))
+            .collect();
 
-    Ok(filtered)
+        Ok(filtered)
+    })
+    .await?
 }
 
 /// Get the oldest UID already stored for a folder
@@ -140,54 +145,56 @@ pub async fn get_email(
     conn: AsyncDbConnection,
     email_id: i64,
 ) -> Result<Email> {
-    let conn = conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut stmt = conn.prepare(
+            "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                    to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                    body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                    has_attachments, attachment_count, size_bytes, thread_id,
+                    created_at, updated_at
+             FROM emails WHERE id = ?"
+        )?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
-                to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                body_text, body_html, is_read, is_flagged, is_draft, is_answered,
-                has_attachments, attachment_count, size_bytes, thread_id,
-                created_at, updated_at
-         FROM emails WHERE id = ?"
-    )?;
+        let email = stmt.query_row([email_id], |row| {
+            let to_json: String = row.get(9)?;
+            let cc_json: String = row.get(10)?;
+            let bcc_json: String = row.get(11)?;
 
-    let email = stmt.query_row([email_id], |row| {
-        let to_json: String = row.get(9)?;
-        let cc_json: String = row.get(10)?;
-        let bcc_json: String = row.get(11)?;
+            Ok(Email {
+                id: row.get(0)?,
+                download_item_id: row.get(1)?,
+                credential_id: row.get(2)?,
+                uid: row.get::<_, i32>(3)? as u32,
+                folder_id: row.get(4)?,
+                message_id: row.get(5)?,
+                subject: row.get(6)?,
+                from_address: row.get(7)?,
+                from_name: row.get(8)?,
+                to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
+                cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
+                bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
+                reply_to: row.get(12)?,
+                date_sent: row.get(13)?,
+                date_received: row.get(14)?,
+                body_text: row.get(15)?,
+                body_html: row.get(16)?,
+                is_read: row.get(17)?,
+                is_flagged: row.get(18)?,
+                is_draft: row.get(19)?,
+                is_answered: row.get(20)?,
+                has_attachments: row.get(21)?,
+                attachment_count: row.get(22)?,
+                size_bytes: row.get(23)?,
+                thread_id: row.get(24)?,
+                created_at: row.get(25)?,
+                updated_at: row.get(26)?,
+            })
+        })?;
 
-        Ok(Email {
-            id: row.get(0)?,
-            download_item_id: row.get(1)?,
-            credential_id: row.get(2)?,
-            uid: row.get::<_, i32>(3)? as u32,
-            folder_id: row.get(4)?,
-            message_id: row.get(5)?,
-            subject: row.get(6)?,
-            from_address: row.get(7)?,
-            from_name: row.get(8)?,
-            to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
-            cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
-            bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
-            reply_to: row.get(12)?,
-            date_sent: row.get(13)?,
-            date_received: row.get(14)?,
-            body_text: row.get(15)?,
-            body_html: row.get(16)?,
-            is_read: row.get(17)?,
-            is_flagged: row.get(18)?,
-            is_draft: row.get(19)?,
-            is_answered: row.get(20)?,
-            has_attachments: row.get(21)?,
-            attachment_count: row.get(22)?,
-            size_bytes: row.get(23)?,
-            thread_id: row.get(24)?,
-            created_at: row.get(25)?,
-            updated_at: row.get(26)?,
-        })
-    })?;
-
-    Ok(email)
+        Ok(email)
+    })
+    .await?
 }
 
 /// List emails with pagination
@@ -198,99 +205,101 @@ pub async fn list_emails(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<Email>> {
-    let conn_guard = conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let query = match (credential_id, folder_id) {
+            (Some(cred), Some(fid)) => {
+                format!(
+                    "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                            to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                            has_attachments, attachment_count, size_bytes, thread_id,
+                            created_at, updated_at
+                     FROM emails WHERE credential_id = {} AND folder_id = {}
+                     ORDER BY date_received DESC LIMIT {} OFFSET {}",
+                    cred, fid, limit, offset
+                )
+            }
+            (Some(cred), None) => {
+                format!(
+                    "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                            to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                            has_attachments, attachment_count, size_bytes, thread_id,
+                            created_at, updated_at
+                     FROM emails WHERE credential_id = {}
+                     ORDER BY date_received DESC LIMIT {} OFFSET {}",
+                    cred, limit, offset
+                )
+            }
+            (None, Some(fid)) => {
+                format!(
+                    "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                            to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                            has_attachments, attachment_count, size_bytes, thread_id,
+                            created_at, updated_at
+                     FROM emails WHERE folder_id = {}
+                     ORDER BY date_received DESC LIMIT {} OFFSET {}",
+                    fid, limit, offset
+                )
+            }
+            (None, None) => {
+                format!(
+                    "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                            to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                            has_attachments, attachment_count, size_bytes, thread_id,
+                            created_at, updated_at
+                     FROM emails ORDER BY date_received DESC
+                     LIMIT {} OFFSET {}",
+                    limit, offset
+                )
+            }
+        };
 
-    let query = match (credential_id, folder_id) {
-        (Some(cred), Some(fid)) => {
-            format!(
-                "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
-                        to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
-                        has_attachments, attachment_count, size_bytes, thread_id,
-                        created_at, updated_at
-                 FROM emails WHERE credential_id = {} AND folder_id = {}
-                 ORDER BY date_received DESC LIMIT {} OFFSET {}",
-                cred, fid, limit, offset
-            )
-        }
-        (Some(cred), None) => {
-            format!(
-                "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
-                        to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
-                        has_attachments, attachment_count, size_bytes, thread_id,
-                        created_at, updated_at
-                 FROM emails WHERE credential_id = {}
-                 ORDER BY date_received DESC LIMIT {} OFFSET {}",
-                cred, limit, offset
-            )
-        }
-        (None, Some(fid)) => {
-            format!(
-                "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
-                        to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
-                        has_attachments, attachment_count, size_bytes, thread_id,
-                        created_at, updated_at
-                 FROM emails WHERE folder_id = {}
-                 ORDER BY date_received DESC LIMIT {} OFFSET {}",
-                fid, limit, offset
-            )
-        }
-        (None, None) => {
-            format!(
-                "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
-                        to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
-                        has_attachments, attachment_count, size_bytes, thread_id,
-                        created_at, updated_at
-                 FROM emails ORDER BY date_received DESC
-                 LIMIT {} OFFSET {}",
-                limit, offset
-            )
-        }
-    };
+        let mut stmt = conn.prepare(&query)?;
+        let emails = stmt
+            .query_map([], |row| {
+                let to_json: String = row.get(9)?;
+                let cc_json: String = row.get(10)?;
+                let bcc_json: String = row.get(11)?;
 
-    let mut stmt = conn_guard.prepare(&query)?;
-    let emails = stmt
-        .query_map([], |row| {
-            let to_json: String = row.get(9)?;
-            let cc_json: String = row.get(10)?;
-            let bcc_json: String = row.get(11)?;
+                Ok(Email {
+                    id: row.get(0)?,
+                    download_item_id: row.get(1)?,
+                    credential_id: row.get(2)?,
+                    uid: row.get::<_, i32>(3)? as u32,
+                    folder_id: row.get(4)?,
+                    message_id: row.get(5)?,
+                    subject: row.get(6)?,
+                    from_address: row.get(7)?,
+                    from_name: row.get(8)?,
+                    to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
+                    cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
+                    bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
+                    reply_to: row.get(12)?,
+                    date_sent: row.get(13)?,
+                    date_received: row.get(14)?,
+                    body_text: row.get(15)?,
+                    body_html: row.get(16)?,
+                    is_read: row.get(17)?,
+                    is_flagged: row.get(18)?,
+                    is_draft: row.get(19)?,
+                    is_answered: row.get(20)?,
+                    has_attachments: row.get(21)?,
+                    attachment_count: row.get(22)?,
+                    size_bytes: row.get(23)?,
+                    thread_id: row.get(24)?,
+                    created_at: row.get(25)?,
+                    updated_at: row.get(26)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(Email {
-                id: row.get(0)?,
-                download_item_id: row.get(1)?,
-                credential_id: row.get(2)?,
-                uid: row.get::<_, i32>(3)? as u32,
-                folder_id: row.get(4)?,
-                message_id: row.get(5)?,
-                subject: row.get(6)?,
-                from_address: row.get(7)?,
-                from_name: row.get(8)?,
-                to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
-                cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
-                bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
-                reply_to: row.get(12)?,
-                date_sent: row.get(13)?,
-                date_received: row.get(14)?,
-                body_text: row.get(15)?,
-                body_html: row.get(16)?,
-                is_read: row.get(17)?,
-                is_flagged: row.get(18)?,
-                is_draft: row.get(19)?,
-                is_answered: row.get(20)?,
-                has_attachments: row.get(21)?,
-                attachment_count: row.get(22)?,
-                size_bytes: row.get(23)?,
-                thread_id: row.get(24)?,
-                created_at: row.get(25)?,
-                updated_at: row.get(26)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(emails)
+        Ok(emails)
+    })
+    .await?
 }
 
 /// List minimal email fields for scanning
@@ -299,41 +308,43 @@ pub async fn list_email_scan_rows(
     credential_id: Option<i64>,
     max_emails: Option<usize>,
 ) -> Result<Vec<EmailScanRow>> {
-    let conn_guard = conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut query = String::from(
+            "SELECT from_address, subject, body_text, body_html FROM emails",
+        );
+        let mut params: Vec<Value> = Vec::new();
 
-    let mut query = String::from(
-        "SELECT from_address, subject, body_text, body_html FROM emails",
-    );
-    let mut params: Vec<Value> = Vec::new();
+        if let Some(cred) = credential_id {
+            query.push_str(" WHERE credential_id = ?");
+            params.push(Value::from(cred));
+        }
 
-    if let Some(cred) = credential_id {
-        query.push_str(" WHERE credential_id = ?");
-        params.push(Value::from(cred));
-    }
+        query.push_str(" ORDER BY date_received DESC");
 
-    query.push_str(" ORDER BY date_received DESC");
+        if let Some(limit) = max_emails {
+            query.push_str(" LIMIT ?");
+            params.push(Value::from(limit as i64));
+        }
 
-    if let Some(limit) = max_emails {
-        query.push_str(" LIMIT ?");
-        params.push(Value::from(limit as i64));
-    }
+        let mut stmt = conn.prepare(&query)?;
+        let rows = stmt.query_map(params_from_iter(params), |row| {
+            Ok(EmailScanRow {
+                from_address: row.get(0)?,
+                subject: row.get(1)?,
+                body_text: row.get(2)?,
+                body_html: row.get(3)?,
+            })
+        })?;
 
-    let mut stmt = conn_guard.prepare(&query)?;
-    let rows = stmt.query_map(params_from_iter(params), |row| {
-        Ok(EmailScanRow {
-            from_address: row.get(0)?,
-            subject: row.get(1)?,
-            body_text: row.get(2)?,
-            body_html: row.get(3)?,
-        })
-    })?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
 
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(row?);
-    }
-
-    Ok(results)
+        Ok(results)
+    })
+    .await?
 }
 
 /// List emails by label with pagination
@@ -343,62 +354,64 @@ pub async fn list_emails_by_label(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<Email>> {
-    let conn_guard = conn.lock().await;
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let query = format!(
+            "SELECT e.id, e.download_item_id, e.credential_id, e.uid, e.folder_id, e.message_id, e.subject, e.from_address, e.from_name,
+                    e.to_addresses, e.cc_addresses, e.bcc_addresses, e.reply_to, e.date_sent, e.date_received,
+                    e.body_text, e.body_html, e.is_read, e.is_flagged, e.is_draft, e.is_answered,
+                    e.has_attachments, e.attachment_count, e.size_bytes, e.thread_id,
+                    e.created_at, e.updated_at
+             FROM emails e
+             INNER JOIN email_label_associations ela ON e.id = ela.email_id
+             WHERE ela.label_id = {}
+             ORDER BY e.date_received DESC
+             LIMIT {} OFFSET {}",
+            label_id, limit, offset
+        );
 
-    let query = format!(
-        "SELECT e.id, e.download_item_id, e.credential_id, e.uid, e.folder_id, e.message_id, e.subject, e.from_address, e.from_name,
-                e.to_addresses, e.cc_addresses, e.bcc_addresses, e.reply_to, e.date_sent, e.date_received,
-                e.body_text, e.body_html, e.is_read, e.is_flagged, e.is_draft, e.is_answered,
-                e.has_attachments, e.attachment_count, e.size_bytes, e.thread_id,
-                e.created_at, e.updated_at
-         FROM emails e
-         INNER JOIN email_label_associations ela ON e.id = ela.email_id
-         WHERE ela.label_id = {}
-         ORDER BY e.date_received DESC
-         LIMIT {} OFFSET {}",
-        label_id, limit, offset
-    );
+        let mut stmt = conn.prepare(&query)?;
+        let emails = stmt
+            .query_map([], |row| {
+                let to_json: String = row.get(9)?;
+                let cc_json: String = row.get(10)?;
+                let bcc_json: String = row.get(11)?;
 
-    let mut stmt = conn_guard.prepare(&query)?;
-    let emails = stmt
-        .query_map([], |row| {
-            let to_json: String = row.get(9)?;
-            let cc_json: String = row.get(10)?;
-            let bcc_json: String = row.get(11)?;
+                Ok(Email {
+                    id: row.get(0)?,
+                    download_item_id: row.get(1)?,
+                    credential_id: row.get(2)?,
+                    uid: row.get::<_, i32>(3)? as u32,
+                    folder_id: row.get(4)?,
+                    message_id: row.get(5)?,
+                    subject: row.get(6)?,
+                    from_address: row.get(7)?,
+                    from_name: row.get(8)?,
+                    to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
+                    cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
+                    bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
+                    reply_to: row.get(12)?,
+                    date_sent: row.get(13)?,
+                    date_received: row.get(14)?,
+                    body_text: row.get(15)?,
+                    body_html: row.get(16)?,
+                    is_read: row.get(17)?,
+                    is_flagged: row.get(18)?,
+                    is_draft: row.get(19)?,
+                    is_answered: row.get(20)?,
+                    has_attachments: row.get(21)?,
+                    attachment_count: row.get(22)?,
+                    size_bytes: row.get(23)?,
+                    thread_id: row.get(24)?,
+                    created_at: row.get(25)?,
+                    updated_at: row.get(26)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(Email {
-                id: row.get(0)?,
-                download_item_id: row.get(1)?,
-                credential_id: row.get(2)?,
-                uid: row.get::<_, i32>(3)? as u32,
-                folder_id: row.get(4)?,
-                message_id: row.get(5)?,
-                subject: row.get(6)?,
-                from_address: row.get(7)?,
-                from_name: row.get(8)?,
-                to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
-                cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
-                bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
-                reply_to: row.get(12)?,
-                date_sent: row.get(13)?,
-                date_received: row.get(14)?,
-                body_text: row.get(15)?,
-                body_html: row.get(16)?,
-                is_read: row.get(17)?,
-                is_flagged: row.get(18)?,
-                is_draft: row.get(19)?,
-                is_answered: row.get(20)?,
-                has_attachments: row.get(21)?,
-                attachment_count: row.get(22)?,
-                size_bytes: row.get(23)?,
-                thread_id: row.get(24)?,
-                created_at: row.get(25)?,
-                updated_at: row.get(26)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(emails)
+        Ok(emails)
+    })
+    .await?
 }
 
 /// Insert attachment
