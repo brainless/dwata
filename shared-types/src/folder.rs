@@ -13,6 +13,7 @@ pub struct EmailFolder {
     pub parent_folder_id: Option<i64>,
     pub uidvalidity: Option<u32>,
     pub last_synced_uid: Option<u32>,
+    pub oldest_synced_uid: Option<u32>,
     pub total_messages: i32,
     pub unread_messages: i32,
     pub is_subscribed: bool,

@@ -88,7 +88,7 @@ fn default_last_highest_uid() -> serde_json::Value {
 }
 
 fn default_fetch_batch_size() -> usize {
-    50
+    10
 }
 
 fn default_max_age_months() -> Option<u32> {

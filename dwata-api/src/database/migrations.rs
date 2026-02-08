@@ -769,6 +769,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             parent_folder_id INTEGER,
             uidvalidity INTEGER,
             last_synced_uid INTEGER,
+            oldest_synced_uid INTEGER,
             total_messages INTEGER DEFAULT 0,
             unread_messages INTEGER DEFAULT 0,
             is_subscribed BOOLEAN DEFAULT true,
@@ -792,6 +793,13 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_email_folders_parent ON email_folders(parent_folder_id)",
         [],
     )?;
+
+    if !table_has_column(conn, "email_folders", "oldest_synced_uid")? {
+        conn.execute(
+            "ALTER TABLE email_folders ADD COLUMN oldest_synced_uid INTEGER",
+            [],
+        )?;
+    }
 
     // Create email_labels table
     conn.execute(

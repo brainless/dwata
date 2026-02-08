@@ -33,7 +33,13 @@ pub async fn insert_download_job(
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
 
-    let source_state_json = serde_json::to_string(&request.source_config)
+    let source_config = if request.source_config.is_null() {
+        serde_json::json!({})
+    } else {
+        request.source_config.clone()
+    };
+
+    let source_state_json = serde_json::to_string(&source_config)
         .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize config: {}", e)))?;
 
     let job_type_str = match job_type {
@@ -78,7 +84,7 @@ pub async fn insert_download_job(
             items_per_second: 0.0,
             estimated_completion_secs: None,
         },
-        source_state: request.source_config.clone(),
+        source_state: source_config,
         error_message: None,
         created_at: now,
         started_at: None,
@@ -149,7 +155,11 @@ pub async fn get_download_job(
         };
 
         let source_state_json: String = row.get(11)?;
-        let source_state: serde_json::Value = serde_json::from_str(&source_state_json).unwrap_or(serde_json::json!({}));
+        let mut source_state: serde_json::Value =
+            serde_json::from_str(&source_state_json).unwrap_or(serde_json::json!({}));
+        if source_state.is_null() {
+            source_state = serde_json::json!({});
+        }
 
         Ok(DownloadJob {
             id: row.get(0)?,

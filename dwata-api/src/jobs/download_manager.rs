@@ -13,8 +13,10 @@ use shared_types::email::EmailAddress;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::task::JoinHandle;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
+use tokio::task::{JoinHandle, JoinSet};
+
+const FOLDER_DOWNLOAD_PARALLELISM: usize = 4;
 
 pub struct DownloadManager {
     db_conn: AsyncDbConnection,
@@ -23,6 +25,7 @@ pub struct DownloadManager {
     oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
     keyring_service: Arc<KeyringService>,
     shutdown_flag: Arc<AtomicBool>,
+    credential_semaphores: Arc<Mutex<HashMap<i64, Arc<Semaphore>>>>,
 }
 
 impl DownloadManager {
@@ -39,6 +42,7 @@ impl DownloadManager {
             oauth_client,
             keyring_service,
             shutdown_flag: Arc::new(AtomicBool::new(false)),
+            credential_semaphores: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -77,6 +81,7 @@ impl DownloadManager {
         let token_cache = self.token_cache.clone();
         let oauth_client = self.oauth_client.clone();
         let keyring_service = self.keyring_service.clone();
+        let credential_semaphores = self.credential_semaphores.clone();
         let job_clone = job.clone();
         let shutdown_flag = self.shutdown_flag.clone();
         let active_jobs_cleanup = self.active_jobs.clone();
@@ -90,6 +95,7 @@ impl DownloadManager {
                         token_cache,
                         oauth_client,
                         keyring_service,
+                        credential_semaphores,
                         shutdown_flag.clone(),
                     ).await {
                         // Get credential info for better error logging
@@ -211,6 +217,7 @@ impl DownloadManager {
         token_cache: Arc<crate::helpers::token_cache::TokenCache>,
         oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
         keyring_service: Arc<KeyringService>,
+        credential_semaphores: Arc<Mutex<HashMap<i64, Arc<Semaphore>>>>,
         shutdown_flag: Arc<AtomicBool>,
     ) -> Result<()> {
         let handle = tokio::runtime::Handle::current();
@@ -224,6 +231,7 @@ impl DownloadManager {
                 token_cache,
                 oauth_client,
                 keyring_service,
+                credential_semaphores,
                 shutdown_flag,
             ));
             let _ = tx.send(result);
@@ -239,6 +247,7 @@ impl DownloadManager {
         token_cache: Arc<crate::helpers::token_cache::TokenCache>,
         oauth_client: Arc<crate::helpers::google_oauth::GoogleOAuthClient>,
         keyring_service: Arc<KeyringService>,
+        credential_semaphores: Arc<Mutex<HashMap<i64, Arc<Semaphore>>>>,
         shutdown_flag: Arc<AtomicBool>,
     ) -> Result<()> {
         if shutdown_flag.load(Ordering::SeqCst) {
@@ -268,7 +277,16 @@ impl DownloadManager {
             job.job_type
         );
 
-        let mut imap_client = if credential.credential_type == CredentialType::OAuth {
+        let server = credential.service_name.clone().unwrap_or_else(|| "imap.gmail.com".to_string());
+        let port = credential.port.unwrap_or(993) as u16;
+        let username = credential.username.clone();
+
+        enum AuthInfo {
+            OAuth(String),
+            Password(String),
+        }
+
+        let auth_info = if credential.credential_type == CredentialType::OAuth {
             let access_token = get_access_token_for_imap(
                 credential.id,
                 &credential,
@@ -277,13 +295,7 @@ impl DownloadManager {
                 &keyring_service,
             )
             .await?;
-
-            RealImapClient::connect_with_oauth(
-                &credential.service_name.unwrap_or("imap.gmail.com".to_string()),
-                credential.port.unwrap_or(993) as u16,
-                &credential.username,
-                &access_token,
-            )?
+            AuthInfo::OAuth(access_token)
         } else {
             let password = keyring_service
                 .get_password(
@@ -292,16 +304,20 @@ impl DownloadManager {
                     &credential.username,
                 )
                 .await?;
-
-            RealImapClient::connect_with_password(
-                &credential.service_name.unwrap_or_default(),
-                credential.port.unwrap_or(993) as u16,
-                &credential.username,
-                &password,
-            )?
+            AuthInfo::Password(password)
         };
 
-        let state: ImapDownloadState = serde_json::from_value(job.source_state.clone())?;
+        let mut imap_client = match &auth_info {
+            AuthInfo::OAuth(token) => RealImapClient::connect_with_oauth(&server, port, &username, token)?,
+            AuthInfo::Password(password) => RealImapClient::connect_with_password(&server, port, &username, password)?,
+        };
+
+        let state_value = if job.source_state.is_null() {
+            serde_json::json!({})
+        } else {
+            job.source_state.clone()
+        };
+        let state: ImapDownloadState = serde_json::from_value(state_value)?;
         let max_age_months = state.max_age_months.or(Some(12));
 
         // Discover and sync folders for this credential
@@ -338,180 +354,255 @@ impl DownloadManager {
 
         tracing::info!("Found {} folders for credential {}", db_folders.len(), job.credential_id);
 
-        for db_folder in db_folders {
-            if shutdown_flag.load(Ordering::SeqCst) {
-                db::update_job_status(
-                    db_conn.clone(),
-                    job.id,
-                    DownloadJobStatus::Cancelled,
-                    Some("Server shutdown".to_string()),
-                )
-                .await?;
-                return Ok(());
-            }
+        // Per-credential folder concurrency limiter.
+        let semaphore = {
+            let mut semaphores = credential_semaphores.lock().await;
+            semaphores
+                .entry(job.credential_id)
+                .or_insert_with(|| Arc::new(Semaphore::new(FOLDER_DOWNLOAD_PARALLELISM)))
+                .clone()
+        };
 
+        let auth_info = Arc::new(auth_info);
+        let mut join_set = JoinSet::new();
+
+        for db_folder in db_folders {
             if !db_folder.is_selectable {
                 tracing::debug!("Skipping non-selectable folder: {}", db_folder.imap_path);
                 continue;
             }
 
-            tracing::info!("Processing folder: {}", db_folder.imap_path);
+            let db_conn = db_conn.clone();
+            let job = job.clone();
+            let server = server.clone();
+            let port = port;
+            let username = username.clone();
+            let auth_info = auth_info.clone();
+            let semaphore = semaphore.clone();
+            let shutdown_flag = shutdown_flag.clone();
+            let max_age_months = max_age_months;
+            let fetch_batch_size = state.fetch_batch_size;
 
-            let resume_uid = db_folder.last_synced_uid;
-            let uids = match job.job_type {
-                JobType::RecentSync => {
-                    // Download new emails (UID > last_synced_uid)
-                    match imap_client.search_emails(
-                        &db_folder.imap_path,
-                        resume_uid,
-                        max_age_months,
-                        Some(state.fetch_batch_size)
-                    ) {
-                        Ok(uids) => uids,
-                        Err(e) => {
-                            tracing::warn!("Failed to search emails in folder '{}': {}. Skipping.", db_folder.imap_path, e);
-                            continue;
-                        }
-                    }
-                }
-                JobType::HistoricalBackfill => {
-                    // Download historical emails (oldest first, up to 100 per folder)
-                    // Try reverse chronological (oldest UIDs first)
-                    let all_uids = match imap_client.search_emails(
-                        &db_folder.imap_path,
-                        None,
-                        None,
-                        None,
-                    ) {
-                        Ok(uids) => uids,
-                        Err(e) => {
-                            tracing::warn!("Failed to search emails in folder '{}': {}. Skipping.", db_folder.imap_path, e);
-                            continue;
-                        }
-                    };
+            join_set.spawn(async move {
+                let _permit = semaphore.acquire().await?;
 
-                    // Filter for emails we haven't synced yet (UID <= last_synced_uid or last_synced_uid is None)
-                    let historical_uids: Vec<u32> = all_uids
-                        .into_iter()
-                        .filter(|uid| resume_uid.map_or(true, |last| uid <= &last))
-                        .take(100)
-                        .collect();
-
-                    historical_uids
-                }
-            };
-
-            let uids = emails::filter_new_uids(
-                db_conn.clone(),
-                job.credential_id,
-                db_folder.id,
-                &uids,
-            ).await?;
-
-            tracing::info!("Found {} new emails to download in {}", uids.len(), db_folder.imap_path);
-
-            let mut highest_uid = db_folder.last_synced_uid;
-
-            for uid in uids {
                 if shutdown_flag.load(Ordering::SeqCst) {
-                    db::update_job_status(
-                        db_conn.clone(),
-                        job.id,
-                        DownloadJobStatus::Cancelled,
-                        Some("Server shutdown".to_string()),
-                    )
-                    .await?;
                     return Ok(());
                 }
 
-                match imap_client.fetch_email(&db_folder.imap_path, uid) {
-                    Ok(parsed_email) => {
-                        let to_addresses: Vec<EmailAddress> = parsed_email.to_addresses
-                            .iter()
-                            .filter_map(|(addr, name)| {
-                                addr.as_ref().map(|a| EmailAddress {
-                                    email: a.clone(),
-                                    name: name.clone(),
-                                })
-                            })
-                            .collect();
+                let mut imap_client = match auth_info.as_ref() {
+                    AuthInfo::OAuth(token) => RealImapClient::connect_with_oauth(&server, port, &username, token)?,
+                    AuthInfo::Password(password) => RealImapClient::connect_with_password(&server, port, &username, password)?,
+                };
 
-                        // Use transactional insert to ensure atomicity
-                        match db::insert_email_download_transactional(
-                            db_conn.clone(),
-                            job.id,
-                            job.credential_id,
-                            parsed_email.uid,
-                            db_folder.id,
-                            parsed_email.message_id.as_deref(),
-                            parsed_email.subject.as_deref(),
-                            &parsed_email.from_address.unwrap_or_default(),
-                            parsed_email.from_name.as_deref(),
-                            &to_addresses,
-                            &[],
-                            &[],
-                            parsed_email.reply_to.as_deref(),
-                            parsed_email.date_sent,
-                            parsed_email.date_received,
-                            parsed_email.body_text.as_deref(),
-                            parsed_email.body_html.as_deref(),
-                            parsed_email.is_read,
-                            parsed_email.is_flagged,
-                            parsed_email.is_draft,
-                            parsed_email.is_answered,
-                            parsed_email.has_attachments,
-                            parsed_email.attachment_count,
-                            parsed_email.size_bytes,
-                            &parsed_email.labels,
-                        ).await {
-                            Ok((_download_item_id, email_id)) => {
-                                tracing::info!("Downloaded and stored email UID {} (id: {}) in transaction", uid, email_id);
-                                // Track highest UID for updating folder sync state
-                                highest_uid = Some(highest_uid.map_or(uid, |last| last.max(uid)));
-                            }
+                tracing::info!("Processing folder: {}", db_folder.imap_path);
+
+                let resume_uid = db_folder.last_synced_uid;
+                let uids = match job.job_type {
+                    JobType::RecentSync => {
+                        // Download new emails (UID > last_synced_uid)
+                        match imap_client.search_emails(
+                            &db_folder.imap_path,
+                            resume_uid,
+                            None,
+                            max_age_months,
+                            Some(fetch_batch_size),
+                        ) {
+                            Ok(uids) => uids,
                             Err(e) => {
-                                tracing::error!("Failed to store email UID {} in transaction: {}", uid, e);
-                                // Update failed count
-                                db::update_job_progress(
-                                    db_conn.clone(),
-                                    job.id,
-                                    None,
-                                    None,
-                                    Some(1),
-                                    None,
-                                    None,
-                                )
-                                .await?;
+                                tracing::warn!("Failed to search emails in folder '{}': {}. Skipping.", db_folder.imap_path, e);
+                                return Ok(());
                             }
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("Failed to download email UID {}: {}", uid, e);
+                    JobType::HistoricalBackfill => {
+                        // Download historical emails using a persistent oldest UID cursor per folder.
+                        let mut oldest_uid = db_folder.oldest_synced_uid;
+                        if oldest_uid.is_none() {
+                            oldest_uid = emails::get_oldest_uid_for_folder(
+                                db_conn.clone(),
+                                job.credential_id,
+                                db_folder.id,
+                            ).await?;
+                            if let Some(uid) = oldest_uid {
+                                // Seed backfill cursor from existing data.
+                                folders::update_folder_backfill_state(
+                                    db_conn.clone(),
+                                    db_folder.id,
+                                    uid,
+                                ).await?;
+                            }
+                        }
 
-                        db::update_job_progress(
-                            db_conn.clone(),
-                            job.id,
+                        let before_uid = match oldest_uid {
+                            Some(uid) if uid > 1 => Some(uid),
+                            _ => None,
+                        };
+
+                        if before_uid.is_none() {
+                            tracing::debug!("No older UIDs to backfill for {}", db_folder.imap_path);
+                            return Ok(());
+                        }
+
+                        let all_uids = match imap_client.search_emails(
+                            &db_folder.imap_path,
+                            None,
+                            before_uid,
                             None,
                             None,
-                            Some(1),
-                            None,
-                            None,
-                        )
-                        .await?;
+                        ) {
+                            Ok(uids) => uids,
+                            Err(e) => {
+                                tracing::warn!("Failed to search emails in folder '{}': {}. Skipping.", db_folder.imap_path, e);
+                                return Ok(());
+                            }
+                        };
+
+                        let mut historical_uids = all_uids;
+                        historical_uids.sort_unstable_by(|a, b| b.cmp(a));
+                        historical_uids.truncate(fetch_batch_size);
+                        historical_uids
+                    }
+                };
+
+                let uids = emails::filter_new_uids(
+                    db_conn.clone(),
+                    job.credential_id,
+                    db_folder.id,
+                    &uids,
+                ).await?;
+
+                tracing::info!("Found {} new emails to download in {}", uids.len(), db_folder.imap_path);
+
+                let mut highest_uid = db_folder.last_synced_uid;
+                let mut lowest_uid: Option<u32> = None;
+
+                for uid in uids {
+                    if shutdown_flag.load(Ordering::SeqCst) {
+                        return Ok(());
+                    }
+
+                    match imap_client.fetch_email(&db_folder.imap_path, uid) {
+                        Ok(parsed_email) => {
+                            let to_addresses: Vec<EmailAddress> = parsed_email.to_addresses
+                                .iter()
+                                .filter_map(|(addr, name)| {
+                                    addr.as_ref().map(|a| EmailAddress {
+                                        email: a.clone(),
+                                        name: name.clone(),
+                                    })
+                                })
+                                .collect();
+
+                            // Use transactional insert to ensure atomicity
+                            match db::insert_email_download_transactional(
+                                db_conn.clone(),
+                                job.id,
+                                job.credential_id,
+                                parsed_email.uid,
+                                db_folder.id,
+                                parsed_email.message_id.as_deref(),
+                                parsed_email.subject.as_deref(),
+                                &parsed_email.from_address.unwrap_or_default(),
+                                parsed_email.from_name.as_deref(),
+                                &to_addresses,
+                                &[],
+                                &[],
+                                parsed_email.reply_to.as_deref(),
+                                parsed_email.date_sent,
+                                parsed_email.date_received,
+                                parsed_email.body_text.as_deref(),
+                                parsed_email.body_html.as_deref(),
+                                parsed_email.is_read,
+                                parsed_email.is_flagged,
+                                parsed_email.is_draft,
+                                parsed_email.is_answered,
+                                parsed_email.has_attachments,
+                                parsed_email.attachment_count,
+                                parsed_email.size_bytes,
+                                &parsed_email.labels,
+                            ).await {
+                                Ok((_download_item_id, email_id)) => {
+                                    tracing::info!("Downloaded and stored email UID {} (id: {}) in transaction", uid, email_id);
+                                    // Track highest UID for updating folder sync state
+                                    highest_uid = Some(highest_uid.map_or(uid, |last| last.max(uid)));
+                                    lowest_uid = Some(lowest_uid.map_or(uid, |last| last.min(uid)));
+                                }
+                                Err(e) => {
+                                    tracing::error!("Failed to store email UID {} in transaction: {}", uid, e);
+                                    // Update failed count
+                                    db::update_job_progress(
+                                        db_conn.clone(),
+                                        job.id,
+                                        None,
+                                        None,
+                                        Some(1),
+                                        None,
+                                        None,
+                                    )
+                                    .await?;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to download email UID {}: {}", uid, e);
+
+                            db::update_job_progress(
+                                db_conn.clone(),
+                                job.id,
+                                None,
+                                None,
+                                Some(1),
+                                None,
+                                None,
+                            )
+                            .await?;
+                        }
                     }
                 }
-            }
 
-            // Update folder sync state with highest UID processed
-            if let Some(uid) = highest_uid {
-                folders::update_folder_sync_state(
-                    db_conn.clone(),
-                    db_folder.id,
-                    uid,
-                    uid,
-                ).await?;
-                tracing::info!("Updated folder {} sync state to UID {}", db_folder.imap_path, uid);
+                // Update folder sync state with highest UID processed
+                if let Some(uid) = highest_uid {
+                    folders::update_folder_sync_state(
+                        db_conn.clone(),
+                        db_folder.id,
+                        uid,
+                        uid,
+                    ).await?;
+                    tracing::info!("Updated folder {} sync state to UID {}", db_folder.imap_path, uid);
+                }
+
+                if matches!(job.job_type, JobType::HistoricalBackfill) {
+                    if let Some(uid) = lowest_uid {
+                        folders::update_folder_backfill_state(
+                            db_conn.clone(),
+                            db_folder.id,
+                            uid,
+                        ).await?;
+                    }
+                }
+
+                Ok::<(), anyhow::Error>(())
+            });
+        }
+
+        while let Some(result) = join_set.join_next().await {
+            if let Err(e) = result {
+                tracing::warn!("Folder task join error: {}", e);
+            } else if let Ok(Err(e)) = result {
+                tracing::warn!("Folder task error: {}", e);
             }
+        }
+
+        if shutdown_flag.load(Ordering::SeqCst) {
+            db::update_job_status(
+                db_conn,
+                job.id,
+                DownloadJobStatus::Cancelled,
+                Some("Server shutdown".to_string()),
+            )
+            .await?;
+            return Ok(());
         }
 
         db::update_job_status(
@@ -654,7 +745,7 @@ impl DownloadManager {
             let default_config = serde_json::json!({
                 "sync_strategy": "full-sync",
                 "last_highest_uid": {},
-                "fetch_batch_size": 50,
+                "fetch_batch_size": 10,
                 "max_age_months": 12
             });
 
