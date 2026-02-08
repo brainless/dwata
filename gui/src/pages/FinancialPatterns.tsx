@@ -1,4 +1,4 @@
-import { A, useLocation } from "@solidjs/router";
+import { A } from "@solidjs/router";
 import { createSignal, onMount, Show, For } from "solid-js";
 import {
   HiOutlineArrowPath,
@@ -7,6 +7,7 @@ import {
 } from "solid-icons/hi";
 import type { FinancialPattern } from "../api-types/types";
 import { getApiUrl } from "../config/api";
+import FinancialPageLayout from "../components/FinancialPageLayout";
 
 type PatternsResponse = {
   patterns: FinancialPattern[];
@@ -14,7 +15,6 @@ type PatternsResponse = {
 };
 
 export default function FinancialPatterns() {
-  const location = useLocation();
   const [patterns, setPatterns] = createSignal<FinancialPattern[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
@@ -54,156 +54,138 @@ export default function FinancialPatterns() {
     fetchPatterns();
   });
 
-  const isActivePath = (path: string) =>
-    location.pathname === path ? "tab-active" : "";
+  const footerActions = (
+    <>
+      <A href="/financial" class="btn btn-ghost btn-sm">
+        Back to Financial
+      </A>
+      <button class="btn btn-primary btn-sm" onClick={fetchPatterns}>
+        <HiOutlineArrowPath class="w-4 h-4" />
+        Refresh
+      </button>
+    </>
+  );
 
   return (
-    <div class="p-6 space-y-6">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 class="text-3xl font-bold">Financial Patterns</h1>
-          <p class="text-sm text-base-content/70">
-            Regex patterns used by the extractor to classify and extract
-            transactions.
-          </p>
+    <FinancialPageLayout
+      title="Financial Overview: Patterns"
+      subtitle="Regex patterns used by the extractor to classify and extract transactions."
+      footer={footerActions}
+    >
+      <div class="space-y-6">
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="label cursor-pointer gap-2">
+            <input
+              type="checkbox"
+              class="checkbox checkbox-sm"
+              checked={activeOnly()}
+              onChange={(event) => {
+                setActiveOnly(event.currentTarget.checked);
+                fetchPatterns();
+              }}
+            />
+            <span class="label-text text-sm">Active only</span>
+          </label>
+          <span class="text-xs text-base-content/60">
+            {patterns().length} patterns
+          </span>
         </div>
-        <div class="flex gap-2">
-          <button class="btn btn-primary btn-sm" onClick={fetchPatterns}>
-            <HiOutlineArrowPath class="w-4 h-4" />
-            Refresh
-          </button>
-        </div>
-      </div>
 
-      <div class="tabs tabs-boxed">
-        <A class={`tab ${isActivePath("/financial")}`} href="/financial">
-          Overview
-        </A>
-        <A
-          class={`tab ${isActivePath("/financial/extractions")}`}
-          href="/financial/extractions"
-        >
-          Extractions
-        </A>
-        <A
-          class={`tab ${isActivePath("/financial/patterns")}`}
-          href="/financial/patterns"
-        >
-          Patterns
-        </A>
-      </div>
+        <Show when={error()}>
+          <div class="alert alert-error">
+            <span>{error()}</span>
+          </div>
+        </Show>
 
-      <div class="flex flex-wrap items-center gap-3">
-        <label class="label cursor-pointer gap-2">
-          <input
-            type="checkbox"
-            class="checkbox checkbox-sm"
-            checked={activeOnly()}
-            onChange={(event) => {
-              setActiveOnly(event.currentTarget.checked);
-              fetchPatterns();
-            }}
-          />
-          <span class="label-text text-sm">Active only</span>
-        </label>
-        <span class="text-xs text-base-content/60">
-          {patterns().length} patterns
-        </span>
-      </div>
+        <Show when={loading()}>
+          <div class="flex items-center gap-2 text-sm text-base-content/70">
+            <span class="loading loading-spinner loading-sm"></span>
+            Loading patterns...
+          </div>
+        </Show>
 
-      <Show when={error()}>
-        <div class="alert alert-error">
-          <span>{error()}</span>
-        </div>
-      </Show>
-
-      <Show when={loading()}>
-        <div class="flex items-center gap-2 text-sm text-base-content/70">
-          <span class="loading loading-spinner loading-sm"></span>
-          Loading patterns...
-        </div>
-      </Show>
-
-      <Show when={!loading()}>
-        <div class="card bg-base-100 shadow">
-          <div class="card-body">
-            <div class="overflow-x-auto">
-              <table class="table table-zebra">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Document</th>
-                    <th>Status</th>
-                    <th>Confidence</th>
-                    <th>Groups</th>
-                    <th>Active</th>
-                    <th>Matches</th>
-                    <th>Last Matched</th>
-                    <th>Regex</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={patterns()}>
-                    {(pattern) => (
-                      <tr>
-                        <td>
-                          <div class="font-medium">{pattern.name}</div>
-                          <Show when={pattern.description}>
-                            <div class="text-xs text-base-content/60">
-                              {pattern.description}
-                            </div>
-                          </Show>
-                        </td>
-                        <td>
-                          <span class="badge badge-outline">
-                            {pattern.document_type}
-                          </span>
-                        </td>
-                        <td>
-                          <span class="badge badge-ghost">{pattern.status}</span>
-                        </td>
-                        <td>{pattern.confidence.toFixed(2)}</td>
-                        <td class="text-xs">
-                          <div>Amount: {pattern.amount_group}</div>
-                          <div>
-                            Vendor:{" "}
-                            {pattern.vendor_group ?? "—"}
-                          </div>
-                          <div>Date: {pattern.date_group ?? "—"}</div>
-                        </td>
-                        <td>
-                          <span
-                            class={`badge ${pattern.is_active ? "badge-success" : "badge-ghost"}`}
-                          >
-                            {pattern.is_active ? (
-                              <HiOutlineCheckCircle class="w-4 h-4" />
-                            ) : (
-                              <HiOutlineXCircle class="w-4 h-4" />
-                            )}
-                            <span class="ml-1">
-                              {pattern.is_active ? "Active" : "Inactive"}
+        <Show when={!loading()}>
+          <div class="card bg-base-100 shadow">
+            <div class="card-body">
+              <div class="overflow-x-auto">
+                <table class="table table-zebra">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Document</th>
+                      <th>Status</th>
+                      <th>Confidence</th>
+                      <th>Groups</th>
+                      <th>Active</th>
+                      <th>Matches</th>
+                      <th>Last Matched</th>
+                      <th>Regex</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <For each={patterns()}>
+                      {(pattern) => (
+                        <tr>
+                          <td>
+                            <div class="font-medium">{pattern.name}</div>
+                            <Show when={pattern.description}>
+                              <div class="text-xs text-base-content/60">
+                                {pattern.description}
+                              </div>
+                            </Show>
+                          </td>
+                          <td>
+                            <span class="badge badge-outline">
+                              {pattern.document_type}
                             </span>
-                          </span>
-                          <Show when={pattern.is_default}>
-                            <div class="text-xs text-base-content/60 mt-1">
-                              Default
+                          </td>
+                          <td>
+                            <span class="badge badge-ghost">
+                              {pattern.status}
+                            </span>
+                          </td>
+                          <td>{pattern.confidence.toFixed(2)}</td>
+                          <td class="text-xs">
+                            <div>Amount: {pattern.amount_group}</div>
+                            <div>
+                              Vendor: {pattern.vendor_group ?? "—"}
                             </div>
-                          </Show>
-                        </td>
-                        <td>{pattern.match_count}</td>
-                        <td>{formatTimestamp(pattern.last_matched_at)}</td>
-                        <td class="font-mono text-xs whitespace-pre-wrap break-all max-w-xl">
-                          {pattern.regex_pattern}
-                        </td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
+                            <div>Date: {pattern.date_group ?? "—"}</div>
+                          </td>
+                          <td>
+                            <span
+                              class={`badge ${pattern.is_active ? "badge-success" : "badge-ghost"}`}
+                            >
+                              {pattern.is_active ? (
+                                <HiOutlineCheckCircle class="w-4 h-4" />
+                              ) : (
+                                <HiOutlineXCircle class="w-4 h-4" />
+                              )}
+                              <span class="ml-1">
+                                {pattern.is_active ? "Active" : "Inactive"}
+                              </span>
+                            </span>
+                            <Show when={pattern.is_default}>
+                              <div class="text-xs text-base-content/60 mt-1">
+                                Default
+                              </div>
+                            </Show>
+                          </td>
+                          <td>{pattern.match_count}</td>
+                          <td>{formatTimestamp(pattern.last_matched_at)}</td>
+                          <td class="font-mono text-xs whitespace-pre-wrap break-all max-w-xl">
+                            {pattern.regex_pattern}
+                          </td>
+                        </tr>
+                      )}
+                    </For>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      </Show>
-    </div>
+        </Show>
+      </div>
+    </FinancialPageLayout>
   );
 }

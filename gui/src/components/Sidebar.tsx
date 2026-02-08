@@ -1,10 +1,7 @@
 import { A } from "@solidjs/router";
 import {
   HiOutlineBars3,
-  HiOutlineCalendar,
   HiOutlineEnvelope,
-  HiOutlineFolder,
-  HiOutlineClipboardDocumentCheck,
   HiOutlineCog6Tooth,
   HiOutlineCurrencyDollar,
   HiOutlineCpuChip,
@@ -31,30 +28,6 @@ export default function Sidebar() {
 
         {/* Navigation Links */}
         <div class="flex flex-col flex-grow w-full">
-          {/* Projects */}
-          <div class="px-4 py-2 w-full">
-            <A
-              href="/projects"
-              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
-              activeClass="bg-primary text-primary-content"
-            >
-              <HiOutlineFolder class="w-5 h-5 flex-shrink-0" />
-              <span class="is-drawer-close:hidden ml-3">Projects</span>
-            </A>
-          </div>
-
-          {/* Tasks */}
-          <div class="px-4 py-2 w-full">
-            <A
-              href="/tasks"
-              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
-              activeClass="bg-primary text-primary-content"
-            >
-              <HiOutlineClipboardDocumentCheck class="w-5 h-5 flex-shrink-0" />
-              <span class="is-drawer-close:hidden ml-3">Tasks</span>
-            </A>
-          </div>
-
           {/* Emails */}
           <div class="px-4 py-2 w-full">
             <A
@@ -64,18 +37,6 @@ export default function Sidebar() {
             >
               <HiOutlineEnvelope class="w-5 h-5 flex-shrink-0" />
               <span class="is-drawer-close:hidden ml-3">Emails</span>
-            </A>
-          </div>
-
-          {/* Calendar */}
-          <div class="px-4 py-2 w-full">
-            <A
-              href="/calendar"
-              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
-              activeClass="bg-primary text-primary-content"
-            >
-              <HiOutlineCalendar class="w-5 h-5 flex-shrink-0" />
-              <span class="is-drawer-close:hidden ml-3">Calendar</span>
             </A>
           </div>
 
