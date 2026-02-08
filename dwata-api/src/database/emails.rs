@@ -2,7 +2,16 @@ use shared_types::email::{Email, EmailAddress, EmailAttachment, AttachmentExtrac
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use rusqlite::params_from_iter;
+use rusqlite::types::Value;
 use std::collections::HashSet;
+
+#[derive(Debug, Clone)]
+pub struct EmailScanRow {
+    pub from_address: String,
+    pub subject: Option<String>,
+    pub body_text: Option<String>,
+    pub body_html: Option<String>,
+}
 
 /// Insert email into database
 pub async fn insert_email(
@@ -282,6 +291,49 @@ pub async fn list_emails(
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(emails)
+}
+
+/// List minimal email fields for scanning
+pub async fn list_email_scan_rows(
+    conn: AsyncDbConnection,
+    credential_id: Option<i64>,
+    max_emails: Option<usize>,
+) -> Result<Vec<EmailScanRow>> {
+    let conn_guard = conn.lock().await;
+
+    let mut query = String::from(
+        "SELECT from_address, subject, body_text, body_html FROM emails",
+    );
+    let mut params: Vec<Value> = Vec::new();
+
+    if let Some(cred) = credential_id {
+        query.push_str(" WHERE credential_id = ?");
+        params.push(Value::from(cred));
+    }
+
+    query.push_str(" ORDER BY date_received DESC");
+
+    if let Some(limit) = max_emails {
+        query.push_str(" LIMIT ?");
+        params.push(Value::from(limit as i64));
+    }
+
+    let mut stmt = conn_guard.prepare(&query)?;
+    let rows = stmt.query_map(params_from_iter(params), |row| {
+        Ok(EmailScanRow {
+            from_address: row.get(0)?,
+            subject: row.get(1)?,
+            body_text: row.get(2)?,
+            body_html: row.get(3)?,
+        })
+    })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+
+    Ok(results)
 }
 
 /// List emails by label with pagination

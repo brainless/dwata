@@ -8,11 +8,14 @@ use crate::database::{
 use crate::database::Database;
 use crate::helpers::pattern_validator;
 use crate::jobs::financial_extraction_manager::FinancialExtractionManager;
+use regex::Regex;
 use serde::Deserialize;
 use shared_types::{
+    FinancialEmailScanRequest, FinancialEmailScanResponse, FinancialEmailScanSender,
     FinancialExtractionAttemptsResponse, FinancialExtractionSummary, FinancialPattern,
 };
 use std::sync::Arc;
+use std::collections::HashMap;
 use tracing::info;
 
 pub async fn list_transactions(
@@ -329,6 +332,135 @@ pub async fn update_pattern(
         "pattern": updated_pattern,
         "message": "Pattern updated successfully"
     })))
+}
+
+const DEFAULT_FINANCIAL_KEYWORDS: &[&str] = &[
+    "payment",
+    "paid",
+    "invoice",
+    "receipt",
+    "transaction",
+    "transfer",
+    "deposit",
+    "withdrawal",
+    "charge",
+    "charged",
+    "refund",
+    "statement",
+    "balance",
+    "credit",
+    "debit",
+];
+
+const DEFAULT_FINANCIAL_REGEXES: &[&str] = &[
+    r"(?i)\btransaction\s*(id|#|no\.?|number)\b",
+    r"(?i)\bconfirmation\s*(id|#|no\.?|number)\b",
+    r"(?i)\bpayment\s*(id|#|no\.?|number)\b",
+    r"(?i)\binvoice\s*(id|#|no\.?|number)\b",
+    r"(?i)\border\s*(id|#|no\.?|number)\b",
+    r"(?i)\b(auth|authorization)\s*(code|id|#|no\.?)\b",
+    r"(?i)\b(ref|reference)\s*(id|#|no\.?|number)\b",
+    r"(?i)\b(ach|sepa|swift|wire)\b",
+    r"(?i)\b(transfer|deposit|withdrawal)\b",
+    r"(?i)\b(card)\s*(ending|ends?)\s*in\s*\d{2,4}\b",
+    r"(?i)\b(last\s*4|ending)\s*\d{2,4}\b",
+    r"(?i)\b(balance|amount\s*due|amount\s*paid|total\s*paid)\b",
+    r"(?i)\b(refund|chargeback)\b",
+];
+
+pub async fn scan_financial_emails(
+    db: web::Data<Arc<Database>>,
+    request: web::Json<FinancialEmailScanRequest>,
+) -> ActixResult<HttpResponse> {
+    let keywords: Vec<String> = DEFAULT_FINANCIAL_KEYWORDS
+        .iter()
+        .map(|k| k.to_string())
+        .collect();
+    let keywords_lower: Vec<String> = keywords
+        .iter()
+        .map(|k| k.to_lowercase())
+        .collect();
+
+    let mut regexes = Vec::new();
+    for pattern in DEFAULT_FINANCIAL_REGEXES {
+        match Regex::new(pattern) {
+            Ok(re) => regexes.push(re),
+            Err(e) => {
+                return Err(actix_web::error::ErrorBadRequest(format!(
+                    "Invalid regex pattern '{}': {}",
+                    pattern, e
+                )));
+            }
+        }
+    }
+
+    let rows = crate::database::emails::list_email_scan_rows(
+        db.async_connection.clone(),
+        request.credential_id,
+        request.max_emails,
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    let mut sender_counts: HashMap<String, i64> = HashMap::new();
+    let mut total_matched = 0i64;
+
+    for row in rows.iter() {
+        let mut content = String::new();
+        if let Some(subject) = &row.subject {
+            content.push_str(subject);
+            content.push('\n');
+        }
+        if let Some(body_text) = &row.body_text {
+            content.push_str(body_text);
+            content.push('\n');
+        }
+        if let Some(body_html) = &row.body_html {
+            content.push_str(body_html);
+        }
+
+        let mut matched = false;
+
+        if !keywords_lower.is_empty() {
+            let content_lower = content.to_lowercase();
+            matched = keywords_lower.iter().any(|k| content_lower.contains(k));
+        }
+
+        if !matched && !regexes.is_empty() {
+            matched = regexes.iter().any(|re| re.is_match(&content));
+        }
+
+        if matched {
+            total_matched += 1;
+            *sender_counts.entry(row.from_address.clone()).or_insert(0) += 1;
+        }
+    }
+
+    let mut senders: Vec<FinancialEmailScanSender> = sender_counts
+        .into_iter()
+        .map(|(sender_email, matched_count)| FinancialEmailScanSender {
+            sender_email,
+            matched_count,
+        })
+        .collect();
+
+    senders.sort_by(|a, b| {
+        b.matched_count
+            .cmp(&a.matched_count)
+            .then_with(|| a.sender_email.cmp(&b.sender_email))
+    });
+
+    if let Some(max_senders) = request.max_senders {
+        if senders.len() > max_senders {
+            senders.truncate(max_senders);
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(FinancialEmailScanResponse {
+        total_emails_scanned: rows.len() as i64,
+        total_matched_emails: total_matched,
+        senders,
+    }))
 }
 
 #[derive(Deserialize)]
