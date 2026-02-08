@@ -7,6 +7,7 @@ import {
   HiOutlineCalendar,
   HiOutlineClock,
   HiOutlineArrowPath,
+  HiOutlineArrowUpTray,
 } from "solid-icons/hi";
 import { A } from "@solidjs/router";
 import { createSignal, createEffect, For, Show } from "solid-js";
@@ -18,6 +19,7 @@ import type {
   CategoryBreakdown,
 } from "../api-types/types";
 import { getApiUrl } from "../config/api";
+import FinancialPageLayout from "../components/FinancialPageLayout";
 
 export default function FinancialHealth() {
   const [loading, setLoading] = createSignal(true);
@@ -188,58 +190,60 @@ export default function FinancialHealth() {
     }
   };
 
+  const footerActions = (
+    <>
+      <button
+        class="btn btn-outline gap-2"
+        disabled={loading() || isExtracting()}
+        onClick={triggerExtraction}
+      >
+        {isExtracting() ? (
+          <HiOutlineArrowPath class="w-5 h-5 animate-spin" />
+        ) : (
+          <HiOutlineArrowPath class="w-5 h-5" />
+        )}
+        {isExtracting() ? "Extracting..." : "Run Extraction"}
+      </button>
+      <A href="/financial/extractions" class="btn btn-ghost">
+        Extraction History
+      </A>
+      <A href="/financial/patterns" class="btn btn-ghost">
+        Patterns
+      </A>
+    </>
+  );
+
   return (
-    <div class="p-4 md:p-8">
-      {/* Header */}
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
-        <div>
-          <h1 class="text-3xl font-bold mb-2">Financial Health</h1>
-          <p class="text-base-content/60">
-            Track income, expenses, and bills from your documents
-          </p>
-        </div>
-        <div class="flex gap-2 mt-4 md:mt-0">
-          <button
-            class="btn btn-outline gap-2"
-            disabled={loading() || isExtracting()}
-            onClick={triggerExtraction}
-          >
-            {isExtracting() ? (
-              <HiOutlineArrowPath class="w-5 h-5 animate-spin" />
-            ) : (
-              <HiOutlineArrowPath class="w-5 h-5" />
-            )}
-            {isExtracting() ? "Extracting..." : "Run Extraction"}
-          </button>
-          <A href="/financial/extractions" class="btn btn-ghost">
-            Extraction History
-          </A>
-        </div>
-      </div>
+    <FinancialPageLayout
+      title="Financial Overview"
+      subtitle="Track income, expenses, and bills from your documents"
+      footer={footerActions}
+    >
+      <div class="space-y-6">
 
-      {/* Error State */}
-      <Show when={error()}>
-        <div class="alert alert-error mb-6">
-          <HiOutlineExclamationTriangle class="w-5 h-5" />
-          <div>
-            <h3 class="font-bold">Error loading financial data</h3>
-            <div class="text-sm">{error()}</div>
+        {/* Error State */}
+        <Show when={error()}>
+          <div class="alert alert-error">
+            <HiOutlineExclamationTriangle class="w-5 h-5" />
+            <div>
+              <h3 class="font-bold">Error loading financial data</h3>
+              <div class="text-sm">{error()}</div>
+            </div>
           </div>
-        </div>
-      </Show>
+        </Show>
 
-      {/* Loading State */}
-      <Show when={loading() && !error()}>
-        <div class="flex items-center justify-center py-16">
-          <span class="loading loading-spinner loading-lg"></span>
-        </div>
-      </Show>
+        {/* Loading State */}
+        <Show when={loading() && !error()}>
+          <div class="flex items-center justify-center py-16">
+            <span class="loading loading-spinner loading-lg"></span>
+          </div>
+        </Show>
 
-      {/* Content */}
-      <Show when={!loading() && !error() && summary()}>
-        <div>
-          {/* Financial Stats Overview */}
-          <div class="stats stats-vertical lg:stats-horizontal shadow mb-8 w-full">
+        {/* Content */}
+        <Show when={!loading() && !error() && summary()}>
+          <div>
+            {/* Financial Stats Overview */}
+            <div class="stats stats-vertical lg:stats-horizontal shadow mb-8 w-full">
             <div class="stat">
               <div class="stat-figure text-success">
                 <HiOutlineArrowTrendingUp class="w-8 h-8" />
@@ -295,7 +299,7 @@ export default function FinancialHealth() {
                 {summary()!.pending_bills} pending
               </div>
             </div>
-          </div>
+            </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {/* Recent Transactions */}
@@ -508,24 +512,27 @@ export default function FinancialHealth() {
           </div>
         </div>
 
-        {/* Empty State (when no data) */}
-        <Show when={transactions().length === 0 && !loading()}>
-          <div class="flex flex-col items-center justify-center py-16 px-4">
-            <div class="text-center max-w-md">
-              <HiOutlineDocumentText class="w-16 h-16 mx-auto text-base-content/30 mb-4" />
-              <h3 class="text-xl font-semibold mb-2">No financial data yet</h3>
-              <p class="text-base-content/60 mb-6">
-                Upload your invoices, bills, bank statements, and receipts to
-                get started tracking your financial health.
-              </p>
-              <button class="btn btn-primary gap-2">
-                <HiOutlineArrowUpTray class="w-5 h-5" />
-                Upload Your First Document
-              </button>
+          {/* Empty State (when no data) */}
+          <Show when={transactions().length === 0 && !loading()}>
+            <div class="flex flex-col items-center justify-center py-16 px-4">
+              <div class="text-center max-w-md">
+                <HiOutlineDocumentText class="w-16 h-16 mx-auto text-base-content/30 mb-4" />
+                <h3 class="text-xl font-semibold mb-2">
+                  No financial data yet
+                </h3>
+                <p class="text-base-content/60 mb-6">
+                  Upload your invoices, bills, bank statements, and receipts to
+                  get started tracking your financial health.
+                </p>
+                <button class="btn btn-primary gap-2">
+                  <HiOutlineArrowUpTray class="w-5 h-5" />
+                  Upload Your First Document
+                </button>
+              </div>
             </div>
-          </div>
+          </Show>
         </Show>
-      </Show>
-    </div>
+      </div>
+    </FinancialPageLayout>
   );
 }

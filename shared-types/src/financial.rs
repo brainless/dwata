@@ -1,6 +1,20 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// Data source type for extracted transactions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum DataSourceType {
+    Email,
+    Imap,
+    BankStatement,
+    CreditCardStatement,
+    BankFeed,
+    CsvUpload,
+    Manual,
+    Unknown,
+}
+
 /// Financial document types that can be extracted
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
@@ -19,8 +33,8 @@ pub struct FinancialTransaction {
     pub id: i64,
 
     // Source tracking (agnostic to source type)
-    pub source_type: String, // 'email', 'document', 'chat', 'file', etc.
-    pub source_id: String,   // ID in the source system
+    pub data_source_type: DataSourceType,
+    pub data_source_id: String,   // ID in the source system
 
     // Transaction data
     pub document_type: FinancialDocumentType,
@@ -32,12 +46,38 @@ pub struct FinancialTransaction {
     // Additional fields
     pub category: Option<TransactionCategory>,
     pub vendor: Option<String>,
+    pub source_vendor_id: Option<i64>,
+    pub destination_vendor_id: Option<i64>,
     pub status: TransactionStatus,
 
     // Metadata
     pub source_file: Option<String>,
     pub extracted_at: i64,
     pub notes: Option<String>,
+    pub transaction_reference: Option<String>,
+}
+
+/// Vendor type for transaction parties
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransactionVendorType {
+    Bank,
+    Business,
+    Employee,
+    Individual,
+    Platform,
+    Unknown,
+}
+
+/// Transaction vendor entity
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TransactionVendor {
+    pub id: i64,
+    pub vendor_type: TransactionVendorType,
+    pub vendor_name: String,
+    pub vendor_external_id: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 /// Category for financial transactions
@@ -138,7 +178,10 @@ pub struct FinancialPattern {
     pub confidence: f32,
     pub amount_group: usize,
     pub vendor_group: Option<usize>,
+    pub source_vendor_group: Option<usize>,
+    pub destination_vendor_group: Option<usize>,
     pub date_group: Option<usize>,
+    pub reference_group: Option<usize>,
     pub is_default: bool,
     pub is_active: bool,
     pub match_count: i32,

@@ -105,6 +105,7 @@ impl RealImapClient {
         &mut self,
         mailbox: &str,
         since_uid: Option<u32>,
+        before_uid: Option<u32>,
         max_age_months: Option<u32>,
         limit: Option<usize>,
     ) -> Result<Vec<u32>> {
@@ -130,7 +131,18 @@ impl RealImapClient {
             if !query.is_empty() {
                 query.push(' ');
             }
-            query.push_str(&format!("UID {}:*", uid + 1));
+            if let Some(before) = before_uid {
+                let upper = before.saturating_sub(1);
+                query.push_str(&format!("UID {}:{}", uid + 1, upper));
+            } else {
+                query.push_str(&format!("UID {}:*", uid + 1));
+            }
+        } else if let Some(before) = before_uid {
+            if !query.is_empty() {
+                query.push(' ');
+            }
+            let upper = before.saturating_sub(1);
+            query.push_str(&format!("UID 1:{}", upper));
         }
 
         tracing::info!("IMAP SEARCH query: {}", query);

@@ -65,14 +65,30 @@ pub struct DownloadProgress {
 /// IMAP-specific download state
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct ImapDownloadState {
+    #[serde(default)]
     pub folders: Vec<ImapFolderStatus>,
+    #[serde(default = "default_imap_sync_strategy")]
     pub sync_strategy: ImapSyncStrategy,
+    #[serde(default = "default_last_highest_uid")]
     #[ts(skip)]
     pub last_highest_uid: serde_json::Value,
+    #[serde(default = "default_fetch_batch_size")]
     pub fetch_batch_size: usize,
 
     #[serde(default = "default_max_age_months")]
     pub max_age_months: Option<u32>,
+}
+
+fn default_imap_sync_strategy() -> ImapSyncStrategy {
+    ImapSyncStrategy::FullSync
+}
+
+fn default_last_highest_uid() -> serde_json::Value {
+    serde_json::json!({})
+}
+
+fn default_fetch_batch_size() -> usize {
+    10
 }
 
 fn default_max_age_months() -> Option<u32> {

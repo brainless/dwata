@@ -10,7 +10,7 @@ pub async fn list_folders(conn: AsyncDbConnection, credential_id: i64) -> Result
 
     let mut stmt = conn.prepare(
         "SELECT id, credential_id, name, display_name, imap_path, folder_type, parent_folder_id,
-                uidvalidity, last_synced_uid, total_messages, unread_messages, is_subscribed,
+                uidvalidity, last_synced_uid, oldest_synced_uid, total_messages, unread_messages, is_subscribed,
                 is_selectable, created_at, updated_at, last_synced_at
          FROM email_folders
          WHERE credential_id = ?
@@ -28,13 +28,14 @@ pub async fn list_folders(conn: AsyncDbConnection, credential_id: i64) -> Result
             parent_folder_id: row.get(6)?,
             uidvalidity: row.get::<_, Option<i32>>(7)?.map(|v| v as u32),
             last_synced_uid: row.get::<_, Option<i32>>(8)?.map(|v| v as u32),
-            total_messages: row.get(9)?,
-            unread_messages: row.get(10)?,
-            is_subscribed: row.get(11)?,
-            is_selectable: row.get(12)?,
-            created_at: row.get(13)?,
-            updated_at: row.get(14)?,
-            last_synced_at: row.get(15)?,
+            oldest_synced_uid: row.get::<_, Option<i32>>(9)?.map(|v| v as u32),
+            total_messages: row.get(10)?,
+            unread_messages: row.get(11)?,
+            is_subscribed: row.get(12)?,
+            is_selectable: row.get(13)?,
+            created_at: row.get(14)?,
+            updated_at: row.get(15)?,
+            last_synced_at: row.get(16)?,
         })
     })?
     .collect::<Result<Vec<_>, _>>()?;
@@ -47,7 +48,7 @@ pub async fn get_folder(conn: AsyncDbConnection, folder_id: i64) -> Result<Email
 
     let mut stmt = conn.prepare(
         "SELECT id, credential_id, name, display_name, imap_path, folder_type, parent_folder_id,
-                uidvalidity, last_synced_uid, total_messages, unread_messages, is_subscribed,
+                uidvalidity, last_synced_uid, oldest_synced_uid, total_messages, unread_messages, is_subscribed,
                 is_selectable, created_at, updated_at, last_synced_at
          FROM email_folders
          WHERE id = ?"
@@ -64,13 +65,14 @@ pub async fn get_folder(conn: AsyncDbConnection, folder_id: i64) -> Result<Email
             parent_folder_id: row.get(6)?,
             uidvalidity: row.get::<_, Option<i32>>(7)?.map(|v| v as u32),
             last_synced_uid: row.get::<_, Option<i32>>(8)?.map(|v| v as u32),
-            total_messages: row.get(9)?,
-            unread_messages: row.get(10)?,
-            is_subscribed: row.get(11)?,
-            is_selectable: row.get(12)?,
-            created_at: row.get(13)?,
-            updated_at: row.get(14)?,
-            last_synced_at: row.get(15)?,
+            oldest_synced_uid: row.get::<_, Option<i32>>(9)?.map(|v| v as u32),
+            total_messages: row.get(10)?,
+            unread_messages: row.get(11)?,
+            is_subscribed: row.get(12)?,
+            is_selectable: row.get(13)?,
+            created_at: row.get(14)?,
+            updated_at: row.get(15)?,
+            last_synced_at: row.get(16)?,
         })
     })?;
 
@@ -190,6 +192,22 @@ pub async fn update_folder_sync_state(
     Ok(())
 }
 
+pub async fn update_folder_backfill_state(
+    conn: AsyncDbConnection,
+    folder_id: i64,
+    oldest_uid: u32,
+) -> Result<()> {
+    let conn = conn.lock().await;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    conn.execute(
+        "UPDATE email_folders SET oldest_synced_uid = ?, updated_at = ? WHERE id = ?",
+        params![oldest_uid as i32, now, folder_id],
+    )?;
+
+    Ok(())
+}
+
 pub async fn list_folders_for_credential(
     conn: AsyncDbConnection,
     credential_id: i64,
@@ -198,7 +216,7 @@ pub async fn list_folders_for_credential(
 
     let mut stmt = conn.prepare(
         "SELECT id, credential_id, name, display_name, imap_path, folder_type, parent_folder_id,
-                uidvalidity, last_synced_uid, total_messages, unread_messages, is_subscribed,
+                uidvalidity, last_synced_uid, oldest_synced_uid, total_messages, unread_messages, is_subscribed,
                 is_selectable, created_at, updated_at, last_synced_at
          FROM email_folders
          WHERE credential_id = ?
@@ -216,13 +234,14 @@ pub async fn list_folders_for_credential(
             parent_folder_id: row.get(6)?,
             uidvalidity: row.get::<_, Option<i32>>(7)?.map(|v| v as u32),
             last_synced_uid: row.get::<_, Option<i32>>(8)?.map(|v| v as u32),
-            total_messages: row.get(9)?,
-            unread_messages: row.get(10)?,
-            is_subscribed: row.get(11)?,
-            is_selectable: row.get(12)?,
-            created_at: row.get(13)?,
-            updated_at: row.get(14)?,
-            last_synced_at: row.get(15)?,
+            oldest_synced_uid: row.get::<_, Option<i32>>(9)?.map(|v| v as u32),
+            total_messages: row.get(10)?,
+            unread_messages: row.get(11)?,
+            is_subscribed: row.get(12)?,
+            is_selectable: row.get(13)?,
+            created_at: row.get(14)?,
+            updated_at: row.get(15)?,
+            last_synced_at: row.get(16)?,
         })
     })?
     .collect::<Result<Vec<_>, _>>()?;
@@ -277,4 +296,3 @@ pub async fn sync_folders_from_imap(
 
     Ok(())
 }
-

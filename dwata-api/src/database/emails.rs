@@ -108,6 +108,24 @@ pub async fn filter_new_uids(
     Ok(filtered)
 }
 
+/// Get the oldest UID already stored for a folder
+pub async fn get_oldest_uid_for_folder(
+    conn: AsyncDbConnection,
+    credential_id: i64,
+    folder_id: i64,
+) -> Result<Option<u32>> {
+    let conn = conn.lock().await;
+    let uid: Option<i32> = conn
+        .query_row(
+            "SELECT MIN(uid) FROM emails WHERE credential_id = ? AND folder_id = ?",
+            [credential_id, folder_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(None);
+
+    Ok(uid.map(|v| v as u32))
+}
+
 /// Get email by ID
 pub async fn get_email(
     conn: AsyncDbConnection,

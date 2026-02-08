@@ -2,7 +2,8 @@ use crate::financial_patterns::{create_financial_patterns, FinancialPattern};
 use chrono::Utc;
 use regex::Regex;
 use shared_types::{
-    FinancialDocumentType, FinancialTransaction, TransactionCategory, TransactionStatus,
+    DataSourceType, FinancialDocumentType, FinancialTransaction, TransactionCategory,
+    TransactionStatus,
 };
 
 pub struct FinancialPatternExtractor {
@@ -18,7 +19,10 @@ struct CompiledPattern {
     confidence: f32,
     amount_group: usize,
     vendor_group: Option<usize>,
+    source_vendor_group: Option<usize>,
+    destination_vendor_group: Option<usize>,
     date_group: Option<usize>,
+    reference_group: Option<usize>,
 }
 
 impl FinancialPatternExtractor {
@@ -37,7 +41,10 @@ impl FinancialPatternExtractor {
                     confidence: p.confidence,
                     amount_group: p.amount_group,
                     vendor_group: p.vendor_group,
+                    source_vendor_group: p.source_vendor_group,
+                    destination_vendor_group: p.destination_vendor_group,
                     date_group: p.date_group,
+                    reference_group: p.reference_group,
                 })
                 .collect(),
         }
@@ -58,7 +65,10 @@ impl FinancialPatternExtractor {
                 confidence: pattern.confidence,
                 amount_group: pattern.amount_group,
                 vendor_group: pattern.vendor_group,
+                source_vendor_group: pattern.source_vendor_group,
+                destination_vendor_group: pattern.destination_vendor_group,
                 date_group: pattern.date_group,
+                reference_group: pattern.reference_group,
             });
         }
 
@@ -99,10 +109,21 @@ impl FinancialPatternExtractor {
         let amount_str = captures.get(pattern.amount_group)?.as_str();
         let amount = self.parse_amount(amount_str)?;
 
-        let vendor = pattern
-            .vendor_group
+        let source_vendor = pattern
+            .source_vendor_group
             .and_then(|g| captures.get(g))
             .map(|m| m.as_str().trim().to_string());
+
+        let destination_vendor = pattern
+            .destination_vendor_group
+            .and_then(|g| captures.get(g))
+            .map(|m| m.as_str().trim().to_string());
+
+        if source_vendor.is_none() && destination_vendor.is_none() {
+            return None;
+        }
+
+        let vendor = destination_vendor.clone().or_else(|| source_vendor.clone());
 
         let transaction_date = pattern
             .date_group
@@ -117,8 +138,8 @@ impl FinancialPatternExtractor {
 
         Some(FinancialTransaction {
             id: 0,
-            source_type: String::new(),
-            source_id: String::new(),
+            data_source_type: DataSourceType::Unknown,
+            data_source_id: String::new(),
             document_type: self.parse_document_type(&pattern.document_type),
             description: captures.get(0)?.as_str().to_string(),
             amount,
@@ -127,10 +148,16 @@ impl FinancialPatternExtractor {
                 .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string()),
             category,
             vendor,
+            source_vendor_id: None,
+            destination_vendor_id: None,
             status: self.parse_status(&pattern.status),
             source_file: None,
             extracted_at: 0,
             notes: None,
+            transaction_reference: pattern
+                .reference_group
+                .and_then(|g| captures.get(g))
+                .map(|m| m.as_str().trim().to_string()),
         })
     }
 

@@ -8,6 +8,7 @@ import Calendar from "./pages/Calendar";
 import Emails from "./pages/Emails";
 import FinancialExtractions from "./pages/FinancialExtractions";
 import FinancialHealth from "./pages/FinancialHealth";
+import FinancialPatterns from "./pages/FinancialPatterns";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Tasks from "./pages/Tasks";
@@ -32,6 +33,7 @@ render(
       <Route path="/calendar" component={Calendar} />
       <Route path="/financial" component={FinancialHealth} />
       <Route path="/financial/extractions" component={FinancialExtractions} />
+      <Route path="/financial/patterns" component={FinancialPatterns} />
       <Route path="/jobs" component={BackgroundJobs} />
       <Route path="/settings" component={Settings} />
       <Route path="/settings/:tab" component={Settings} />

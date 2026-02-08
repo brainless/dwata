@@ -399,7 +399,7 @@ import type { Email } from "./Email";
 export type ListEmailsResponse = { emails: Array<Email>, total_count: bigint, has_more: boolean, };
 
 
-export type EmailFolder = { id: bigint, credential_id: bigint, name: string, display_name: string | null, imap_path: string, folder_type: string | null, parent_folder_id: bigint | null, uidvalidity: number | null, last_synced_uid: number | null, total_messages: number, unread_messages: number, is_subscribed: boolean, is_selectable: boolean, created_at: bigint, updated_at: bigint, last_synced_at: bigint | null, };
+export type EmailFolder = { id: bigint, credential_id: bigint, name: string, display_name: string | null, imap_path: string, folder_type: string | null, parent_folder_id: bigint | null, uidvalidity: number | null, last_synced_uid: number | null, oldest_synced_uid: number | null, total_messages: number, unread_messages: number, is_subscribed: boolean, is_selectable: boolean, created_at: bigint, updated_at: bigint, last_synced_at: bigint | null, };
 
 
 export type ListFoldersRequest = { credential_id: bigint, };
@@ -574,6 +574,7 @@ export type ContactsResponse = { contacts: Array<Contact>, };
 export type FinancialDocumentType = "invoice" | "bill" | "bank-statement" | "receipt" | "tax-document" | "payment-confirmation";
 
 
+import type { DataSourceType } from "./DataSourceType";
 import type { FinancialDocumentType } from "./FinancialDocumentType";
 import type { TransactionCategory } from "./TransactionCategory";
 import type { TransactionStatus } from "./TransactionStatus";
@@ -581,7 +582,7 @@ import type { TransactionStatus } from "./TransactionStatus";
 /**
  * Financial transaction extracted from documents
  */
-export type FinancialTransaction = { id: bigint, source_type: string, source_id: string, document_type: FinancialDocumentType, description: string, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, vendor: string | null, status: TransactionStatus, source_file: string | null, extracted_at: bigint, notes: string | null, };
+export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, description: string, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, vendor: string | null, source_vendor_id: bigint | null, destination_vendor_id: bigint | null, status: TransactionStatus, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
 
 
 export type TransactionCategory = "income" | "expense" | "investment" | "tax" | "utility" | "subscription" | "entertainment" | "travel" | "healthcare" | "education" | "other";
