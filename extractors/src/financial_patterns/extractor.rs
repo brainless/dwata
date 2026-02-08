@@ -19,7 +19,10 @@ struct CompiledPattern {
     confidence: f32,
     amount_group: usize,
     vendor_group: Option<usize>,
+    source_vendor_group: Option<usize>,
+    destination_vendor_group: Option<usize>,
     date_group: Option<usize>,
+    reference_group: Option<usize>,
 }
 
 impl FinancialPatternExtractor {
@@ -38,7 +41,10 @@ impl FinancialPatternExtractor {
                     confidence: p.confidence,
                     amount_group: p.amount_group,
                     vendor_group: p.vendor_group,
+                    source_vendor_group: p.source_vendor_group,
+                    destination_vendor_group: p.destination_vendor_group,
                     date_group: p.date_group,
+                    reference_group: p.reference_group,
                 })
                 .collect(),
         }
@@ -59,7 +65,10 @@ impl FinancialPatternExtractor {
                 confidence: pattern.confidence,
                 amount_group: pattern.amount_group,
                 vendor_group: pattern.vendor_group,
+                source_vendor_group: pattern.source_vendor_group,
+                destination_vendor_group: pattern.destination_vendor_group,
                 date_group: pattern.date_group,
+                reference_group: pattern.reference_group,
             });
         }
 
@@ -100,10 +109,21 @@ impl FinancialPatternExtractor {
         let amount_str = captures.get(pattern.amount_group)?.as_str();
         let amount = self.parse_amount(amount_str)?;
 
-        let vendor = pattern
-            .vendor_group
+        let source_vendor = pattern
+            .source_vendor_group
             .and_then(|g| captures.get(g))
             .map(|m| m.as_str().trim().to_string());
+
+        let destination_vendor = pattern
+            .destination_vendor_group
+            .and_then(|g| captures.get(g))
+            .map(|m| m.as_str().trim().to_string());
+
+        if source_vendor.is_none() && destination_vendor.is_none() {
+            return None;
+        }
+
+        let vendor = destination_vendor.clone().or_else(|| source_vendor.clone());
 
         let transaction_date = pattern
             .date_group
@@ -134,7 +154,10 @@ impl FinancialPatternExtractor {
             source_file: None,
             extracted_at: 0,
             notes: None,
-            transaction_reference: None,
+            transaction_reference: pattern
+                .reference_group
+                .and_then(|g| captures.get(g))
+                .map(|m| m.as_str().trim().to_string()),
         })
     }
 

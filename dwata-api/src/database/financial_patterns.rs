@@ -12,9 +12,12 @@ pub async fn list_patterns(
     let conn = db_conn.lock().await;
 
     let mut patterns = Vec::new();
+    let columns = "id, name, regex_pattern, description, document_type, status, confidence, \
+        amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
+        reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
 
     if active_only || is_default.is_some() || document_type.is_some() {
-        let mut query = "SELECT * FROM financial_patterns WHERE 1=1".to_string();
+        let mut query = format!("SELECT {} FROM financial_patterns WHERE 1=1", columns);
 
         if active_only {
             query.push_str(" AND is_active = true");
@@ -38,7 +41,10 @@ pub async fn list_patterns(
             patterns.push(row?);
         }
     } else {
-        let mut stmt = conn.prepare("SELECT * FROM financial_patterns ORDER BY id")?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {} FROM financial_patterns ORDER BY id",
+            columns
+        ))?;
 
         let rows = stmt.query_map([], |row| map_row_to_pattern(row))?;
 
@@ -56,7 +62,14 @@ pub async fn get_pattern(
 ) -> Result<FinancialPattern> {
     let conn = db_conn.lock().await;
 
-    let mut stmt = conn.prepare("SELECT * FROM financial_patterns WHERE id = ?1")?;
+    let columns = "id, name, regex_pattern, description, document_type, status, confidence, \
+        amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
+        reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
+
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {} FROM financial_patterns WHERE id = ?1",
+        columns
+    ))?;
 
     let pattern = stmt.query_row(params![id], |row| map_row_to_pattern(row))?;
 
@@ -77,8 +90,9 @@ pub async fn insert_pattern(
 
     let id: i64 = conn.query_row(
         "INSERT INTO financial_patterns (name, regex_pattern, description, document_type, status, confidence,
-         amount_group, vendor_group, date_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+         amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, reference_group,
+         is_default, is_active, match_count, last_matched_at, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
          RETURNING id",
         params![
             pattern.name,
@@ -89,7 +103,10 @@ pub async fn insert_pattern(
             pattern.confidence,
             pattern.amount_group,
             pattern.vendor_group,
+            pattern.source_vendor_group,
+            pattern.destination_vendor_group,
             pattern.date_group,
+            pattern.reference_group,
             pattern.is_default,
             pattern.is_active,
             pattern.match_count,
@@ -113,9 +130,10 @@ pub async fn update_pattern(
     conn.execute(
         "UPDATE financial_patterns
          SET name = ?1, regex_pattern = ?2, description = ?3, document_type = ?4, status = ?5,
-             confidence = ?6, amount_group = ?7, vendor_group = ?8, date_group = ?9,
-             is_active = ?10, updated_at = ?11
-         WHERE id = ?12",
+             confidence = ?6, amount_group = ?7, vendor_group = ?8, source_vendor_group = ?9,
+             destination_vendor_group = ?10, date_group = ?11, reference_group = ?12,
+             is_active = ?13, updated_at = ?14
+         WHERE id = ?15",
         params![
             pattern.name,
             pattern.regex_pattern,
@@ -125,7 +143,10 @@ pub async fn update_pattern(
             pattern.confidence,
             pattern.amount_group,
             pattern.vendor_group,
+            pattern.source_vendor_group,
+            pattern.destination_vendor_group,
             pattern.date_group,
+            pattern.reference_group,
             pattern.is_active,
             pattern.updated_at,
             id,
@@ -239,12 +260,15 @@ fn map_row_to_pattern(row: &Row) -> rusqlite::Result<FinancialPattern> {
         confidence: row.get(6)?,
         amount_group: row.get(7)?,
         vendor_group: row.get(8)?,
-        date_group: row.get(9)?,
-        is_default: row.get(10)?,
-        is_active: row.get(11)?,
-        match_count: row.get(12)?,
-        last_matched_at: row.get(13)?,
-        created_at: row.get(14)?,
-        updated_at: row.get(15)?,
+        source_vendor_group: row.get(9)?,
+        destination_vendor_group: row.get(10)?,
+        date_group: row.get(11)?,
+        reference_group: row.get(12)?,
+        is_default: row.get(13)?,
+        is_active: row.get(14)?,
+        match_count: row.get(15)?,
+        last_matched_at: row.get(16)?,
+        created_at: row.get(17)?,
+        updated_at: row.get(18)?,
     })
 }

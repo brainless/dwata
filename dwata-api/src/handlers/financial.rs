@@ -152,7 +152,10 @@ pub struct CreatePatternRequest {
     pub confidence: f32,
     pub amount_group: usize,
     pub vendor_group: Option<usize>,
+    pub source_vendor_group: Option<usize>,
+    pub destination_vendor_group: Option<usize>,
     pub date_group: Option<usize>,
+    pub reference_group: Option<usize>,
     pub is_active: Option<bool>,
 }
 
@@ -165,7 +168,10 @@ pub async fn create_pattern(
         &request.regex_pattern,
         request.amount_group,
         request.vendor_group,
+        request.source_vendor_group,
+        request.destination_vendor_group,
         request.date_group,
+        request.reference_group,
         request.confidence,
         &request.document_type,
         &request.status,
@@ -208,7 +214,10 @@ pub async fn create_pattern(
         confidence: request.confidence,
         amount_group: request.amount_group,
         vendor_group: request.vendor_group,
+        source_vendor_group: request.source_vendor_group,
+        destination_vendor_group: request.destination_vendor_group,
         date_group: request.date_group,
+        reference_group: request.reference_group,
         is_default: false,
         is_active: request.is_active.unwrap_or(true),
         match_count: 0,
@@ -241,7 +250,10 @@ pub struct UpdatePatternRequest {
     pub confidence: Option<f32>,
     pub amount_group: Option<usize>,
     pub vendor_group: Option<usize>,
+    pub source_vendor_group: Option<usize>,
+    pub destination_vendor_group: Option<usize>,
     pub date_group: Option<usize>,
+    pub reference_group: Option<usize>,
     pub is_active: Option<bool>,
 }
 
@@ -274,7 +286,14 @@ pub async fn update_pattern(
         confidence: request.confidence.unwrap_or(existing.confidence),
         amount_group: request.amount_group.unwrap_or(existing.amount_group),
         vendor_group: request.vendor_group.or(existing.vendor_group),
+        source_vendor_group: request
+            .source_vendor_group
+            .or(existing.source_vendor_group),
+        destination_vendor_group: request
+            .destination_vendor_group
+            .or(existing.destination_vendor_group),
         date_group: request.date_group.or(existing.date_group),
+        reference_group: request.reference_group.or(existing.reference_group),
         is_default: existing.is_default,
         is_active: request.is_active.unwrap_or(existing.is_active),
         match_count: existing.match_count,
@@ -288,7 +307,10 @@ pub async fn update_pattern(
         &updated.regex_pattern,
         updated.amount_group,
         updated.vendor_group,
+        updated.source_vendor_group,
+        updated.destination_vendor_group,
         updated.date_group,
+        updated.reference_group,
         updated.confidence,
         &updated.document_type,
         &updated.status,

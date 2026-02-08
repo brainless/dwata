@@ -702,7 +702,10 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
             -- Capture group indices (which regex group contains each field)
             amount_group INTEGER NOT NULL,
             vendor_group INTEGER,
+            source_vendor_group INTEGER,
+            destination_vendor_group INTEGER,
             date_group INTEGER,
+            reference_group INTEGER,
 
             -- Management flags
             is_default BOOLEAN DEFAULT false,
@@ -732,6 +735,27 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_financial_patterns_type ON financial_patterns(document_type)",
         [],
     )?;
+
+    if !table_has_column(conn, "financial_patterns", "source_vendor_group")? {
+        conn.execute(
+            "ALTER TABLE financial_patterns ADD COLUMN source_vendor_group INTEGER",
+            [],
+        )?;
+    }
+
+    if !table_has_column(conn, "financial_patterns", "destination_vendor_group")? {
+        conn.execute(
+            "ALTER TABLE financial_patterns ADD COLUMN destination_vendor_group INTEGER",
+            [],
+        )?;
+    }
+
+    if !table_has_column(conn, "financial_patterns", "reference_group")? {
+        conn.execute(
+            "ALTER TABLE financial_patterns ADD COLUMN reference_group INTEGER",
+            [],
+        )?;
+    }
 
     // Create email_folders table
     conn.execute(
@@ -814,7 +838,8 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     conn.execute(
         "INSERT INTO financial_patterns
             (name, regex_pattern, description, document_type, status, confidence,
-             amount_group, vendor_group, date_group, is_default, is_active,
+             amount_group, vendor_group, source_vendor_group, destination_vendor_group,
+             date_group, reference_group, is_default, is_active,
              match_count, created_at, updated_at)
         VALUES
             -- Payment Confirmation Patterns (5)
@@ -822,7 +847,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)payment of \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
              'Matches: \"payment of $150.00 to Comcast\"',
              'payment-confirmation', 'paid', 0.90,
-             1, 2, NULL,
+             1, NULL, NULL, 2, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -830,7 +855,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)paid \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
              'Matches: \"paid $99 to Adobe\"',
              'payment-confirmation', 'paid', 0.88,
-             1, 2, NULL,
+             1, NULL, NULL, 2, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -838,7 +863,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)your \\$?([\\d,]+\\.?\\d{0,2}) payment to ([A-Za-z\\s]+)',
              'Matches: \"Your $50.00 payment to Netflix\"',
              'payment-confirmation', 'paid', 0.87,
-             1, 2, NULL,
+             1, NULL, NULL, 2, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -846,7 +871,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)successfully paid \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
              'Matches: \"successfully paid $1,200.00 to Chase\"',
              'payment-confirmation', 'paid', 0.92,
-             1, 2, NULL,
+             1, NULL, NULL, 2, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -854,7 +879,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)payment processed:? \\$?([\\d,]+\\.?\\d{0,2}) to ([A-Za-z\\s]+)',
              'Matches: \"payment processed: $45.99 to Spotify\"',
              'payment-confirmation', 'paid', 0.91,
-             1, 2, NULL,
+             1, NULL, NULL, 2, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -863,7 +888,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)bill (?:of|for) \\$?([\\d,]+\\.?\\d{0,2}) (?:is )?due (?:on )?([A-Za-z]+ \\d{1,2})',
              'Matches: \"bill of $99.99 is due on Feb 10\"',
              'bill', 'pending', 0.88,
-             1, NULL, 2,
+             1, NULL, NULL, NULL, 2, NULL,
              true, true,
              0, 0, 0),
 
@@ -871,7 +896,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)invoice for \\$?([\\d,]+\\.?\\d{0,2}) due ([A-Za-z]+ \\d{1,2})',
              'Matches: \"invoice for $3,500 due January 25\"',
              'invoice', 'pending', 0.89,
-             1, NULL, 2,
+             1, NULL, NULL, NULL, 2, NULL,
              true, true,
              0, 0, 0),
 
@@ -879,7 +904,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)(?:your )?([A-Za-z]+) bill (?:\\(?\\$?([\\d,]+\\.?\\d{0,2})\\)?) is due ([A-Za-z]+ \\d{1,2})',
              'Matches: \"Your Adobe bill ($99) is due Feb 10\"',
              'bill', 'pending', 0.87,
-             2, 1, 3,
+             2, NULL, NULL, 1, 3, NULL,
              true, true,
              0, 0, 0),
 
@@ -887,7 +912,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)due:? \\$?([\\d,]+\\.?\\d{0,2}) by (\\d{2}/\\d{2}/\\d{4})',
              'Matches: \"due: $150.00 by 02/05/2026\"',
              'bill', 'pending', 0.86,
-             1, NULL, 2,
+             1, NULL, NULL, NULL, 2, NULL,
              true, true,
              0, 0, 0),
 
@@ -896,7 +921,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)received (?:a payment of )?\\$?([\\d,]+\\.?\\d{0,2}) from ([A-Za-z\\s]+)',
              'Matches: \"received $3,500.00 from Acme Corp\"',
              'invoice', 'paid', 0.92,
-             1, 2, NULL,
+             1, NULL, NULL, 2, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -904,7 +929,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)payment of \\$?([\\d,]+\\.?\\d{0,2}) from ([A-Za-z\\s]+)',
              'Matches: \"payment of $2,000 from TechStart Inc\"',
              'invoice', 'paid', 0.90,
-             1, 2, NULL,
+             1, NULL, NULL, 2, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -912,7 +937,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)you received (?:a payment:? )?\\$?([\\d,]+\\.?\\d{0,2}) from ([A-Za-z\\s]+)',
              'Matches: \"You received a payment: $1,500 from Client Name\"',
              'invoice', 'paid', 0.91,
-             1, 2, NULL,
+             1, NULL, NULL, 2, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -921,7 +946,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)payment of \\$?([\\d,]+\\.?\\d{0,2}) (?:is |to ([A-Za-z\\s]+) )?(?:is )?overdue',
              'Matches: \"payment of $1,200 is overdue\" or \"payment of $1,200 to Chase is overdue\"',
              'bill', 'overdue', 0.93,
-             1, 2, NULL,
+             1, NULL, NULL, 2, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -929,7 +954,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)\\$?([\\d,]+\\.?\\d{0,2}) payment past due',
              'Matches: \"$450.00 payment past due\"',
              'bill', 'overdue', 0.91,
-             1, NULL, NULL,
+             1, NULL, NULL, NULL, NULL, NULL,
              true, true,
              0, 0, 0),
 
@@ -937,7 +962,7 @@ pub fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
              '(?i)overdue bill:? \\$?([\\d,]+\\.?\\d{0,2})(?: \\((\\d+) days? late\\))?',
              'Matches: \"overdue bill: $99 (3 days late)\"',
              'bill', 'overdue', 0.90,
-             1, NULL, NULL,
+             1, NULL, NULL, NULL, NULL, NULL,
              true, true,
              0, 0, 0)
         ON CONFLICT (regex_pattern) DO NOTHING",

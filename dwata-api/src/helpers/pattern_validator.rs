@@ -12,7 +12,10 @@ pub fn validate_pattern(
     regex_pattern: &str,
     amount_group: usize,
     vendor_group: Option<usize>,
+    source_vendor_group: Option<usize>,
+    destination_vendor_group: Option<usize>,
     date_group: Option<usize>,
+    reference_group: Option<usize>,
     confidence: f32,
     document_type: &str,
     status: &str,
@@ -21,7 +24,23 @@ pub fn validate_pattern(
 
     let regex = validate_regex_compiles(regex_pattern)?;
 
-    validate_capture_groups(&regex, amount_group, vendor_group, date_group)?;
+    if vendor_group.is_some() {
+        bail!("vendor_group is deprecated; use source_vendor_group/destination_vendor_group");
+    }
+
+    if source_vendor_group.is_none() && destination_vendor_group.is_none() {
+        bail!("At least one of source_vendor_group or destination_vendor_group is required");
+    }
+
+    validate_capture_groups(
+        &regex,
+        amount_group,
+        vendor_group,
+        source_vendor_group,
+        destination_vendor_group,
+        date_group,
+        reference_group,
+    )?;
 
     validate_confidence(confidence)?;
 
@@ -55,7 +74,10 @@ fn validate_capture_groups(
     regex: &Regex,
     amount_group: usize,
     vendor_group: Option<usize>,
+    source_vendor_group: Option<usize>,
+    destination_vendor_group: Option<usize>,
     date_group: Option<usize>,
+    reference_group: Option<usize>,
 ) -> Result<()> {
     let group_count = regex.captures_len();
 
@@ -77,11 +99,41 @@ fn validate_capture_groups(
         }
     }
 
+    if let Some(vg) = source_vendor_group {
+        if vg >= group_count {
+            bail!(
+                "source_vendor_group {} does not exist (regex has {} groups)",
+                vg,
+                group_count
+            );
+        }
+    }
+
+    if let Some(vg) = destination_vendor_group {
+        if vg >= group_count {
+            bail!(
+                "destination_vendor_group {} does not exist (regex has {} groups)",
+                vg,
+                group_count
+            );
+        }
+    }
+
     if let Some(dg) = date_group {
         if dg >= group_count {
             bail!(
                 "date_group {} does not exist (regex has {} groups)",
                 dg,
+                group_count
+            );
+        }
+    }
+
+    if let Some(rg) = reference_group {
+        if rg >= group_count {
+            bail!(
+                "reference_group {} does not exist (regex has {} groups)",
+                rg,
                 group_count
             );
         }
