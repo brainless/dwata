@@ -150,6 +150,7 @@ pub struct CreatePatternRequest {
     pub name: String,
     pub regex_pattern: String,
     pub description: Option<String>,
+    pub sender_email: Option<String>,
     pub document_type: String,
     pub status: String,
     pub confidence: f32,
@@ -196,6 +197,7 @@ pub async fn create_pattern(
     let regex_exists = patterns_db::pattern_regex_exists(
         db.async_connection.clone(),
         &request.regex_pattern,
+        request.sender_email.as_deref(),
         None,
     )
     .await
@@ -212,6 +214,7 @@ pub async fn create_pattern(
         name: request.name.clone(),
         regex_pattern: request.regex_pattern.clone(),
         description: request.description.clone(),
+        sender_email: request.sender_email.clone(),
         document_type: request.document_type.clone(),
         status: request.status.clone(),
         confidence: request.confidence,
@@ -248,6 +251,7 @@ pub struct UpdatePatternRequest {
     pub name: Option<String>,
     pub regex_pattern: Option<String>,
     pub description: Option<String>,
+    pub sender_email: Option<String>,
     pub document_type: Option<String>,
     pub status: Option<String>,
     pub confidence: Option<f32>,
@@ -284,6 +288,7 @@ pub async fn update_pattern(
         name: request.name.clone().unwrap_or(existing.name),
         regex_pattern: request.regex_pattern.clone().unwrap_or(existing.regex_pattern),
         description: request.description.clone().or(existing.description),
+        sender_email: request.sender_email.clone().or(existing.sender_email),
         document_type: request.document_type.clone().unwrap_or(existing.document_type),
         status: request.status.clone().unwrap_or(existing.status),
         confidence: request.confidence.unwrap_or(existing.confidence),
@@ -368,6 +373,8 @@ const DEFAULT_FINANCIAL_REGEXES: &[&str] = &[
     r"(?i)\b(refund|chargeback)\b",
 ];
 
+const TEMPLATE_SIMILARITY_THRESHOLD: f32 = 0.45;
+
 pub async fn scan_financial_emails(
     db: web::Data<Arc<Database>>,
     request: web::Json<FinancialEmailScanRequest>,
@@ -403,7 +410,7 @@ pub async fn scan_financial_emails(
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     let mut sender_counts: HashMap<String, i64> = HashMap::new();
-    let mut total_matched = 0i64;
+    let mut sender_tokens: HashMap<String, Vec<Vec<String>>> = HashMap::new();
 
     for row in rows.iter() {
         let mut content = String::new();
@@ -431,10 +438,35 @@ pub async fn scan_financial_emails(
         }
 
         if matched {
-            total_matched += 1;
-            *sender_counts.entry(row.from_address.clone()).or_insert(0) += 1;
+            let sender = row.from_address.clone();
+            *sender_counts.entry(sender.clone()).or_insert(0) += 1;
+            sender_tokens
+                .entry(sender)
+                .or_insert_with(Vec::new)
+                .push(tokenize_words(&content));
         }
     }
+
+    // If a sender's matched emails differ too much at a word level, they are likely not
+    // templated transaction emails. We drop them for now (may miss manual emails).
+    let mut total_matched = 0i64;
+    sender_counts.retain(|sender, count| {
+        let keep = sender_tokens
+            .get(sender)
+            .and_then(|tokens| {
+                if tokens.len() < 2 {
+                    return Some(true);
+                }
+                let avg = average_normalized_distance(tokens);
+                Some(avg <= TEMPLATE_SIMILARITY_THRESHOLD)
+            })
+            .unwrap_or(true);
+
+        if keep {
+            total_matched += *count;
+        }
+        keep
+    });
 
     let mut senders: Vec<FinancialEmailScanSender> = sender_counts
         .into_iter()
@@ -461,6 +493,63 @@ pub async fn scan_financial_emails(
         total_matched_emails: total_matched,
         senders,
     }))
+}
+
+fn tokenize_words(text: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            current.push(ch.to_ascii_lowercase());
+        } else if !current.is_empty() {
+            words.push(current);
+            current = String::new();
+        }
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
+fn average_normalized_distance(samples: &[Vec<String>]) -> f32 {
+    let baseline = &samples[0];
+    let mut total = 0f32;
+    let mut count = 0f32;
+    for candidate in samples.iter().skip(1) {
+        total += normalized_word_distance(baseline, candidate);
+        count += 1.0;
+    }
+    if count == 0.0 {
+        0.0
+    } else {
+        total / count
+    }
+}
+
+fn normalized_word_distance(a: &[String], b: &[String]) -> f32 {
+    let dist = word_edit_distance(a, b) as f32;
+    let denom = a.len().max(b.len()).max(1) as f32;
+    dist / denom
+}
+
+fn word_edit_distance(a: &[String], b: &[String]) -> usize {
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut curr = vec![0usize; b.len() + 1];
+
+    for (i, aw) in a.iter().enumerate() {
+        curr[0] = i + 1;
+        for (j, bw) in b.iter().enumerate() {
+            let cost = if aw == bw { 0 } else { 1 };
+            let insert = curr[j] + 1;
+            let delete = prev[j + 1] + 1;
+            let replace = prev[j] + cost;
+            curr[j + 1] = insert.min(delete).min(replace);
+        }
+        prev.copy_from_slice(&curr);
+    }
+
+    prev[b.len()]
 }
 
 #[derive(Deserialize)]

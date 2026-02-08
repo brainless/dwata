@@ -12,7 +12,7 @@ pub async fn list_patterns(
     let conn = db_conn.lock().await;
 
     let mut patterns = Vec::new();
-    let columns = "id, name, regex_pattern, description, document_type, status, confidence, \
+    let columns = "id, name, regex_pattern, description, sender_email, document_type, status, confidence, \
         amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
         reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
 
@@ -62,7 +62,7 @@ pub async fn get_pattern(
 ) -> Result<FinancialPattern> {
     let conn = db_conn.lock().await;
 
-    let columns = "id, name, regex_pattern, description, document_type, status, confidence, \
+    let columns = "id, name, regex_pattern, description, sender_email, document_type, status, confidence, \
         amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
         reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
 
@@ -89,15 +89,16 @@ pub async fn insert_pattern(
     let conn = db_conn.lock().await;
 
     let id: i64 = conn.query_row(
-        "INSERT INTO financial_patterns (name, regex_pattern, description, document_type, status, confidence,
+        "INSERT INTO financial_patterns (name, regex_pattern, description, sender_email, document_type, status, confidence,
          amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, reference_group,
          is_default, is_active, match_count, last_matched_at, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
          RETURNING id",
         params![
             pattern.name,
             pattern.regex_pattern,
             pattern.description.as_deref(),
+            pattern.sender_email.as_deref(),
             &pattern.document_type,
             &pattern.status,
             pattern.confidence,
@@ -129,15 +130,16 @@ pub async fn update_pattern(
 
     conn.execute(
         "UPDATE financial_patterns
-         SET name = ?1, regex_pattern = ?2, description = ?3, document_type = ?4, status = ?5,
-             confidence = ?6, amount_group = ?7, vendor_group = ?8, source_vendor_group = ?9,
-             destination_vendor_group = ?10, date_group = ?11, reference_group = ?12,
-             is_active = ?13, updated_at = ?14
-         WHERE id = ?15",
+         SET name = ?1, regex_pattern = ?2, description = ?3, sender_email = ?4, document_type = ?5, status = ?6,
+             confidence = ?7, amount_group = ?8, vendor_group = ?9, source_vendor_group = ?10,
+             destination_vendor_group = ?11, date_group = ?12, reference_group = ?13,
+             is_active = ?14, updated_at = ?15
+         WHERE id = ?16",
         params![
             pattern.name,
             pattern.regex_pattern,
             pattern.description.as_deref(),
+            pattern.sender_email.as_deref(),
             &pattern.document_type,
             &pattern.status,
             pattern.confidence,
@@ -199,22 +201,36 @@ pub async fn pattern_name_exists(
 pub async fn pattern_regex_exists(
     db_conn: AsyncDbConnection,
     regex_pattern: &str,
+    sender_email: Option<&str>,
     exclude_id: Option<i64>,
 ) -> Result<bool> {
     let conn = db_conn.lock().await;
 
-    let count: i64 = if let Some(exclude_id) = exclude_id {
-        conn.query_row(
-            "SELECT COUNT(*) FROM financial_patterns WHERE regex_pattern = ?1 AND id != ?2",
-            params![regex_pattern, exclude_id],
-            |row| row.get(0)
-        )?
-    } else {
-        conn.query_row(
-            "SELECT COUNT(*) FROM financial_patterns WHERE regex_pattern = ?1",
+    let count: i64 = match (sender_email, exclude_id) {
+        (Some(sender), Some(exclude)) => conn.query_row(
+            "SELECT COUNT(*) FROM financial_patterns
+             WHERE regex_pattern = ?1 AND sender_email = ?2 AND id != ?3",
+            params![regex_pattern, sender, exclude],
+            |row| row.get(0),
+        )?,
+        (Some(sender), None) => conn.query_row(
+            "SELECT COUNT(*) FROM financial_patterns
+             WHERE regex_pattern = ?1 AND sender_email = ?2",
+            params![regex_pattern, sender],
+            |row| row.get(0),
+        )?,
+        (None, Some(exclude)) => conn.query_row(
+            "SELECT COUNT(*) FROM financial_patterns
+             WHERE regex_pattern = ?1 AND sender_email IS NULL AND id != ?2",
+            params![regex_pattern, exclude],
+            |row| row.get(0),
+        )?,
+        (None, None) => conn.query_row(
+            "SELECT COUNT(*) FROM financial_patterns
+             WHERE regex_pattern = ?1 AND sender_email IS NULL",
             params![regex_pattern],
-            |row| row.get(0)
-        )?
+            |row| row.get(0),
+        )?,
     };
 
     Ok(count > 0)
@@ -255,20 +271,21 @@ fn map_row_to_pattern(row: &Row) -> rusqlite::Result<FinancialPattern> {
         name: row.get(1)?,
         regex_pattern: row.get(2)?,
         description: row.get(3)?,
-        document_type: row.get(4)?,
-        status: row.get(5)?,
-        confidence: row.get(6)?,
-        amount_group: row.get(7)?,
-        vendor_group: row.get(8)?,
-        source_vendor_group: row.get(9)?,
-        destination_vendor_group: row.get(10)?,
-        date_group: row.get(11)?,
-        reference_group: row.get(12)?,
-        is_default: row.get(13)?,
-        is_active: row.get(14)?,
-        match_count: row.get(15)?,
-        last_matched_at: row.get(16)?,
-        created_at: row.get(17)?,
-        updated_at: row.get(18)?,
+        sender_email: row.get(4)?,
+        document_type: row.get(5)?,
+        status: row.get(6)?,
+        confidence: row.get(7)?,
+        amount_group: row.get(8)?,
+        vendor_group: row.get(9)?,
+        source_vendor_group: row.get(10)?,
+        destination_vendor_group: row.get(11)?,
+        date_group: row.get(12)?,
+        reference_group: row.get(13)?,
+        is_default: row.get(14)?,
+        is_active: row.get(15)?,
+        match_count: row.get(16)?,
+        last_matched_at: row.get(17)?,
+        created_at: row.get(18)?,
+        updated_at: row.get(19)?,
     })
 }

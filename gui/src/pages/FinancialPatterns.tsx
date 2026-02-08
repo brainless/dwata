@@ -59,6 +59,12 @@ export default function FinancialPatterns() {
       <A href="/financial" class="btn btn-ghost btn-sm">
         Back to Financial
       </A>
+      <A
+        href="/financial/patterns/detect"
+        class="btn btn-secondary btn-sm"
+      >
+        Detect Patterns With AI
+      </A>
       <button class="btn btn-primary btn-sm" onClick={fetchPatterns}>
         <HiOutlineArrowPath class="w-4 h-4" />
         Refresh
@@ -112,6 +118,7 @@ export default function FinancialPatterns() {
                   <thead>
                     <tr>
                       <th>Name</th>
+                      <th>Sender</th>
                       <th>Document</th>
                       <th>Status</th>
                       <th>Confidence</th>
@@ -133,6 +140,11 @@ export default function FinancialPatterns() {
                                 {pattern.description}
                               </div>
                             </Show>
+                          </td>
+                          <td class="text-xs">
+                            <span class="font-mono">
+                              {pattern.sender_email ?? "—"}
+                            </span>
                           </td>
                           <td>
                             <span class="badge badge-outline">

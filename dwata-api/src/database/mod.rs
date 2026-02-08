@@ -67,7 +67,7 @@ impl Database {
         // Run migrations on sync connection before opening async connection
         {
             let mut conn = sync_mutex.lock().unwrap();
-            migrations::run_migrations(&conn)?;
+        migrations::run_migrations(&mut conn)?;
             migrations::migrate_folders_and_labels(&mut *conn)?;
         }
 
