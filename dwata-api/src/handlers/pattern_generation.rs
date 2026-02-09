@@ -8,12 +8,20 @@ use dwata_agents::{
     storage::{sqlite_storage::SqliteAgentStorage, Session},
     tools::DwataToolExecutor,
 };
-use nocodo_llm_sdk::claude::ClaudeClient;
 use nocodo_llm_sdk::client::LlmClient;
+use nocodo_llm_sdk::gemini::GeminiClient;
+use nocodo_llm_sdk::models::gemini::GEMINI_3_FLASH_ID;
+use crate::financial_keywords::{DEFAULT_FINANCIAL_KEYWORDS, build_fts_query};
 
 #[derive(Debug, Deserialize)]
 pub struct GeneratePatternRequest {
     pub email_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProcessSenderRequest {
+    pub sender_email: String,
+    pub credential_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -24,129 +32,156 @@ pub struct GeneratePatternResponse {
     pub extracted_data: Vec<shared_types::FinancialTransaction>,
 }
 
+async fn run_financial_extractor(
+    email_id: i64,
+    db: &Database,
+    config: &crate::config::ApiConfig,
+) -> anyhow::Result<GeneratePatternResponse> {
+    let email = crate::database::emails::get_email(
+        db.async_connection.clone(),
+        email_id,
+    )
+    .await?;
+
+    let patterns = crate::database::financial_patterns::list_active_patterns(
+        db.async_connection.clone(),
+    )
+    .await?;
+
+    let api_key = config
+        .api_keys
+        .as_ref()
+        .and_then(|k| k.gemini_api_key.as_ref())
+        .ok_or_else(|| anyhow::anyhow!("Gemini API key not configured"))?;
+
+    let llm_client: Arc<dyn LlmClient> = Arc::new(GeminiClient::new(api_key)?);
+
+    let storage: Arc<dyn dwata_agents::AgentStorage> =
+        Arc::new(SqliteAgentStorage::new(db.connection.clone()));
+
+    let subject = email.subject.unwrap_or_else(|| "".to_string());
+    let body_text = email.body_text.unwrap_or_else(|| "".to_string());
+
+    let email_content = format!("{}\n\n{}", subject, body_text);
+    let tool_executor = Arc::new(DwataToolExecutor::new(db.connection.clone(), email_content));
+
+    let agent = FinancialExtractorAgent::new(
+        llm_client,
+        storage.clone(),
+        tool_executor,
+        GEMINI_3_FLASH_ID.to_string(),
+        subject,
+        body_text,
+        patterns,
+    );
+
+    let session_id = storage
+        .create_session(Session {
+            id: None,
+            agent_type: "financial-extractor".to_string(),
+            objective: format!("Generate pattern for email {}", email_id),
+            context_data: Some(
+                serde_json::json!({
+                    "email_id": email_id,
+                })
+                .to_string(),
+            ),
+            status: "running".to_string(),
+            result: None,
+        })
+        .await?;
+
+    let result = match agent.execute(session_id).await {
+        Ok(result) => result,
+        Err(e) => {
+            let _ = storage
+                .update_session(Session {
+                    id: Some(session_id),
+                    agent_type: "financial-extractor".to_string(),
+                    objective: "".to_string(),
+                    context_data: None,
+                    status: "failed".to_string(),
+                    result: Some(e.to_string()),
+                })
+                .await;
+            return Err(e);
+        }
+    };
+
+    let _ = storage
+        .update_session(Session {
+            id: Some(session_id),
+            agent_type: "financial-extractor".to_string(),
+            objective: "".to_string(),
+            context_data: None,
+            status: "completed".to_string(),
+            result: Some(result.clone()),
+        })
+        .await;
+
+    Ok(GeneratePatternResponse {
+        session_id,
+        status: "completed".to_string(),
+        pattern_id: None,
+        extracted_data: vec![],
+    })
+}
+
 #[actix_web::post("/api/extraction/generate-pattern")]
 pub async fn generate_pattern(
     req: web::Json<GeneratePatternRequest>,
     db: web::Data<Arc<Database>>,
     config: web::Data<Arc<crate::config::ApiConfig>>,
 ) -> ActixResult<HttpResponse> {
-    let email = match crate::database::emails::get_email(
-        db.async_connection.clone(),
-        req.email_id,
-    ).await {
-        Ok(email) => email,
-        Err(e) => {
-            tracing::error!("Failed to get email: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to get email"
-            })));
-        }
-    };
-
-    let patterns = match crate::database::financial_patterns::list_active_patterns(
-        db.async_connection.clone(),
-    ).await {
-        Ok(patterns) => patterns,
-        Err(e) => {
-            tracing::error!("Failed to list patterns: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to list patterns"
-            })));
-        }
-    };
-
-    let api_key = match config.api_keys.as_ref().and_then(|k| k.claude_api_key.as_ref()) {
-        Some(key) => key,
-        None => {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "Claude API key not configured"
-            })));
-        }
-    };
-
-    let llm_client: Arc<dyn LlmClient> = match ClaudeClient::new(api_key) {
-        Ok(client) => Arc::new(client),
-        Err(e) => {
-            tracing::error!("Failed to create Claude client: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to create Claude client"
-            })));
-        }
-    };
-
-    let storage: Arc<dyn dwata_agents::AgentStorage> = Arc::new(
-        SqliteAgentStorage::new(db.connection.clone())
-    );
-
-    let subject = email.subject.unwrap_or_else(|| "".to_string());
-    let body_text = email.body_text.unwrap_or_else(|| "".to_string());
-
-    let email_content = format!("{}\n\n{}", subject, body_text);
-    let tool_executor = Arc::new(
-        DwataToolExecutor::new(db.connection.clone(), email_content)
-    );
-
-    let agent = FinancialExtractorAgent::new(
-        llm_client,
-        storage.clone(),
-        tool_executor,
-        "claude-sonnet-4-5-20250929".to_string(),
-        subject,
-        body_text,
-        patterns,
-    );
-
-    let session_id = match storage.create_session(Session {
-        id: None,
-        agent_type: "financial-extractor".to_string(),
-        objective: format!("Generate pattern for email {}", req.email_id),
-        context_data: Some(serde_json::json!({
-            "email_id": req.email_id,
-        }).to_string()),
-        status: "running".to_string(),
-        result: None,
-    }).await {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to create session: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to create session"
-            })));
-        }
-    };
-
-    let result = match agent.execute(session_id).await {
-        Ok(result) => result,
+    match run_financial_extractor(req.email_id, db.as_ref(), config.as_ref()).await {
+        Ok(response) => Ok(HttpResponse::Ok().json(response)),
         Err(e) => {
             tracing::error!("Agent execution failed: {}", e);
-            let _ = storage.update_session(Session {
-                id: Some(session_id),
-                agent_type: "financial-extractor".to_string(),
-                objective: "".to_string(),
-                context_data: None,
-                status: "failed".to_string(),
-                result: Some(e.to_string()),
-            }).await;
-            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Agent execution failed",
                 "details": e.to_string()
+            })))
+        }
+    }
+}
+
+#[actix_web::post("/api/financial/patterns/process-sender")]
+pub async fn process_sender(
+    req: web::Json<ProcessSenderRequest>,
+    db: web::Data<Arc<Database>>,
+    config: web::Data<Arc<crate::config::ApiConfig>>,
+) -> ActixResult<HttpResponse> {
+    let fts_query = build_fts_query(DEFAULT_FINANCIAL_KEYWORDS);
+    let email_id = match crate::database::emails::get_latest_email_id_for_sender_fts(
+        db.async_connection.clone(),
+        req.credential_id,
+        &req.sender_email,
+        &fts_query,
+    )
+    .await
+    {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            return Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "error": "No matching email found for sender"
+            })));
+        }
+        Err(e) => {
+            tracing::error!("Failed to lookup sender email: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to lookup sender email"
             })));
         }
     };
 
-    let _ = storage.update_session(Session {
-        id: Some(session_id),
-        agent_type: "financial-extractor".to_string(),
-        objective: "".to_string(),
-        context_data: None,
-        status: "completed".to_string(),
-        result: Some(result.clone()),
-    }).await;
-
-    Ok(HttpResponse::Ok().json(GeneratePatternResponse {
-        session_id,
-        status: "completed".to_string(),
-        pattern_id: None,
-        extracted_data: vec![],
-    }))
+    match run_financial_extractor(email_id, db.as_ref(), config.as_ref()).await {
+        Ok(response) => Ok(HttpResponse::Ok().json(response)),
+        Err(e) => {
+            tracing::error!("Agent execution failed: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Agent execution failed",
+                "details": e.to_string()
+            })))
+        }
+    }
 }

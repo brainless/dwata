@@ -176,7 +176,6 @@ pub struct FinancialPattern {
     pub sender_email: Option<String>,
     pub document_type: String,
     pub status: String,
-    pub confidence: f32,
     pub amount_group: usize,
     pub vendor_group: Option<usize>,
     pub source_vendor_group: Option<usize>,

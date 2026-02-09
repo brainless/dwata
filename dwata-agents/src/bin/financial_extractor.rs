@@ -276,12 +276,12 @@ fn load_email_from_db(conn: Arc<Mutex<Connection>>, email_id: i64) -> Result<(St
 fn load_active_patterns(conn: Arc<Mutex<Connection>>) -> Result<Vec<FinancialPattern>> {
     let conn = conn.lock().unwrap();
     let mut stmt = match conn.prepare(
-        "SELECT id, name, regex_pattern, description, sender_email, document_type, status, confidence,\n                amount_group, vendor_group, source_vendor_group, destination_vendor_group,\n                date_group, reference_group, is_default, is_active,\n                match_count, last_matched_at, created_at, updated_at\n         FROM financial_patterns\n         WHERE is_active = true",
+        "SELECT id, name, regex_pattern, description, sender_email, document_type, status,\n                amount_group, vendor_group, source_vendor_group, destination_vendor_group,\n                date_group, reference_group, is_default, is_active,\n                match_count, last_matched_at, created_at, updated_at\n         FROM financial_patterns\n         WHERE is_active = true",
     ) {
         Ok(stmt) => stmt,
         Err(_) => {
             let mut legacy_stmt = conn.prepare(
-                "SELECT id, name, regex_pattern, description, document_type, status, confidence,\n                    amount_group, vendor_group, date_group, is_default, is_active,\n                    match_count, last_matched_at, created_at, updated_at\n             FROM financial_patterns\n             WHERE is_active = true",
+                "SELECT id, name, regex_pattern, description, document_type, status,\n                    amount_group, vendor_group, date_group, is_default, is_active,\n                    match_count, last_matched_at, created_at, updated_at\n             FROM financial_patterns\n             WHERE is_active = true",
             )?;
 
             let patterns = legacy_stmt
@@ -294,19 +294,18 @@ fn load_active_patterns(conn: Arc<Mutex<Connection>>) -> Result<Vec<FinancialPat
                         sender_email: None,
                         document_type: row.get(4)?,
                         status: row.get(5)?,
-                        confidence: row.get(6)?,
-                        amount_group: row.get::<_, i64>(7)? as usize,
-                        vendor_group: row.get::<_, Option<i64>>(8)?.map(|v| v as usize),
+                        amount_group: row.get::<_, i64>(6)? as usize,
+                        vendor_group: row.get::<_, Option<i64>>(7)?.map(|v| v as usize),
                         source_vendor_group: None,
                         destination_vendor_group: None,
-                        date_group: row.get::<_, Option<i64>>(9)?.map(|v| v as usize),
+                        date_group: row.get::<_, Option<i64>>(8)?.map(|v| v as usize),
                         reference_group: None,
-                        is_default: row.get(10)?,
-                        is_active: row.get(11)?,
-                        match_count: row.get(12)?,
-                        last_matched_at: row.get(13)?,
-                        created_at: row.get(14)?,
-                        updated_at: row.get(15)?,
+                        is_default: row.get(9)?,
+                        is_active: row.get(10)?,
+                        match_count: row.get(11)?,
+                        last_matched_at: row.get(12)?,
+                        created_at: row.get(13)?,
+                        updated_at: row.get(14)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -325,19 +324,18 @@ fn load_active_patterns(conn: Arc<Mutex<Connection>>) -> Result<Vec<FinancialPat
                 sender_email: row.get(4)?,
                 document_type: row.get(5)?,
                 status: row.get(6)?,
-                confidence: row.get(7)?,
-                amount_group: row.get::<_, i64>(8)? as usize,
-                vendor_group: row.get::<_, Option<i64>>(9)?.map(|v| v as usize),
-                source_vendor_group: row.get::<_, Option<i64>>(10)?.map(|v| v as usize),
-                destination_vendor_group: row.get::<_, Option<i64>>(11)?.map(|v| v as usize),
-                date_group: row.get::<_, Option<i64>>(12)?.map(|v| v as usize),
-                reference_group: row.get::<_, Option<i64>>(13)?.map(|v| v as usize),
-                is_default: row.get(14)?,
-                is_active: row.get(15)?,
-                match_count: row.get(16)?,
-                last_matched_at: row.get(17)?,
-                created_at: row.get(18)?,
-                updated_at: row.get(19)?,
+                amount_group: row.get::<_, i64>(7)? as usize,
+                vendor_group: row.get::<_, Option<i64>>(8)?.map(|v| v as usize),
+                source_vendor_group: row.get::<_, Option<i64>>(9)?.map(|v| v as usize),
+                destination_vendor_group: row.get::<_, Option<i64>>(10)?.map(|v| v as usize),
+                date_group: row.get::<_, Option<i64>>(11)?.map(|v| v as usize),
+                reference_group: row.get::<_, Option<i64>>(12)?.map(|v| v as usize),
+                is_default: row.get(13)?,
+                is_active: row.get(14)?,
+                match_count: row.get(15)?,
+                last_matched_at: row.get(16)?,
+                created_at: row.get(17)?,
+                updated_at: row.get(18)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

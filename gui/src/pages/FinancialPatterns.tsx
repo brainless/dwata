@@ -45,13 +45,6 @@ export default function FinancialPatterns() {
     }
   };
 
-  const formatTimestamp = (timestamp?: number | null) => {
-    if (!timestamp) {
-      return "Not yet";
-    }
-    return new Date(timestamp * 1000).toLocaleString();
-  };
-
   onMount(() => {
     fetchPatterns();
   });
@@ -123,11 +116,9 @@ export default function FinancialPatterns() {
                       <th>Sender</th>
                       <th>Document</th>
                       <th>Status</th>
-                      <th>Confidence</th>
                       <th>Groups</th>
                       <th>Active</th>
                       <th>Matches</th>
-                      <th>Last Matched</th>
                       <th>Regex</th>
                     </tr>
                   </thead>
@@ -169,7 +160,6 @@ export default function FinancialPatterns() {
                               {pattern.status}
                             </span>
                           </td>
-                          <td>{pattern.confidence.toFixed(2)}</td>
                           <td class="text-xs">
                             <div>Amount: {pattern.amount_group}</div>
                             <div>
@@ -199,7 +189,6 @@ export default function FinancialPatterns() {
                           <td classList={{ "privacy-blur": isEnabled() }}>
                             {pattern.match_count}
                           </td>
-                          <td>{formatTimestamp(pattern.last_matched_at)}</td>
                           <td class="font-mono text-xs whitespace-pre-wrap break-all max-w-xl">
                             {pattern.regex_pattern}
                           </td>

@@ -93,18 +93,17 @@ impl DwataToolExecutor {
 
         conn.execute(
             "INSERT INTO financial_patterns
-             (name, regex_pattern, description, document_type, status, confidence,
+             (name, regex_pattern, description, document_type, status,
               amount_group, vendor_group, source_vendor_group, destination_vendor_group,
               date_group, reference_group, is_default, is_active,
               match_count, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, true, 0, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, true, 0, ?, ?)",
             rusqlite::params![
                 params.name,
                 params.regex_pattern,
                 params.description,
                 params.document_type,
                 params.status,
-                params.confidence,
                 params.amount_group as i64,
                 None::<i64>,
                 params.source_vendor_group.map(|v| v as i64),

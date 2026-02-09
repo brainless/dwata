@@ -22,7 +22,6 @@ pub struct SavePatternParams {
     pub description: String,
     pub document_type: String,
     pub status: String,
-    pub confidence: f32,
     pub amount_group: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_vendor_group: Option<usize>,

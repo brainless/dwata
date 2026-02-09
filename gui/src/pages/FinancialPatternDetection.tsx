@@ -7,6 +7,7 @@ import FinancialPageLayout from "../components/FinancialPageLayout";
 import { usePrivacyMode } from "../contexts/PrivacyMode";
 
 const emptyResponse: FinancialEmailScanResponse = {
+  total_emails: 0,
   total_emails_scanned: 0,
   total_matched_emails: 0,
   senders: [],
@@ -18,6 +19,9 @@ export default function FinancialPatternDetection() {
     createSignal<FinancialEmailScanResponse>(emptyResponse);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  const [processingSender, setProcessingSender] = createSignal<string | null>(
+    null,
+  );
 
   const fetchScan = async () => {
     setLoading(true);
@@ -46,6 +50,30 @@ export default function FinancialPatternDetection() {
   onMount(() => {
     fetchScan();
   });
+
+  const processSender = async (senderEmail: string) => {
+    setProcessingSender(senderEmail);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        getApiUrl("/api/financial/patterns/process-sender"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sender_email: senderEmail }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to process sender: ${response.status}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to process sender");
+    } finally {
+      setProcessingSender(null);
+    }
+  };
 
   const footerActions = (
     <>
@@ -85,9 +113,15 @@ export default function FinancialPatternDetection() {
               <div class="stat-figure text-primary">
                 <HiOutlineSparkles class="w-8 h-8" />
               </div>
-              <div class="stat-title">Emails Scanned</div>
+              <div class="stat-title">Potential Emails</div>
               <div class="stat-value">
                 {scanResult().total_emails_scanned}
+              </div>
+            </div>
+            <div class="stat">
+              <div class="stat-title">Total Emails</div>
+              <div class="stat-value">
+                {scanResult().total_emails}
               </div>
             </div>
             <div class="stat">
@@ -115,6 +149,7 @@ export default function FinancialPatternDetection() {
                     <tr>
                       <th>Sender</th>
                       <th class="text-right">Matched Emails</th>
+                      <th class="text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -128,6 +163,15 @@ export default function FinancialPatternDetection() {
                             {sender.sender_email}
                           </td>
                           <td class="text-right">{sender.matched_count}</td>
+                          <td class="text-right">
+                            <button
+                              class="btn btn-ghost btn-xs"
+                              disabled={processingSender() === sender.sender_email}
+                              onClick={() => processSender(sender.sender_email)}
+                            >
+                              Process with AI
+                            </button>
+                          </td>
                         </tr>
                       )}
                     </For>

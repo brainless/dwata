@@ -16,7 +16,6 @@ pub fn validate_pattern(
     destination_vendor_group: Option<usize>,
     date_group: Option<usize>,
     reference_group: Option<usize>,
-    confidence: f32,
     document_type: &str,
     status: &str,
 ) -> Result<()> {
@@ -41,8 +40,6 @@ pub fn validate_pattern(
         date_group,
         reference_group,
     )?;
-
-    validate_confidence(confidence)?;
 
     validate_document_type(document_type)?;
 
@@ -139,13 +136,6 @@ fn validate_capture_groups(
         }
     }
 
-    Ok(())
-}
-
-fn validate_confidence(confidence: f32) -> Result<()> {
-    if !(0.0..=1.0).contains(&confidence) {
-        bail!("Confidence must be between 0.0 and 1.0");
-    }
     Ok(())
 }
 
