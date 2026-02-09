@@ -25,7 +25,7 @@ export default function SettingsApiKeys() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch(getApiUrl("/settings"));
+      const response = await fetch(getApiUrl("/api/settings"));
       if (response.ok) {
         const data: SettingsResponse = await response.json();
         setApiKeys(data.api_keys);
@@ -39,7 +39,7 @@ export default function SettingsApiKeys() {
     setIsLoading(true);
     setMessage("");
     try {
-      const response = await fetch(getApiUrl("/settings/api-keys"), {
+      const response = await fetch(getApiUrl("/api/settings/api-keys"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

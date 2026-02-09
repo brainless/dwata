@@ -1,6 +1,7 @@
 use actix_cors::Cors;
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use clap::Parser;
+use rust_embed::RustEmbed;
 use std::sync::Arc;
 use tracing_subscriber::prelude::*;
 
@@ -12,14 +13,43 @@ mod integrations;
 mod jobs;
 mod financial_keywords;
 
-#[get("/")]
+#[derive(RustEmbed)]
+#[folder = "../gui/dist"]
+struct GuiAssets;
+
+fn gui_response_for_path(path: &str) -> HttpResponse {
+    if let Some(content) = GuiAssets::get(path) {
+        let mime = mime_guess::from_path(path).first_or_octet_stream();
+        HttpResponse::Ok()
+            .content_type(mime.as_ref())
+            .body(content.data.into_owned())
+    } else {
+        match GuiAssets::get("index.html") {
+            Some(index) => HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(index.data.into_owned()),
+            None => HttpResponse::InternalServerError().body("GUI assets not found"),
+        }
+    }
+}
+
+async fn serve_gui(req: HttpRequest) -> HttpResponse {
+    let path = req.path().trim_start_matches('/');
+    if path == "api" || path.starts_with("api/") {
+        return HttpResponse::NotFound().finish();
+    }
+    let path = if path.is_empty() { "index.html" } else { path };
+    gui_response_for_path(path)
+}
+
+#[get("/api/hello")]
 async fn hello() -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
         "message": "Hello World"
     }))
 }
 
-#[get("/health")]
+#[get("/api/health")]
 async fn health(db: web::Data<Arc<database::Database>>) -> impl Responder {
     // Test database connection
     match db.connection.lock() {
@@ -34,12 +64,12 @@ async fn health(db: web::Data<Arc<database::Database>>) -> impl Responder {
     }
 }
 
-#[get("/settings")]
+#[get("/api/settings")]
 async fn get_settings(data: web::Data<handlers::settings::SettingsAppState>) -> impl Responder {
     handlers::settings::get_settings(data).await
 }
 
-#[post("/settings/api-keys")]
+#[post("/api/settings/api-keys")]
 async fn update_api_keys(
     data: web::Data<handlers::settings::SettingsAppState>,
     request: web::Json<shared_types::UpdateApiKeysRequest>,
@@ -53,6 +83,8 @@ async fn update_api_keys(
 struct Args {
     #[arg(long)]
     log_file_path: Option<String>,
+    #[arg(long)]
+    no_open: bool,
 }
 
 #[actix_web::main]
@@ -393,12 +425,24 @@ async fn main() -> std::io::Result<()> {
             .route("/api/financial/patterns/{id}/toggle", web::patch().to(handlers::financial::toggle_pattern))
             .service(handlers::pattern_generation::process_sender)
             .service(handlers::pattern_generation::generate_pattern)
+            .default_service(web::route().to(serve_gui))
     })
     .bind((host.as_str(), port))?
     .run();
 
     let handle = server.handle();
     let shutdown_manager = download_manager.clone();
+
+    let open_in_browser = !args.no_open && std::env::var("DWATA_NO_OPEN").is_err();
+    if open_in_browser {
+        let url = format!("http://{}:{}/", host, port);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            if let Err(err) = webbrowser::open(&url) {
+                tracing::warn!("Failed to open browser: {}", err);
+            }
+        });
+    }
 
     tokio::spawn(async move {
         if let Err(e) = tokio::signal::ctrl_c().await {
