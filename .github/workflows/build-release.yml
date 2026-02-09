@@ -1,0 +1,92 @@
+name: build-release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Checkout nocodo dependency
+        shell: bash
+        run: |
+          git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/brainless/nocodo.git "$GITHUB_WORKSPACE/../nocodo"
+
+      - name: Build production artifacts
+        shell: bash
+        run: ./scripts/build-production.sh
+
+      - name: Install Linux packaging tools
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+          cargo install cargo-deb cargo-generate-rpm
+
+      - name: Package Linux artifacts
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BIN="target/release/dwata-api"
+          tar -czf "dwata-api-${VERSION}-linux-x64.tar.gz" "$BIN"
+          cargo deb -p dwata-api --no-build --output "dwata-api-${VERSION}-linux-x64.deb"
+          cargo generate-rpm -p dwata-api --output "dwata-api-${VERSION}-linux-x64.rpm"
+
+      - name: Package macOS artifacts
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BIN="target/release/dwata-api"
+          tar -czf "dwata-api-${VERSION}-macos-x64.tar.gz" "$BIN"
+
+      - name: Package Windows artifacts
+        if: startsWith(matrix.os, 'windows')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BIN="target/release/dwata-api.exe"
+          7z a "dwata-api-${VERSION}-windows-x64.zip" "$BIN"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dwata-api-${{ matrix.os }}
+          path: |
+            dwata-api-*.tar.gz
+            dwata-api-*.zip
+            dwata-api-*.deb
+            dwata-api-*.rpm
+
+      - name: Attach artifacts to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dwata-api-*.tar.gz
+            dwata-api-*.zip
+            dwata-api-*.deb
+            dwata-api-*.rpm

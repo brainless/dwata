@@ -68,7 +68,7 @@ pub struct AgentToolCall {
 
 Check API and database connectivity.
 
-**Endpoint**: `GET /health`
+**Endpoint**: `GET /api/health`
 
 **Response**:
 ```json
@@ -88,16 +88,7 @@ Check API and database connectivity.
 
 ### Root
 
-Basic API information.
-
-**Endpoint**: `GET /`
-
-**Response**:
-```json
-{
-  "message": "Hello World"
-}
-```
+The root path serves the GUI in production builds. For a basic API response, use `GET /api/hello`.
 
 ## Session Management
 
