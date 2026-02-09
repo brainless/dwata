@@ -1,14 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 1 ]]; then
-  echo "Usage: ./scripts/release.sh <version>"
-  echo "Example: ./scripts/release.sh 0.1.0"
-  exit 1
-fi
+API_VERSION_OVERRIDE=""
+GUI_VERSION_OVERRIDE=""
+VERSION_OVERRIDE=""
 
-VERSION="$1"
-TAG="v$VERSION"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --api-version)
+      API_VERSION_OVERRIDE="$2"
+      shift 2
+      ;;
+    --gui-version)
+      GUI_VERSION_OVERRIDE="$2"
+      shift 2
+      ;;
+    --version)
+      VERSION_OVERRIDE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: ./scripts/release.sh [--version X.Y.Z] [--api-version X.Y.Z] [--gui-version X.Y.Z]"
+      echo "If no versions are provided, the default is a minor bump for both."
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      exit 1
+      ;;
+  esac
+done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -25,30 +46,90 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
+read -r CURRENT_API_VERSION < <(python3 - <<'PY'
+import re
+from pathlib import Path
+text = Path("Cargo.toml").read_text()
+m = re.search(r'^\[workspace\.package\][\s\S]*?^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+if not m:
+  raise SystemExit("Failed to read workspace version from Cargo.toml")
+print(m.group(1))
+PY
+)
+
+read -r CURRENT_GUI_VERSION < <(python3 - <<'PY'
+import json
+from pathlib import Path
+data = json.loads(Path("gui/package.json").read_text())
+print(data.get("version", "0.0.0"))
+PY
+)
+
+read -r DEFAULT_VERSION < <(python3 - <<'PY'
+import re
+from pathlib import Path
+text = Path("Cargo.toml").read_text()
+m = re.search(r'^\[workspace\.package\][\s\S]*?^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+if not m:
+  raise SystemExit("Failed to read workspace version from Cargo.toml")
+parts = m.group(1).split(".")
+if len(parts) < 3:
+  raise SystemExit("Version must be in X.Y.Z form")
+major, minor, patch = parts[0], parts[1], parts[2]
+minor = str(int(minor) + 1)
+patch = "0"
+print(".".join([major, minor, patch]))
+PY
+)
+
+if [[ -n "$VERSION_OVERRIDE" ]]; then
+  API_VERSION="$VERSION_OVERRIDE"
+  GUI_VERSION="$VERSION_OVERRIDE"
+else
+  API_VERSION="${API_VERSION_OVERRIDE:-$DEFAULT_VERSION}"
+  GUI_VERSION="${GUI_VERSION_OVERRIDE:-$DEFAULT_VERSION}"
+fi
+
+echo "Current versions:"
+echo "  dwata-api/workspace: $CURRENT_API_VERSION"
+echo "  gui: $CURRENT_GUI_VERSION"
+echo
+echo "Next versions:"
+echo "  dwata-api/workspace: $API_VERSION"
+echo "  gui: $GUI_VERSION"
+echo
+read -r -p "Proceed with release? [y/N] " CONFIRM
+if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+  echo "Release cancelled."
+  exit 1
+fi
+
+TAG="v$API_VERSION"
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   echo "Tag $TAG already exists."
   exit 1
 fi
 
-python3 - <<'PY'
+API_VERSION="$API_VERSION" GUI_VERSION="$GUI_VERSION" python3 - <<'PY'
 import json
 import re
 from pathlib import Path
 
-version = "${VERSION}"
+api_version = "${API_VERSION}"
+gui_version = "${GUI_VERSION}"
 
 cargo_toml = Path("Cargo.toml")
 text = cargo_toml.read_text()
 
 pattern = re.compile(r'(\[workspace\.package\][\s\S]*?^version\s*=\s*")[^"]+(")', re.MULTILINE)
-new_text, count = pattern.subn(rf'\1{version}\2', text, count=1)
+new_text, count = pattern.subn(rf'\1{api_version}\2', text, count=1)
 if count != 1:
   raise SystemExit("Failed to update Cargo.toml workspace version")
 cargo_toml.write_text(new_text)
 
 package_json = Path("gui/package.json")
 data = json.loads(package_json.read_text())
-data["version"] = version
+data["version"] = gui_version
 package_json.write_text(json.dumps(data, indent=2) + "\n")
 PY
 
