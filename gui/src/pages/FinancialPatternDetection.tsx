@@ -4,6 +4,7 @@ import { HiOutlineArrowPath, HiOutlineSparkles } from "solid-icons/hi";
 import type { FinancialEmailScanResponse } from "../api-types/types";
 import { getApiUrl } from "../config/api";
 import FinancialPageLayout from "../components/FinancialPageLayout";
+import { usePrivacyMode } from "../contexts/PrivacyMode";
 
 const emptyResponse: FinancialEmailScanResponse = {
   total_emails_scanned: 0,
@@ -12,6 +13,7 @@ const emptyResponse: FinancialEmailScanResponse = {
 };
 
 export default function FinancialPatternDetection() {
+  const { isEnabled } = usePrivacyMode();
   const [scanResult, setScanResult] =
     createSignal<FinancialEmailScanResponse>(emptyResponse);
   const [loading, setLoading] = createSignal(true);
@@ -119,7 +121,10 @@ export default function FinancialPatternDetection() {
                     <For each={scanResult().senders}>
                       {(sender) => (
                         <tr>
-                          <td class="font-mono text-xs">
+                          <td
+                            class="font-mono text-xs"
+                            classList={{ "privacy-blur": isEnabled() }}
+                          >
                             {sender.sender_email}
                           </td>
                           <td class="text-right">{sender.matched_count}</td>

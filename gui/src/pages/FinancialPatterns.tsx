@@ -8,6 +8,7 @@ import {
 import type { FinancialPattern } from "../api-types/types";
 import { getApiUrl } from "../config/api";
 import FinancialPageLayout from "../components/FinancialPageLayout";
+import { usePrivacyMode } from "../contexts/PrivacyMode";
 
 type PatternsResponse = {
   patterns: FinancialPattern[];
@@ -15,6 +16,7 @@ type PatternsResponse = {
 };
 
 export default function FinancialPatterns() {
+  const { isEnabled } = usePrivacyMode();
   const [patterns, setPatterns] = createSignal<FinancialPattern[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
@@ -134,7 +136,12 @@ export default function FinancialPatterns() {
                       {(pattern) => (
                         <tr>
                           <td>
-                            <div class="font-medium">{pattern.name}</div>
+                            <div
+                              class="font-medium"
+                              classList={{ "privacy-blur": isEnabled() }}
+                            >
+                              {pattern.name}
+                            </div>
                             <Show when={pattern.description}>
                               <div class="text-xs text-base-content/60">
                                 {pattern.description}
@@ -142,12 +149,18 @@ export default function FinancialPatterns() {
                             </Show>
                           </td>
                           <td class="text-xs">
-                            <span class="font-mono">
+                            <span
+                              class="font-mono"
+                              classList={{ "privacy-blur": isEnabled() }}
+                            >
                               {pattern.sender_email ?? "—"}
                             </span>
                           </td>
                           <td>
-                            <span class="badge badge-outline">
+                            <span
+                              class="badge badge-outline"
+                              classList={{ "privacy-blur": isEnabled() }}
+                            >
                               {pattern.document_type}
                             </span>
                           </td>
@@ -183,7 +196,9 @@ export default function FinancialPatterns() {
                               </div>
                             </Show>
                           </td>
-                          <td>{pattern.match_count}</td>
+                          <td classList={{ "privacy-blur": isEnabled() }}>
+                            {pattern.match_count}
+                          </td>
                           <td>{formatTimestamp(pattern.last_matched_at)}</td>
                           <td class="font-mono text-xs whitespace-pre-wrap break-all max-w-xl">
                             {pattern.regex_pattern}

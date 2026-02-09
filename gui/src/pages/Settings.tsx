@@ -4,6 +4,7 @@ import SettingsGeneral from "./settings/General";
 import SettingsApiKeys from "./settings/ApiKeys";
 import SettingsAccounts from "./settings/Accounts";
 import SettingsFolders from "./settings/Folders";
+import SettingsPrivacy from "./settings/Privacy";
 
 export default function Settings() {
   const location = useLocation();
@@ -14,6 +15,7 @@ export default function Settings() {
     if (path === "/settings/api-keys") return "api-keys";
     if (path === "/settings/accounts") return "accounts";
     if (path === "/settings/folders") return "folders";
+    if (path === "/settings/privacy") return "privacy";
     return "general";
   };
 
@@ -47,6 +49,12 @@ export default function Settings() {
         >
           Folders
         </A>
+        <A
+          href="/settings/privacy"
+          class={`tab ${activeTab() === "privacy" ? "tab-active" : ""}`}
+        >
+          Privacy
+        </A>
       </div>
 
       {/* Tab Content */}
@@ -65,6 +73,10 @@ export default function Settings() {
 
         <Show when={activeTab() === "folders"}>
           <SettingsFolders />
+        </Show>
+
+        <Show when={activeTab() === "privacy"}>
+          <SettingsPrivacy />
         </Show>
       </div>
     </div>
