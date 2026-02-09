@@ -366,6 +366,12 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
     )?;
 
     conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_credential_date
+            ON emails(credential_id, date_received DESC)",
+        [],
+    )?;
+
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_emails_folder_date ON emails(folder, date_received DESC)",
         [],
     )?;
