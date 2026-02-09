@@ -30,16 +30,21 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   exit 1
 fi
 
-python3 - <<PY
+python3 - <<'PY'
 import json
+import re
 from pathlib import Path
 
 version = "${VERSION}"
 
 cargo_toml = Path("Cargo.toml")
 text = cargo_toml.read_text()
-text = text.replace('version = "0.1.0"', f'version = "{version}"', 1)
-cargo_toml.write_text(text)
+
+pattern = re.compile(r'(\[workspace\.package\][\s\S]*?^version\s*=\s*")[^"]+(")', re.MULTILINE)
+new_text, count = pattern.subn(rf'\1{version}\2', text, count=1)
+if count != 1:
+  raise SystemExit("Failed to update Cargo.toml workspace version")
+cargo_toml.write_text(new_text)
 
 package_json = Path("gui/package.json")
 data = json.loads(package_json.read_text())
