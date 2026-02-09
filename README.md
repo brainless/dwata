@@ -1,206 +1,160 @@
 # Dwata
 
-> AI-powered personal assistant for finance, work management, life goals, and more.
+> Your Personal Data Intelligence Platform
 
-Dwata is a multi-agent LLM-enabled application that helps you manage various aspects of your personal and professional life using specialized AI agents backed by a local SQLite database.
+Dwata helps you unlock valuable insights from your own personal data. Whether it's emails, documents, cloud storage, or backups from platforms like LinkedIn and Slack, Dwata brings your information together to give you a clear, historical view of your financial health, business activities, and personal goals.
 
-## Features
+## What is Dwata?
 
-- **Multi-Agent System**: Specialized AI agents for different domains (finance, travel, work, etc.)
-- **Dynamic Data Management**: SQLite database with on-demand table creation
-- **Requirements Gathering**: Conversational agents understand your specific needs
-- **Intelligent Analysis**: Query and analyze your data using AI-powered SQL analysis
-- **Local-First**: All data stored securely on your machine
-- **Type-Safe**: Generated types ensure consistency across Rust and TypeScript
-- **Extensible**: Easy to add new agents and domains
+Dwata is your personal data assistant that transforms raw information from your various sources into actionable insights. Instead of manually tracking through thousands of emails and documents, Dwata does the heavy lifting for you - automatically extracting, organizing, and presenting the information that matters most to you.
 
-## Quick Start
+**All your data stays local and private.** Dwata runs on your machine, ensuring complete data sovereignty and privacy.
 
-```bash
-# Clone the repository
-git clone https://github.com/brainless/dwata.git
-cd dwata
+## What Can Dwata Do?
 
-# Build the project
-cargo build --release
+Dwata includes multiple extractors designed to help you understand different aspects of your personal data:
 
-# Run the API server
-cargo run --release
+- **Financial Information** - Track income, expenses, bills, and payments
+- **Events & Calendar** - Identify important dates and commitments
+- **Business & Work** - Monitor companies, projects, and professional activities
+- **More extractors coming soon** - Tasks, contacts, and personal goals
 
-# Access GUI at http://localhost:3000
-```
+## Financial Insights (Our MVP Feature)
 
-## Example Use Cases
+Our financial extraction is the most robust feature currently available in Dwata. It's designed to help you get a complete picture of your financial health from your email history.
 
-### Personal Finance
-```
-"I want to track my personal finances"
-→ Agent gathers info about banks, income, expenses
-→ Creates finance tables dynamically
-→ Answers questions like "What's my spending this month?"
-```
+### How Financial Extraction Works
 
-### Travel Planning
-```
-"Plan a 10-day trip to Japan in April"
-→ Agent asks about budget, interests, preferences
-→ Creates itinerary and booking tables
-→ Tracks expenses and provides recommendations
-```
+#### 1. Smart Email Scanning
+Dwata scans your emails using a combination of keywords and patterns to identify financial communications. It looks for terms like "payment," "invoice," "receipt," "transaction," and many others. The scan is lightning-fast and groups emails by sender, showing you which companies or services you interact with most frequently.
 
-### Work Management
-```
-"Track my work projects and goals"
-→ Agent organizes tasks, deadlines, milestones
-→ Monitors progress and completion rates
-→ Provides productivity insights
-```
+#### 2. AI-Powered Pattern Learning
+Here's where Dwata gets smart. Instead of using AI to read every email forever (which would be slow and expensive), Dwata uses AI once to learn the pattern:
 
-## Architecture
+- You select an email sender from the scan results
+- Dwata's AI agent examines sample emails from that sender
+- The AI extracts a regex pattern that identifies the financial information (amounts, dates, vendors, etc.)
+- You can test and verify the pattern works correctly
+- Once saved, the pattern runs directly in the software - no more AI needed!
 
-```
-┌─────────────┐
-│     GUI     │  (Web Interface)
-└──────┬──────┘
-       │ REST API
-┌──────▼──────┐
-│  dwata-api  │  (Rust Backend)
-└──────┬──────┘
-       │
-       ├─────────┐
-       │         │
-┌──────▼──┐  ┌──▼─────────┐
-│ SQLite  │  │   Agents   │
-│   DB    │  │ (nocodo)   │
-└─────────┘  └────────────┘
-```
+This approach makes Dwata **incredibly efficient** - you only use AI once per sender, then pattern-based extraction runs instantly.
 
-## Available Agents
+#### 3. Your Financial Overview
+Once patterns are in place, Dwata automatically extracts:
+- Income and expenses
+- Pending and overdue bills
+- Payment history by vendor
+- Spending by category
+- Net balance and cash flow
 
-- **Requirements Gathering**: Understand user needs and structure data
-- **SQLite Analysis**: Query and analyze database information
-- **Codebase Analysis**: Analyze code structure and patterns
-- **Structured JSON**: Generate type-safe JSON data
-- **Tesseract OCR**: Extract text from images
-- **User Clarification**: Determine if requests need clarification
+<!-- Screenshots will be added here -->
 
-More agents coming: Finance Manager, Travel Planner, Work Manager, and more!
+### Supported AI Models
 
-## Documentation
+At launch, Dwata supports **Google Gemini models** for the AI-powered pattern extraction. The pattern learning happens quickly and you only need to do it once per email sender.
 
-Comprehensive documentation is available in the [docs/](./docs/) directory:
+## What's Coming Next
 
-- **[Overview](./docs/01-overview.md)** - Introduction to dwata and core concepts
-- **[Architecture](./docs/02-architecture.md)** - System design and components
-- **[Database Schema](./docs/03-database-schema.md)** - Database structure and tables
-- **[Agents Reference](./docs/04-agents-reference.md)** - Available agents and their capabilities
-- **[API Reference](./docs/05-api-reference.md)** - REST API endpoints and types
-- **[User Guide](./docs/06-user-guide.md)** - Complete usage guide
+While we're launching with financial insights as our focus, we're actively working on:
 
-Start with the [Documentation Index](./docs/README.md).
+### Data Sources
+- **Email** (currently supported via IMAP)
+- **Files & Cloud Storage** - Google Drive, Dropbox, OneDrive
+- **LinkedIn Backups** - Professional network history
+- **Slack Backups** - Team communications and project context
+- **And more...**
 
-## Technology Stack
+### New Features
+- **Calendar & Events** - Track meetings, deadlines, and important dates
+- **Projects & Tasks** - Understand your work and personal projects
+- **Business Insights** - See which companies and people you interact with
+- **Goal Tracking** - Monitor progress toward personal objectives
 
-- **Backend**: Rust, Actix-web
-- **Database**: SQLite (via rusqlite)
-- **LLM Integration**: nocodo-llm-sdk (supports Anthropic, OpenAI)
-- **Agents**: nocodo-agents framework
-- **Frontend**: TypeScript with generated types
-- **Type Safety**: Shared types between Rust and TypeScript
+Our vision is to give you a complete historical view of your personal and professional life, all extracted from your own data sources.
 
-## Project Structure
+## Key Benefits
 
-```
-dwata/
-├── dwata-api/           # Backend API server
-│   ├── src/
-│   │   ├── database/    # Database operations
-│   │   └── helpers/     # Utility functions
-│   └── Cargo.toml
-├── shared-types/        # Common type definitions
-│   └── src/
-│       └── session.rs   # Session and message types
-├── gui/                 # Web frontend (excluded from workspace)
-├── docs/                # Documentation
-│   ├── 01-overview.md
-│   ├── 02-architecture.md
-│   ├── 03-database-schema.md
-│   ├── 04-agents-reference.md
-│   ├── 05-api-reference.md
-│   └── 06-user-guide.md
-└── Cargo.toml           # Workspace configuration
-```
+### Privacy First
+- All data processing happens locally on your machine
+- No data is sent to cloud services except AI pattern extraction (one-time per sender)
+- Your information never leaves your control
 
-## Dependencies
+### Efficiency
+- One-time AI pattern learning per source
+- After that, extraction is instant and cost-free
+- No ongoing AI costs for pattern-based extraction
 
-External libraries from nocodo repository:
-- `nocodo-llm-sdk`: LLM client abstraction
-- `nocodo-agents`: Pre-built AI agents
-- `manager-tools`: Tool execution framework
+### Comprehensive
+- Multiple data sources in one place
+- Historical view of your activities
+- Actionable insights from your own data
 
-## Configuration
+### Simple to Use
+- Clean, intuitive interface
+- Focus on what matters to you
+- No technical knowledge required
 
-Configure your LLM provider:
+## Use Cases
 
-```bash
-# Set API key
-export ANTHROPIC_API_KEY="your-api-key"
+**Financial Health Monitoring**
+Track your spending patterns, identify subscription costs, monitor income streams, and get alerts for upcoming bills.
 
-# Or create a config file
-cp config.example.toml config.toml
-# Edit config.toml with your settings
-```
+**Business Development**
+Extract leads and opportunities from your communications, understand your network, track project activities.
 
-## Development
+**Work Overview**
+See all your professional activities in one place, understand time allocation, track deliverables and commitments.
 
-```bash
-# Run in development mode
-cargo run
+**Personal Goals**
+Monitor progress toward your objectives using data from your actual activities and communications.
 
-# Run tests
-cargo test
+## Getting Started
 
-# Check code
-cargo clippy
+<!-- Installation instructions will be added here -->
 
-# Format code
-cargo fmt
-```
+## System Requirements
+
+- macOS, Linux, or Windows
+- Internet connection for AI pattern extraction
+- Local storage for database
+
+## Support & Community
+
+- **Issues & Bugs**: [GitHub Issues](https://github.com/brainless/dwata/issues)
+- **Feature Requests**: [GitHub Discussions](https://github.com/brainless/dwata/discussions)
+- **Documentation**: [docs/](./docs/)
+
+## Philosophy
+
+We believe your personal data is your most valuable asset. Rather than letting it sit scattered across dozens of services and accounts, Dwata helps you extract real value from it - while keeping you in complete control.
+
+Dwata doesn't create new data or force you into rigid templates. Instead, it learns from your actual communications and documents, adapting to how you already work and live.
+
+## Technology
+
+Built with modern, efficient technologies:
+- **Backend**: Rust (fast, safe, efficient)
+- **Database**: SQLite (local, portable, reliable)
+- **Frontend**: SolidJS (reactive, performant)
+- **AI**: Google Gemini (for pattern learning)
 
 ## Contributing
 
-Contributions are welcome! Please see:
+We welcome contributions! Whether it's:
+- New data source integrations
+- Additional extractors
+- UI improvements
+- Documentation
+- Bug reports and fixes
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-Areas for contribution:
-- New agent implementations
-- Additional domains (health, learning, etc.)
-- GUI improvements
-- Documentation enhancements
-- Bug fixes and optimizations
+Check out our [Contributing Guide](DEVELOP.md) to get started.
 
 ## License
 
-MIT License - See LICENSE file for details
+GPL v3 License - See LICENSE file for details
 
-## Credits
-
-Built with:
-- [Actix-web](https://actix.rs/) - Web framework
-- [SQLite](https://www.sqlite.org/) - Database
-- [nocodo](https://github.com/brainless/nocodo) - Agent framework
-- [Anthropic Claude](https://www.anthropic.com/) - AI capabilities
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/brainless/dwata/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/brainless/dwata/discussions)
-- **Documentation**: [docs/](./docs/)
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
 ---
 
-Made with ❤️ for personal data sovereignty and AI-powered productivity
+**Made for people who want to take control of their personal data and extract meaningful insights from their digital lives.**
