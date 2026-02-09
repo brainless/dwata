@@ -12,7 +12,9 @@ use dwata_agents::storage::{InMemoryAgentStorage, sqlite_storage::SqliteAgentSto
 use dwata_agents::tools::DwataToolExecutor;
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::gemini::GeminiClient;
+use nocodo_llm_sdk::ollama::OllamaClient;
 use nocodo_llm_sdk::models::gemini::GEMINI_3_FLASH_ID;
+use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
 
 #[derive(Parser, Debug)]
 #[command(name = "financial-extractor", about = "Run the financial extractor agent on an email")]
@@ -38,9 +40,13 @@ struct Cli {
     #[arg(long)]
     subject: Option<String>,
 
-    /// Override the Gemini model ID
-    #[arg(long, default_value = GEMINI_3_FLASH_ID)]
-    model: String,
+    /// LLM provider to use
+    #[arg(long, default_value = "gemini", value_parser = ["gemini", "ollama"])]
+    provider: String,
+
+    /// Model ID to use (provider-specific)
+    #[arg(long)]
+    model: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -65,12 +71,19 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let (config, config_path) = load_api_config().context("Failed to load dwata API config")?;
-    let api_key = config
-        .api_keys
-        .as_ref()
-        .and_then(|keys| keys.gemini_api_key.as_ref())
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("Missing gemini_api_key in config at {:?}", config_path))?;
+
+    // Determine the model to use based on provider and CLI argument
+    let model = match cli.model {
+        Some(ref m) => m.clone(),
+        None => match cli.provider.as_str() {
+            "ollama" => MINISTRAL_3_3B_ID.to_string(),
+            "gemini" => GEMINI_3_FLASH_ID.to_string(),
+            _ => GEMINI_3_FLASH_ID.to_string(),
+        },
+    };
+
+    println!("Using provider: {}", cli.provider);
+    println!("Using model: {}", model);
 
     let use_memory_storage =
         std::env::var("DWATA_MEMORY_AGENT").ok().as_deref() == Some("1");
@@ -106,7 +119,24 @@ async fn main() -> Result<()> {
 
     let tool_executor = Arc::new(DwataToolExecutor::new(conn.clone(), email_content));
 
-    let llm_client: Arc<dyn LlmClient> = Arc::new(GeminiClient::new(api_key)?);
+    // Create the appropriate LLM client based on provider
+    let llm_client: Arc<dyn LlmClient> = match cli.provider.as_str() {
+        "ollama" => {
+            Arc::new(OllamaClient::new()?)
+        }
+        "gemini" => {
+            let api_key = config
+                .api_keys
+                .as_ref()
+                .and_then(|keys| keys.gemini_api_key.as_ref())
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("Missing gemini_api_key in config at {:?}", config_path))?;
+            Arc::new(GeminiClient::new(api_key)?)
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Unsupported provider: {}", cli.provider));
+        }
+    };
 
     let session_id = storage
         .create_session(Session {
@@ -136,7 +166,7 @@ async fn main() -> Result<()> {
         llm_client,
         storage.clone(),
         tool_executor,
-        cli.model,
+        model,
         subject,
         body,
         patterns,

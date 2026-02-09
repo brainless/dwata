@@ -1,13 +1,74 @@
 use shared_types::FinancialPattern;
 
+/// Build a simplified system prompt for Ollama (to avoid size limits with tools)
+fn build_ollama_system_prompt(
+    email_subject: &str,
+    email_body: &str,
+    high_signal_line: Option<&str>,
+    improved_attempt: bool,
+) -> (String, Option<String>) {
+    let system_prompt = r#"You are a financial pattern extractor. Create regex patterns to extract financial data from emails.
+
+## Your Task
+1. Analyze the email provided by the user
+2. Create a regex pattern with capture groups for: amount (required), vendor, date, reference
+3. Use test_pattern tool to validate your regex
+4. If test succeeds, immediately call save_pattern with the same regex
+5. Finish with a brief message
+
+## Regex Requirements
+- Use Rust regex syntax (the `regex` crate)
+- Amount group must capture numbers like "1,234.56"
+- Must include at least one vendor group (source_vendor_group or destination_vendor_group)
+- Use numbered groups: group 1, group 2, etc.
+
+## Important
+- After first successful test_pattern, immediately call save_pattern
+- Maximum 5 test_pattern attempts
+- Keep patterns simple and focused"#.to_string();
+
+    let email_content = format!(
+        "Email to analyze:\n\n**Subject:** {}\n\n**Body:**\n{}\n\n{}{}",
+        email_subject,
+        email_body,
+        if let Some(line) = high_signal_line {
+            format!("**High-signal line:** {}\n\n", line)
+        } else {
+            String::new()
+        },
+        if improved_attempt {
+            "Note: Previous attempt failed. Use the high-signal line if available. Keep regex single-line."
+        } else {
+            "Please create a regex pattern to extract the financial data."
+        }
+    );
+
+    (system_prompt, Some(email_content))
+}
+
 pub fn build_system_prompt(
     email_subject: &str,
     email_body: &str,
     existing_patterns: &[FinancialPattern],
     high_signal_line: Option<&str>,
     improved_attempt: bool,
-) -> String {
-    format!(
+    provider_name: &str,
+) -> (String, Option<String>) {
+    // For Ollama, use a much simpler prompt to avoid hitting Ollama's limitations
+    // with long prompts + complex tool schemas
+    if provider_name == "ollama" {
+        return build_ollama_system_prompt(email_subject, email_body, high_signal_line, improved_attempt);
+    }
+
+    // Full detailed prompt for Gemini
+    let include_email_in_system = true;
+    let email_section = if include_email_in_system {
+        format!("\n## Email to Analyze\n\n**Subject:** {}\n\n**Body:**\n{}", email_subject, email_body)
+    } else {
+        String::new()
+    };
+
+    let system_prompt = format!(
         r#"You are a financial data extraction pattern generator. Your goal is to create regex patterns that extract financial information from emails.
 
 ## Target Data Structure
@@ -110,20 +171,20 @@ Returns: Pattern ID
 
 ## First Attempt Guidance
 
-{}
-
-## Email to Analyze
-
-**Subject:** {}
-
-**Body:**
-{}"#,
+{}{}"#,
         format_existing_patterns(existing_patterns),
         high_signal_line.unwrap_or("None detected."),
         first_attempt_guidance(improved_attempt),
-        email_subject,
-        email_body,
-    )
+        email_section,
+    );
+
+    let email_content_for_user = if !include_email_in_system {
+        Some(format!("Email to analyze:\n\n**Subject:** {}\n\n**Body:**\n{}", email_subject, email_body))
+    } else {
+        None
+    };
+
+    (system_prompt, email_content_for_user)
 }
 
 fn format_existing_patterns(patterns: &[FinancialPattern]) -> String {

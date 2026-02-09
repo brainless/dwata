@@ -42,16 +42,6 @@ impl FinancialExtractorAgent {
     pub async fn execute(&self, session_id: i64) -> anyhow::Result<String> {
         let high_signal_line = find_high_signal_line(&self.email_body);
 
-        let initial_message = "Please analyze this email and create a regex pattern to extract the financial data.";
-        self.storage
-            .create_message(Message {
-                id: None,
-                session_id,
-                role: "user".to_string(),
-                content: initial_message.to_string(),
-            })
-            .await?;
-
         let test_pattern_tool = Tool::from_type::<TestPatternParams>()
             .name("test_pattern")
             .description("Test a regex pattern against the email content")
@@ -65,13 +55,32 @@ impl FinancialExtractorAgent {
         let tools = vec![test_pattern_tool, save_pattern_tool];
 
         'attempts: for attempt in 0..2 {
-            let system_prompt = super::system_prompt::build_system_prompt(
+            let (system_prompt, email_content_for_user) = super::system_prompt::build_system_prompt(
                 &self.email_subject,
                 &self.email_body,
                 &self.existing_patterns,
                 high_signal_line.as_deref(),
                 attempt == 1,
+                // Pass provider name to optimize for Ollama
+                self.llm_client.provider_name(),
             );
+
+            // Create initial message with email content if needed (for Ollama)
+            if attempt == 0 {
+                let initial_message = if let Some(email_content) = email_content_for_user.as_ref() {
+                    format!("Please analyze this email and create a regex pattern to extract the financial data.\n\n{}", email_content)
+                } else {
+                    "Please analyze this email and create a regex pattern to extract the financial data.".to_string()
+                };
+                self.storage
+                    .create_message(Message {
+                        id: None,
+                        session_id,
+                        role: "user".to_string(),
+                        content: initial_message,
+                    })
+                    .await?;
+            }
 
             let mut saw_tool_call = false;
             let mut test_calls = 0usize;
