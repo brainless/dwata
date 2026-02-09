@@ -86,7 +86,6 @@ Parameters:
 - description: What this pattern matches
 - document_type: Type of document (payment-confirmation, invoice, bill, receipt, etc.)
 - status: Transaction status (paid, pending, overdue, etc.)
-- confidence: How confident you are in this pattern (0.0 to 1.0)
 - amount_group: Which capture group has the amount
 - source_vendor_group: Optional - which capture group has the payer/sender
 - destination_vendor_group: Optional - which capture group has the merchant/receiver
@@ -137,12 +136,11 @@ fn format_existing_patterns(patterns: &[FinancialPattern]) -> String {
 
     for pattern in patterns.iter().take(10) {
         output.push_str(&format!(
-            "- **{}**: `{}` (doc_type: {}, status: {}, confidence: {:.2})\n",
+            "- **{}**: `{}` (doc_type: {}, status: {})\n",
             pattern.name,
             pattern.regex_pattern,
             pattern.document_type,
-            pattern.status,
-            pattern.confidence
+            pattern.status
         ));
     }
 

@@ -153,7 +153,6 @@ pub struct CreatePatternRequest {
     pub sender_email: Option<String>,
     pub document_type: String,
     pub status: String,
-    pub confidence: f32,
     pub amount_group: usize,
     pub vendor_group: Option<usize>,
     pub source_vendor_group: Option<usize>,
@@ -176,7 +175,6 @@ pub async fn create_pattern(
         request.destination_vendor_group,
         request.date_group,
         request.reference_group,
-        request.confidence,
         &request.document_type,
         &request.status,
     )
@@ -217,7 +215,6 @@ pub async fn create_pattern(
         sender_email: request.sender_email.clone(),
         document_type: request.document_type.clone(),
         status: request.status.clone(),
-        confidence: request.confidence,
         amount_group: request.amount_group,
         vendor_group: request.vendor_group,
         source_vendor_group: request.source_vendor_group,
@@ -254,7 +251,6 @@ pub struct UpdatePatternRequest {
     pub sender_email: Option<String>,
     pub document_type: Option<String>,
     pub status: Option<String>,
-    pub confidence: Option<f32>,
     pub amount_group: Option<usize>,
     pub vendor_group: Option<usize>,
     pub source_vendor_group: Option<usize>,
@@ -291,7 +287,6 @@ pub async fn update_pattern(
         sender_email: request.sender_email.clone().or(existing.sender_email),
         document_type: request.document_type.clone().unwrap_or(existing.document_type),
         status: request.status.clone().unwrap_or(existing.status),
-        confidence: request.confidence.unwrap_or(existing.confidence),
         amount_group: request.amount_group.unwrap_or(existing.amount_group),
         vendor_group: request.vendor_group.or(existing.vendor_group),
         source_vendor_group: request
@@ -319,7 +314,6 @@ pub async fn update_pattern(
         updated.destination_vendor_group,
         updated.date_group,
         updated.reference_group,
-        updated.confidence,
         &updated.document_type,
         &updated.status,
     )

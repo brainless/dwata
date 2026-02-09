@@ -51,7 +51,6 @@ fn rebuild_financial_patterns_table(conn: &mut Connection) -> anyhow::Result<()>
             -- Pattern metadata
             document_type VARCHAR NOT NULL,
             status VARCHAR NOT NULL,
-            confidence FLOAT NOT NULL,
 
             -- Capture group indices (which regex group contains each field)
             amount_group INTEGER NOT NULL,
@@ -81,12 +80,12 @@ fn rebuild_financial_patterns_table(conn: &mut Connection) -> anyhow::Result<()>
 
     tx.execute(
         "INSERT INTO financial_patterns (
-            id, name, regex_pattern, description, sender_email, document_type, status, confidence,
+            id, name, regex_pattern, description, sender_email, document_type, status,
             amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group,
             reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at
         )
         SELECT
-            id, name, regex_pattern, description, sender_email, document_type, status, confidence,
+            id, name, regex_pattern, description, sender_email, document_type, status,
             amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group,
             reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at
         FROM financial_patterns_old",
@@ -864,7 +863,6 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
             -- Pattern metadata
             document_type VARCHAR NOT NULL,
             status VARCHAR NOT NULL,
-            confidence FLOAT NOT NULL,
 
             -- Capture group indices (which regex group contains each field)
             amount_group INTEGER NOT NULL,
@@ -918,6 +916,10 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
             "ALTER TABLE financial_patterns ADD COLUMN sender_email VARCHAR",
             [],
         )?;
+    }
+
+    if table_has_column(conn, "financial_patterns", "confidence")? {
+        rebuild_financial_patterns_table(conn)?;
     }
 
     if table_sql_contains(conn, "financial_patterns", "UNIQUE(regex_pattern)")? {

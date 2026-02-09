@@ -16,7 +16,6 @@ struct CompiledPattern {
     regex: Regex,
     document_type: String,
     status: String,
-    confidence: f32,
     amount_group: usize,
     vendor_group: Option<usize>,
     source_vendor_group: Option<usize>,
@@ -38,7 +37,6 @@ impl FinancialPatternExtractor {
                         .to_lowercase()
                         .replace("_", "-"),
                     status: format!("{:?}", p.status).to_lowercase(),
-                    confidence: p.confidence,
                     amount_group: p.amount_group,
                     vendor_group: p.vendor_group,
                     source_vendor_group: p.source_vendor_group,
@@ -62,7 +60,6 @@ impl FinancialPatternExtractor {
                 regex,
                 document_type: pattern.document_type,
                 status: pattern.status,
-                confidence: pattern.confidence,
                 amount_group: pattern.amount_group,
                 vendor_group: pattern.vendor_group,
                 source_vendor_group: pattern.source_vendor_group,
