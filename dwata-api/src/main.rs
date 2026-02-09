@@ -1,7 +1,6 @@
 use actix_cors::Cors;
 use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use clap::Parser;
-use rust_embed::RustEmbed;
 use std::sync::Arc;
 use tracing_subscriber::prelude::*;
 
@@ -13,33 +12,48 @@ mod integrations;
 mod jobs;
 mod financial_keywords;
 
-#[derive(RustEmbed)]
-#[folder = "../gui/dist"]
-struct GuiAssets;
+#[cfg(not(debug_assertions))]
+mod gui_embed {
+    use super::*;
+    use rust_embed::RustEmbed;
 
-fn gui_response_for_path(path: &str) -> HttpResponse {
-    if let Some(content) = GuiAssets::get(path) {
-        let mime = mime_guess::from_path(path).first_or_octet_stream();
-        HttpResponse::Ok()
-            .content_type(mime.as_ref())
-            .body(content.data.into_owned())
-    } else {
-        match GuiAssets::get("index.html") {
-            Some(index) => HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .body(index.data.into_owned()),
-            None => HttpResponse::InternalServerError().body("GUI assets not found"),
+    #[derive(RustEmbed)]
+    #[folder = "../gui/dist"]
+    struct GuiAssets;
+
+    fn gui_response_for_path(path: &str) -> HttpResponse {
+        if let Some(content) = GuiAssets::get(path) {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            HttpResponse::Ok()
+                .content_type(mime.as_ref())
+                .body(content.data.into_owned())
+        } else {
+            match GuiAssets::get("index.html") {
+                Some(index) => HttpResponse::Ok()
+                    .content_type("text/html; charset=utf-8")
+                    .body(index.data.into_owned()),
+                None => HttpResponse::InternalServerError().body("GUI assets not found"),
+            }
         }
+    }
+
+    pub async fn serve_gui(req: HttpRequest) -> HttpResponse {
+        let path = req.path().trim_start_matches('/');
+        if path == "api" || path.starts_with("api/") {
+            return HttpResponse::NotFound().finish();
+        }
+        let path = if path.is_empty() { "index.html" } else { path };
+        gui_response_for_path(path)
     }
 }
 
-async fn serve_gui(req: HttpRequest) -> HttpResponse {
-    let path = req.path().trim_start_matches('/');
-    if path == "api" || path.starts_with("api/") {
-        return HttpResponse::NotFound().finish();
+#[cfg(debug_assertions)]
+mod gui_embed {
+    use super::*;
+
+    pub async fn serve_gui(_req: HttpRequest) -> HttpResponse {
+        HttpResponse::NotFound().finish()
     }
-    let path = if path.is_empty() { "index.html" } else { path };
-    gui_response_for_path(path)
 }
 
 #[get("/api/hello")]
@@ -425,7 +439,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/financial/patterns/{id}/toggle", web::patch().to(handlers::financial::toggle_pattern))
             .service(handlers::pattern_generation::process_sender)
             .service(handlers::pattern_generation::generate_pattern)
-            .default_service(web::route().to(serve_gui))
+            .default_service(web::route().to(gui_embed::serve_gui))
     })
     .bind((host.as_str(), port))?
     .run();
@@ -433,7 +447,9 @@ async fn main() -> std::io::Result<()> {
     let handle = server.handle();
     let shutdown_manager = download_manager.clone();
 
-    let open_in_browser = !args.no_open && std::env::var("DWATA_NO_OPEN").is_err();
+    let open_in_browser = !cfg!(debug_assertions)
+        && !args.no_open
+        && std::env::var("DWATA_NO_OPEN").is_err();
     if open_in_browser {
         let url = format!("http://{}:{}/", host, port);
         tokio::spawn(async move {
