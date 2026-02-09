@@ -16,6 +16,7 @@ use shared_types::{
 use std::sync::Arc;
 use std::collections::HashMap;
 use tracing::info;
+use crate::financial_keywords::{DEFAULT_FINANCIAL_KEYWORDS, build_fts_query};
 
 pub async fn list_transactions(
     db: web::Data<Arc<Database>>,
@@ -338,36 +339,7 @@ pub async fn update_pattern(
     })))
 }
 
-const DEFAULT_FINANCIAL_KEYWORDS: &[&str] = &[
-    "payment",
-    "paid",
-    "invoice",
-    "receipt",
-    "transaction",
-    "transfer",
-    "deposit",
-    "withdrawal",
-    "charge",
-    "charged",
-    "refund",
-    "statement",
-    "balance",
-    "credit",
-    "debit",
-];
-
 const TEMPLATE_SIMILARITY_THRESHOLD: f32 = 0.45;
-
-fn build_fts_query(keywords: &[&str]) -> String {
-    let mut parts = Vec::with_capacity(keywords.len());
-    for keyword in keywords {
-        let escaped = keyword.replace('"', " ");
-        if !escaped.trim().is_empty() {
-            parts.push(escaped);
-        }
-    }
-    parts.join(" OR ")
-}
 
 pub async fn scan_financial_emails(
     db: web::Data<Arc<Database>>,

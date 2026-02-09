@@ -19,6 +19,9 @@ export default function FinancialPatternDetection() {
     createSignal<FinancialEmailScanResponse>(emptyResponse);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  const [processingSender, setProcessingSender] = createSignal<string | null>(
+    null,
+  );
 
   const fetchScan = async () => {
     setLoading(true);
@@ -47,6 +50,30 @@ export default function FinancialPatternDetection() {
   onMount(() => {
     fetchScan();
   });
+
+  const processSender = async (senderEmail: string) => {
+    setProcessingSender(senderEmail);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        getApiUrl("/api/financial/patterns/process-sender"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sender_email: senderEmail }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to process sender: ${response.status}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to process sender");
+    } finally {
+      setProcessingSender(null);
+    }
+  };
 
   const footerActions = (
     <>
@@ -122,6 +149,7 @@ export default function FinancialPatternDetection() {
                     <tr>
                       <th>Sender</th>
                       <th class="text-right">Matched Emails</th>
+                      <th class="text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -135,6 +163,15 @@ export default function FinancialPatternDetection() {
                             {sender.sender_email}
                           </td>
                           <td class="text-right">{sender.matched_count}</td>
+                          <td class="text-right">
+                            <button
+                              class="btn btn-ghost btn-xs"
+                              disabled={processingSender() === sender.sender_email}
+                              onClick={() => processSender(sender.sender_email)}
+                            >
+                              Process with AI
+                            </button>
+                          </td>
                         </tr>
                       )}
                     </For>

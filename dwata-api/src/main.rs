@@ -10,6 +10,7 @@ mod handlers;
 mod helpers;
 mod integrations;
 mod jobs;
+mod financial_keywords;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -100,6 +101,7 @@ async fn main() -> std::io::Result<()> {
     // Load config
     let (config, _) = config::ApiConfig::load().expect("Failed to load config");
     let config_arc = Arc::new(std::sync::RwLock::new(config.clone()));
+    let config = Arc::new(config);
     let settings_state = handlers::settings::SettingsAppState {
         config: config_arc.clone(),
     };
@@ -114,7 +116,7 @@ async fn main() -> std::io::Result<()> {
     tracing::info!("Server will listen on {}:{}", host, port);
 
     // Initialize OAuth components
-    let google_oauth_config = config.google_oauth.unwrap_or_default();
+    let google_oauth_config = config.google_oauth.clone().unwrap_or_default();
     let redirect_uri = format!("http://{}:{}/api/oauth/google/callback", host, port);
     let oauth_client = Arc::new(
         crate::helpers::google_oauth::GoogleOAuthClient::new(
@@ -335,6 +337,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(state_manager.clone()))
             .app_data(web::Data::new(token_cache.clone()))
             .app_data(web::Data::new(keyring_service.clone()))
+            .app_data(web::Data::new(config.clone()))
             .service(hello)
             .service(health)
             .service(get_settings)
@@ -388,6 +391,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/financial/patterns/{id}", web::get().to(handlers::financial::get_pattern))
             .route("/api/financial/patterns/{id}", web::put().to(handlers::financial::update_pattern))
             .route("/api/financial/patterns/{id}/toggle", web::patch().to(handlers::financial::toggle_pattern))
+            .service(handlers::pattern_generation::process_sender)
             .service(handlers::pattern_generation::generate_pattern)
     })
     .bind((host.as_str(), port))?
