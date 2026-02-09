@@ -303,6 +303,156 @@ pub async fn list_emails(
     .await?
 }
 
+/// List emails with FTS search
+/// Supports field-specific search: "from:example.com", "subject:invoice"
+/// Default search excludes body_html and searches subject, body_text, and from_address
+pub async fn list_emails_fts(
+    conn: AsyncDbConnection,
+    search_query: &str,
+    credential_id: Option<i64>,
+    folder_id: Option<i64>,
+    label_id: Option<i64>,
+    limit: usize,
+    offset: usize,
+) -> Result<Vec<Email>> {
+    if search_query.trim().is_empty() {
+        return list_emails(conn, credential_id, folder_id, limit, offset).await;
+    }
+
+    let search_query = search_query.to_string();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+
+        // Add prefix matching (wildcard *) to search terms for better UX
+        // "hdfc" becomes "hdfc*" to match "hdfcbank", "hdfclife", etc.
+        let add_prefix_matching = |query: &str| -> String {
+            query.split_whitespace()
+                .map(|term| {
+                    // Don't add * if term already has wildcards or is quoted
+                    if term.contains('*') || term.starts_with('"') {
+                        term.to_string()
+                    } else {
+                        format!("{}*", term)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+
+        // Parse the search query for field-specific searches
+        let fts_query = if search_query.contains("from:") || search_query.contains("subject:") || search_query.contains("body:") {
+            // User specified field-specific search, convert to FTS5 column syntax and add prefix matching
+            let mut processed = search_query.clone();
+
+            // Process each field-specific term
+            for field in &["from:", "subject:", "body:"] {
+                if let Some(start_pos) = processed.find(field) {
+                    let after_colon = start_pos + field.len();
+                    let rest = &processed[after_colon..];
+
+                    // Find the search term after the colon (until space or end)
+                    let term_end = rest.find(' ').unwrap_or(rest.len());
+                    let term = &rest[..term_end];
+
+                    // Add wildcard if not already present
+                    if !term.contains('*') && !term.starts_with('"') && !term.is_empty() {
+                        let new_term = format!("{}*", term);
+                        processed = processed.replace(&format!("{}{}", field, term), &format!("{}{}", field, new_term));
+                    }
+                }
+            }
+
+            // Convert to FTS5 column syntax
+            processed
+                .replace("from:", "from_address:")
+                .replace("body:", "body_text:")
+        } else {
+            // Default: search subject, body_text, and from_address (exclude body_html)
+            let terms_with_wildcard = add_prefix_matching(&search_query);
+            format!("{{subject body_text from_address}} : {}", terms_with_wildcard)
+        };
+
+        let mut query = String::from(
+            "SELECT e.id, e.download_item_id, e.credential_id, e.uid, e.folder_id, e.message_id,
+                    e.subject, e.from_address, e.from_name,
+                    e.to_addresses, e.cc_addresses, e.bcc_addresses, e.reply_to,
+                    e.date_sent, e.date_received,
+                    e.body_text, e.body_html, e.is_read, e.is_flagged, e.is_draft, e.is_answered,
+                    e.has_attachments, e.attachment_count, e.size_bytes, e.thread_id,
+                    e.created_at, e.updated_at
+             FROM emails e
+             JOIN emails_fts ON emails_fts.rowid = e.id
+             WHERE emails_fts MATCH ?"
+        );
+
+        let mut params: Vec<Value> = vec![Value::from(fts_query)];
+
+        if let Some(cred) = credential_id {
+            query.push_str(" AND e.credential_id = ?");
+            params.push(Value::from(cred));
+        }
+
+        if let Some(fid) = folder_id {
+            query.push_str(" AND e.folder_id = ?");
+            params.push(Value::from(fid));
+        }
+
+        if let Some(lid) = label_id {
+            query.push_str(" AND EXISTS (
+                SELECT 1 FROM email_label_associations ela
+                WHERE ela.email_id = e.id AND ela.label_id = ?
+            )");
+            params.push(Value::from(lid));
+        }
+
+        query.push_str(" ORDER BY e.date_received DESC LIMIT ? OFFSET ?");
+        params.push(Value::from(limit as i64));
+        params.push(Value::from(offset as i64));
+
+        let mut stmt = conn.prepare(&query)?;
+        let emails = stmt
+            .query_map(params_from_iter(params), |row| {
+                let to_json: String = row.get(9)?;
+                let cc_json: String = row.get(10)?;
+                let bcc_json: String = row.get(11)?;
+
+                Ok(Email {
+                    id: row.get(0)?,
+                    download_item_id: row.get(1)?,
+                    credential_id: row.get(2)?,
+                    uid: row.get::<_, i32>(3)? as u32,
+                    folder_id: row.get(4)?,
+                    message_id: row.get(5)?,
+                    subject: row.get(6)?,
+                    from_address: row.get(7)?,
+                    from_name: row.get(8)?,
+                    to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
+                    cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
+                    bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
+                    reply_to: row.get(12)?,
+                    date_sent: row.get(13)?,
+                    date_received: row.get(14)?,
+                    body_text: row.get(15)?,
+                    body_html: row.get(16)?,
+                    is_read: row.get(17)?,
+                    is_flagged: row.get(18)?,
+                    is_draft: row.get(19)?,
+                    is_answered: row.get(20)?,
+                    has_attachments: row.get(21)?,
+                    attachment_count: row.get(22)?,
+                    size_bytes: row.get(23)?,
+                    thread_id: row.get(24)?,
+                    created_at: row.get(25)?,
+                    updated_at: row.get(26)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(emails)
+    })
+    .await?
+}
+
 /// List minimal email fields for scanning
 pub async fn list_email_scan_rows(
     conn: AsyncDbConnection,

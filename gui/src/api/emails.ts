@@ -40,15 +40,18 @@ export async function fetchLabels(credentialId: bigint): Promise<EmailLabel[]> {
 export async function fetchEmailsByFolder(
   folderId: bigint,
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  searchQuery?: string
 ): Promise<ListEmailsResponse> {
   const params = new URLSearchParams({
+    folder_id: folderId.toString(),
     limit: limit.toString(),
     offset: offset.toString(),
   });
-  const response = await fetch(
-    getApiUrl(`/api/folders/${folderId}/emails?${params}`)
-  );
+  if (searchQuery && searchQuery.trim()) {
+    params.append('search_query', searchQuery);
+  }
+  const response = await fetch(getApiUrl(`/api/emails?${params}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();
 }
@@ -56,15 +59,18 @@ export async function fetchEmailsByFolder(
 export async function fetchEmailsByLabel(
   labelId: bigint,
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  searchQuery?: string
 ): Promise<ListEmailsResponse> {
   const params = new URLSearchParams({
+    label_id: labelId.toString(),
     limit: limit.toString(),
     offset: offset.toString(),
   });
-  const response = await fetch(
-    getApiUrl(`/api/labels/${labelId}/emails?${params}`)
-  );
+  if (searchQuery && searchQuery.trim()) {
+    params.append('search_query', searchQuery);
+  }
+  const response = await fetch(getApiUrl(`/api/emails?${params}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();
 }
@@ -72,13 +78,17 @@ export async function fetchEmailsByLabel(
 export async function fetchEmailsByAccount(
   credentialId: bigint,
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  searchQuery?: string
 ): Promise<ListEmailsResponse> {
   const params = new URLSearchParams({
     credential_id: credentialId.toString(),
     limit: limit.toString(),
     offset: offset.toString(),
   });
+  if (searchQuery && searchQuery.trim()) {
+    params.append('search_query', searchQuery);
+  }
   const response = await fetch(getApiUrl(`/api/emails?${params}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();

@@ -25,7 +25,7 @@ import {
   fetchEmailsByLabel,
   fetchEmailsByAccount,
 } from "../api/emails";
-import FolderIcon from "../components/emails/FolderIcon";
+import FolderTree from "../components/emails/FolderTree";
 import EmailPageLayout from "../components/EmailPageLayout";
 import { getApiUrl } from "../config/api";
 import { usePrivacyMode } from "../contexts/PrivacyMode";
@@ -47,6 +47,7 @@ export default function Emails() {
 
   // UI state
   const [searchQuery, setSearchQuery] = createSignal("");
+  const [activeSearchQuery, setActiveSearchQuery] = createSignal("");
   const [selectedEmail, setSelectedEmail] = createSignal<Email | null>(null);
 
   // Router hooks
@@ -104,9 +105,21 @@ export default function Emails() {
     }
   });
 
-  // Load emails when folder/label/account changes
+  // Trigger search
+  const performSearch = () => {
+    setActiveSearchQuery(searchQuery());
+  };
+
+  // Clear search
+  const clearSearch = () => {
+    setSearchQuery("");
+    setActiveSearchQuery("");
+  };
+
+  // Load emails when folder/label/account changes, or when search is performed
   createEffect(async () => {
     const { accountId, folderId, labelId } = params;
+    const search = activeSearchQuery();
 
     if (!accountId) return;
 
@@ -117,11 +130,11 @@ export default function Emails() {
       let response: ListEmailsResponse;
 
       if (folderId) {
-        response = await fetchEmailsByFolder(BigInt(folderId), 50, 0);
+        response = await fetchEmailsByFolder(BigInt(folderId), 50, 0, search || undefined);
       } else if (labelId) {
-        response = await fetchEmailsByLabel(BigInt(labelId), 50, 0);
+        response = await fetchEmailsByLabel(BigInt(labelId), 50, 0, search || undefined);
       } else {
-        response = await fetchEmailsByAccount(BigInt(accountId), 50, 0);
+        response = await fetchEmailsByAccount(BigInt(accountId), 50, 0, search || undefined);
       }
 
       setEmails(response.emails);
@@ -235,17 +248,36 @@ export default function Emails() {
         </div>
         <div class="flex-1 min-w-[360px]">
           <div class="form-control">
-            <div class="join w-full">
-              <input
-                type="text"
-                placeholder="Search emails..."
-                class="input input-bordered input-sm join-item w-full"
-                value={searchQuery()}
-                onInput={(e) => setSearchQuery(e.currentTarget.value)}
-              />
-              <button class="btn btn-outline btn-sm join-item">
-                Search
-              </button>
+            <div class="flex gap-2 w-full">
+              <div class="join flex-1">
+                <input
+                  type="text"
+                  placeholder="Search emails... (try: hdfc, from:amazon, subject:invoice)"
+                  class="input input-bordered input-sm join-item w-full"
+                  value={searchQuery()}
+                  onInput={(e) => setSearchQuery(e.currentTarget.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      performSearch();
+                    }
+                  }}
+                />
+                <button
+                  class="btn btn-outline btn-sm join-item"
+                  onClick={performSearch}
+                >
+                  Search
+                </button>
+              </div>
+              <Show when={activeSearchQuery()}>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onClick={clearSearch}
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              </Show>
             </div>
           </div>
         </div>
@@ -281,7 +313,7 @@ export default function Emails() {
 
   return (
     <EmailPageLayout header={headerContent} footer={footerNavigation}>
-      <div class="flex h-full min-h-0">
+      <div class="flex h-full min-h-0 min-w-0">
         {/* No Accounts Empty State */}
         <Show when={accounts().length === 0 && !loading()}>
           <div class="flex-1 flex flex-col items-center justify-center text-center p-8">
@@ -301,17 +333,9 @@ export default function Emails() {
 
         {/* Left Sidebar - Accounts, Folders, Labels */}
         <Show when={accounts().length > 0}>
-          <div class="w-64 bg-base-100 border-r border-base-300 flex flex-col">
-            {/* Compose Button */}
-            <div class="p-4 border-b border-base-300">
-              <button class="btn btn-primary w-full gap-2">
-                <HiOutlinePaperAirplane class="w-5 h-5" />
-                Compose
-              </button>
-            </div>
-
+          <div class="w-64 bg-base-100 border-r border-base-300 flex flex-col min-h-0">
             {/* Folders & Labels List */}
-            <div class="flex-1 overflow-y-auto">
+            <div class="flex-1 overflow-y-auto min-h-0">
               <Show
                 when={params.accountId}
                 fallback={
@@ -320,51 +344,27 @@ export default function Emails() {
                   </div>
                 }
               >
-                <ul class="menu px-2">
+                <ul class="menu w-full p-0">
                   {/* Folders Section */}
                   <Show when={folders().length > 0}>
-                    <li class="menu-title">Folders</li>
-                    <For each={folders()}>
-                      {(folder) => (
-                        <li class="w-full">
-                          <A
-                            href={`/emails/account/${params.accountId}/folder/${folder.id}`}
-                            class="flex items-center justify-between w-full"
-                            activeClass="active"
-                          >
-                            <div class="flex items-center gap-3 flex-1 min-w-0">
-                              <FolderIcon folderType={folder.folder_type} />
-                              <span
-                                class="truncate"
-                                classList={{ "privacy-blur": isEnabled() }}
-                              >
-                                {folder.display_name || folder.name}
-                              </span>
-                            </div>
-                            <span class="badge badge-sm badge-ghost ml-2 flex-shrink-0">
-                              <Show
-                                when={folder.unread_messages > 0}
-                                fallback={folder.total_messages}
-                              >
-                                {folder.unread_messages}/
-                                {folder.total_messages}
-                              </Show>
-                            </span>
-                          </A>
-                        </li>
-                      )}
-                    </For>
+                    <li class="menu-title px-2">Folders</li>
+                    <FolderTree
+                      folders={folders()}
+                      accountId={params.accountId}
+                      activeFolderId={params.folderId}
+                      privacyEnabled={isEnabled()}
+                    />
                   </Show>
 
                   {/* Labels Section */}
                   <Show when={labels().length > 0}>
-                    <li class="menu-title mt-4">Labels</li>
+                    <li class="menu-title mt-4 px-2">Labels</li>
                     <For each={labels()}>
                       {(label) => (
                         <li class="w-full">
                           <A
                             href={`/emails/account/${params.accountId}/label/${label.id}`}
-                            class="flex items-center justify-between w-full"
+                            class="flex items-center justify-between w-full px-2"
                             activeClass="active"
                           >
                             <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -397,9 +397,9 @@ export default function Emails() {
           </div>
 
           {/* Main Content Area */}
-          <div class="flex-1 flex flex-col min-h-0">
+          <div class="flex-1 flex flex-col min-h-0 min-w-0">
             {/* Email List */}
-            <div class="flex-1 overflow-y-auto">
+            <div class="flex-1 overflow-y-auto min-w-0 min-h-0">
               <Show
                 when={!loading()}
                 fallback={
@@ -452,7 +452,7 @@ export default function Emails() {
                       <For each={emails()}>
                         {(email) => (
                           <div
-                            class="flex items-start gap-4 p-4 hover:bg-base-200 cursor-pointer transition-colors"
+                            class="flex items-start gap-4 p-4 hover:bg-base-200 cursor-pointer transition-colors min-w-0"
                             classList={{
                               "bg-base-100": email.is_read,
                               "bg-base-200/50 font-medium": !email.is_read,
@@ -480,9 +480,9 @@ export default function Emails() {
                             {/* Middle: Email Content */}
                             <div class="flex-1 min-w-0">
                               {/* From & Subject */}
-                              <div class="flex items-baseline gap-2 mb-1">
+                              <div class="flex items-baseline gap-2 mb-1 min-w-0">
                                 <span
-                                  class="text-sm truncate"
+                                  class="text-sm break-words whitespace-normal"
                                   classList={{
                                     "font-semibold": !email.is_read,
                                     "text-base-content/70": email.is_read,
@@ -497,7 +497,7 @@ export default function Emails() {
 
                               {/* Subject */}
                               <div
-                                class="text-sm mb-1 truncate"
+                                class="text-sm mb-1 break-words whitespace-normal"
                                 classList={{
                                   "font-medium": !email.is_read,
                                   "text-base-content/60": email.is_read,
@@ -509,7 +509,7 @@ export default function Emails() {
 
                               {/* Preview */}
                               <div
-                                class="text-xs text-base-content/50 truncate"
+                                class="text-xs text-base-content/50 break-words whitespace-normal"
                                 classList={{ "privacy-blur": isEnabled() }}
                               >
                                 {getPreviewText(email)}

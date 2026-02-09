@@ -15,17 +15,32 @@ pub async fn list_emails(
         label_id,
         limit,
         offset,
-        search_query: _,
+        search_query,
     } = query.into_inner();
 
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
 
-    let emails = if let Some(lid) = label_id {
+    let emails = if let Some(search) = search_query.as_ref().filter(|s| !s.trim().is_empty()) {
+        // Use FTS search when search query is provided
+        emails_db::list_emails_fts(
+            db.async_connection.clone(),
+            search,
+            credential_id,
+            folder_id,
+            label_id,
+            limit,
+            offset,
+        )
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
+    } else if let Some(lid) = label_id {
+        // List by label (no search)
         emails_db::list_emails_by_label(db.async_connection.clone(), lid, limit, offset)
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
     } else {
+        // Regular list (no search)
         emails_db::list_emails(db.async_connection.clone(), credential_id, folder_id, limit, offset)
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
