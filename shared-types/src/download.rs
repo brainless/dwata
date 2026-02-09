@@ -88,11 +88,11 @@ fn default_last_highest_uid() -> serde_json::Value {
 }
 
 fn default_fetch_batch_size() -> usize {
-    10
+    100  // Increased from 10 to speed up downloads
 }
 
 fn default_max_age_months() -> Option<u32> {
-    Some(12)
+    None  // Changed from 12 months to no limit - download all emails
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

@@ -28,8 +28,10 @@ import {
 import FolderIcon from "../components/emails/FolderIcon";
 import EmailPageLayout from "../components/EmailPageLayout";
 import { getApiUrl } from "../config/api";
+import { usePrivacyMode } from "../contexts/PrivacyMode";
 
 export default function Emails() {
+  const { isEnabled } = usePrivacyMode();
   // Account & navigation state
   const [accounts, setAccounts] = createSignal<CredentialMetadata[]>([]);
   const [folders, setFolders] = createSignal<EmailFolder[]>([]);
@@ -170,33 +172,21 @@ export default function Emails() {
   const checkEmails = async () => {
     setCheckEmailsLoading(true);
     try {
-      for (const cred of accounts()) {
-        const sourceType = getSourceTypeForCredential(cred);
-        if (!sourceType) continue;
+      // Use the unified sync endpoint that handles all accounts at once
+      const response = await fetch(getApiUrl("/api/downloads/sync"), {
+        method: "POST",
+      });
 
-        const response = await fetch(getApiUrl("/api/downloads"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            credential_id: Number(cred.id),
-            source_type: sourceType,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(
-            "Failed to create download job:",
-            response.status,
-            errorText,
-          );
-          continue;
-        }
-
-        const job = await response.json();
-        await fetch(getApiUrl(`/api/downloads/${job.id}/start`), {
-          method: "POST",
-        });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          "Failed to trigger email sync:",
+          response.status,
+          errorText,
+        );
+      } else {
+        const result = await response.json();
+        console.log("Email sync triggered:", result.message);
       }
     } catch (err) {
       console.error("Failed to check emails:", err);
@@ -344,7 +334,10 @@ export default function Emails() {
                           >
                             <div class="flex items-center gap-3 flex-1 min-w-0">
                               <FolderIcon folderType={folder.folder_type} />
-                              <span class="truncate">
+                              <span
+                                class="truncate"
+                                classList={{ "privacy-blur": isEnabled() }}
+                              >
                                 {folder.display_name || folder.name}
                               </span>
                             </div>
@@ -376,7 +369,10 @@ export default function Emails() {
                           >
                             <div class="flex items-center gap-3 flex-1 min-w-0">
                               <HiOutlineTag class="w-5 h-5" />
-                              <span class="truncate">
+                              <span
+                                class="truncate"
+                                classList={{ "privacy-blur": isEnabled() }}
+                              >
                                 {label.display_name || label.name}
                               </span>
                             </div>
@@ -505,13 +501,17 @@ export default function Emails() {
                                 classList={{
                                   "font-medium": !email.is_read,
                                   "text-base-content/60": email.is_read,
+                                  "privacy-blur": isEnabled(),
                                 }}
                               >
                                 {email.subject || "(No subject)"}
                               </div>
 
                               {/* Preview */}
-                              <div class="text-xs text-base-content/50 truncate">
+                              <div
+                                class="text-xs text-base-content/50 truncate"
+                                classList={{ "privacy-blur": isEnabled() }}
+                              >
                                 {getPreviewText(email)}
                               </div>
                             </div>

@@ -101,6 +101,15 @@ impl RealImapClient {
         Ok(mailbox_info.exists)
     }
 
+    /// Get mailbox metadata including UIDVALIDITY
+    pub fn get_mailbox_metadata(&mut self, mailbox: &str) -> Result<MailboxMetadata> {
+        let mailbox_info = self.session.select(mailbox)?;
+        Ok(MailboxMetadata {
+            exists: mailbox_info.exists,
+            uidvalidity: mailbox_info.uid_validity.unwrap_or(0),
+        })
+    }
+
     pub fn search_emails(
         &mut self,
         mailbox: &str,
@@ -273,4 +282,10 @@ pub struct FolderMetadata {
     pub delimiter: Option<String>,
     pub is_selectable: bool,
     pub is_subscribed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct MailboxMetadata {
+    pub exists: u32,
+    pub uidvalidity: u32,
 }

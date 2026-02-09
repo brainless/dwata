@@ -11,6 +11,7 @@ use crate::jobs::download_manager::DownloadManager;
 
 pub async fn create_download_job(
     db: web::Data<Arc<Database>>,
+    manager: web::Data<Arc<DownloadManager>>,
     request: web::Json<CreateDownloadJobRequest>,
     query: web::Query<CreateJobQuery>,
 ) -> ActixResult<HttpResponse> {
@@ -22,6 +23,13 @@ pub async fn create_download_job(
     let job = db::insert_download_job(db.async_connection.clone(), &request, job_type)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    // Auto-start the job immediately after creation
+    if let Err(e) = manager.start_job(job.id).await {
+        tracing::warn!("Failed to auto-start job {}: {}", job.id, e);
+        // Don't fail the request - the job was created successfully
+        // User can manually start it later if needed
+    }
 
     Ok(HttpResponse::Created().json(job))
 }
@@ -118,4 +126,32 @@ pub async fn delete_download_job(
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::NoContent().finish())
+}
+
+pub async fn trigger_sync(
+    manager: web::Data<Arc<DownloadManager>>,
+) -> ActixResult<HttpResponse> {
+    // Ensure jobs exist for all credentials
+    manager
+        .ensure_jobs_for_all_credentials()
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    // TESTING: Comment out recent sync to test historical backfill only
+    // Start all recent sync jobs
+    // manager
+    //     .sync_all_jobs()
+    //     .await
+    //     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    // Start all historical backfill jobs
+    manager
+        .sync_all_historical_backfill()
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "status": "triggered",
+        "message": "Historical backfill started for all accounts"
+    })))
 }
