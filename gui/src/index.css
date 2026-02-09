@@ -23,3 +23,9 @@
     border-color: var(--color-gray-200, currentcolor);
   }
 }
+
+@layer utilities {
+  .privacy-blur {
+    filter: blur(3px);
+  }
+}
