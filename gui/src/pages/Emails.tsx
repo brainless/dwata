@@ -302,14 +302,6 @@ export default function Emails() {
         {/* Left Sidebar - Accounts, Folders, Labels */}
         <Show when={accounts().length > 0}>
           <div class="w-64 bg-base-100 border-r border-base-300 flex flex-col min-h-0">
-            {/* Compose Button */}
-            <div class="p-4 border-b border-base-300">
-              <button class="btn btn-primary w-full gap-2">
-                <HiOutlinePaperAirplane class="w-5 h-5" />
-                Compose
-              </button>
-            </div>
-
             {/* Folders & Labels List */}
             <div class="flex-1 overflow-y-auto min-h-0">
               <Show

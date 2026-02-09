@@ -44,12 +44,6 @@ export default function Settings() {
           Email Accounts
         </A>
         <A
-          href="/settings/folders"
-          class={`tab ${activeTab() === "folders" ? "tab-active" : ""}`}
-        >
-          Folders
-        </A>
-        <A
           href="/settings/privacy"
           class={`tab ${activeTab() === "privacy" ? "tab-active" : ""}`}
         >

@@ -193,7 +193,7 @@ export default function FinancialHealth() {
   const footerActions = (
     <>
       <button
-        class="btn btn-outline gap-2"
+        class="btn btn-outline btn-sm gap-2"
         disabled={loading() || isExtracting()}
         onClick={triggerExtraction}
       >
@@ -204,11 +204,11 @@ export default function FinancialHealth() {
         )}
         {isExtracting() ? "Extracting..." : "Run Extraction"}
       </button>
-      <A href="/financial/extractions" class="btn btn-ghost">
-        Extraction History
-      </A>
-      <A href="/financial/patterns" class="btn btn-ghost">
+      <A href="/financial/patterns" class="btn btn-ghost btn-sm">
         Patterns
+      </A>
+      <A href="/financial/extractions" class="btn btn-ghost btn-sm">
+        Extraction History
       </A>
     </>
   );
