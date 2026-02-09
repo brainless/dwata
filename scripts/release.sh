@@ -41,8 +41,8 @@ if [[ "$BRANCH" != "main" ]]; then
   exit 1
 fi
 
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "Working tree is dirty. Commit or stash changes before releasing."
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  echo "Working tree has tracked changes. Commit or stash before releasing."
   exit 1
 fi
 
