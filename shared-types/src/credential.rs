@@ -129,6 +129,19 @@ impl CredentialType {
         }
     }
 
+    /// Parse CredentialType from string
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "imap" => CredentialType::Imap,
+            "smtp" => CredentialType::Smtp,
+            "oauth" => CredentialType::OAuth,
+            "apikey" => CredentialType::ApiKey,
+            "database" => CredentialType::Database,
+            "localfile" => CredentialType::LocalFile,
+            _ => CredentialType::Custom,
+        }
+    }
+
     /// Check if this credential type requires keychain storage
     pub fn requires_keychain(&self) -> bool {
         !matches!(self, CredentialType::LocalFile)

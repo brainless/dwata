@@ -132,21 +132,31 @@ async fn main() -> std::io::Result<()> {
     let keyring_service = Arc::new(crate::helpers::keyring_service::KeyringService::new());
 
     // Preload credentials into cache at startup
-    tracing::info!("Preloading credentials into keyring cache...");
-    match crate::database::credentials::list_credentials(db.async_connection.clone(), false).await {
-        Ok(credentials) => {
-            let preload_list: Vec<_> = credentials
-                .iter()
-                .filter(|c| c.credential_type.requires_keychain())
-                .map(|c| (c.credential_type.clone(), c.identifier.clone(), c.username.clone()))
-                .collect();
+    // Always uses master credentials mode (single keychain entry = 1 prompt)
+    tracing::info!("Loading credentials from master keychain entry...");
 
-            tracing::info!("Found {} credentials to preload", preload_list.len());
-            keyring_service.preload_credentials(preload_list).await;
+    if crate::helpers::keyring_service::KeyringService::has_master_credentials() {
+        match keyring_service.get_master_credentials().await {
+            Ok(creds) => {
+                tracing::info!(
+                    "✅ Loaded {} credentials from master entry (1 keychain prompt)",
+                    creds.len()
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "⚠️  Master credentials not found: {}. Run migration script if you have existing credentials.",
+                    e
+                );
+            }
         }
-        Err(e) => {
-            tracing::warn!("Failed to preload credentials: {}", e);
-        }
+    } else {
+        tracing::info!(
+            "ℹ️  No master credentials found. This is normal for first-time setup."
+        );
+        tracing::info!(
+            "   New credentials will be automatically stored in master mode."
+        );
     }
 
     // Initialize download manager

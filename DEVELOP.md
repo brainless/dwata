@@ -273,12 +273,43 @@ dwata uses the OS native keychain for secure credential storage:
 
 Credentials are stored in the SQLite database as metadata only (without passwords). Passwords and sensitive tokens are stored separately in the OS keychain using the `keyring` crate.
 
+### Master Credentials Mode (Single Keychain Prompt)
+
+**dwata uses "master credentials mode"** to minimize OS keychain prompts. Instead of storing each credential as a separate keychain entry, all credentials are stored together in a single master entry as encrypted JSON.
+
+**Benefits:**
+- **1 keychain prompt total** (instead of N prompts for N credentials)
+- Works identically on macOS, Windows, and Linux
+- Supports 200+ credentials in a single entry (tested up to 300+)
+- New credentials automatically added to master entry (no new prompts)
+
+**How it works:**
+1. All credentials stored in single keychain entry: `"dwata-master"`
+2. Entry contains encrypted JSON with all credential data
+3. Still uses OS keychain encryption for security
+4. In-memory cache reduces keychain access after first load
+
+**Storage format (internal):**
+```json
+{
+  "version": 1,
+  "credentials": [
+    {
+      "type": "imap",
+      "identifier": "gmail",
+      "username": "user@example.com",
+      "password": "encrypted_by_os_keychain"
+    }
+  ]
+}
+```
+
 ### In-Memory Caching
 
-To reduce keychain prompts (especially on macOS), dwata implements an in-memory password cache:
+In addition to master mode, dwata implements an in-memory password cache:
 
 - **Cache TTL**: 1 hour (configurable via `KeyringService::with_ttl()`)
-- **Preloading**: At startup, all active credentials are preloaded into cache
+- **Automatic loading**: Master credentials loaded into cache at startup
 - **Thread-safe**: Uses `Arc<RwLock<HashMap>>` for concurrent access
 - **Automatic expiration**: Cached passwords expire after the TTL
 
@@ -291,21 +322,21 @@ let keyring_service = KeyringService::new();
 let keyring_service = KeyringService::with_ttl(Duration::from_secs(7200)); // 2 hours
 ```
 
-### First-Time Setup: macOS Keychain Prompts
+### First-Time Setup: macOS Keychain Prompt
 
-On macOS, the first time dwata accesses a credential from the keychain, you'll see a system prompt:
+On macOS, the first time dwata starts, you'll see **one** system prompt:
 
 ```
-"dwata-api" wants to access the keychain item "dwata:imap:gmail:user@example.com"
+"dwata-api" wants to access the keychain item "dwata-master"
 [ Deny ] [ Allow ] [ Always Allow ]
 ```
 
-**Important**: Select **"Always Allow"** to avoid repeated prompts for each credential.
+**Important**: Select **"Always Allow"** to grant permanent access. You'll never see this prompt again.
 
 If you accidentally selected "Allow" (temporary access), you can fix this:
 1. Open **Keychain Access** app
-2. Search for "dwata"
-3. Double-click each dwata entry
+2. Search for "dwata-master"
+3. Double-click the entry
 4. Go to "Access Control" tab
 5. Add `dwata-api` to the "Always allow access" list
 
