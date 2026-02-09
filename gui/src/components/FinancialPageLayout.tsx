@@ -8,7 +8,7 @@ type FinancialPageLayoutProps = ParentProps<{
 
 export default function FinancialPageLayout(props: FinancialPageLayoutProps) {
   return (
-    <div class="pt-4 px-4 pb-0 md:pt-8 md:px-8 md:pb-0 h-full min-h-full flex flex-col">
+    <div class="pt-4 px-4 pb-0 md:pt-8 md:px-8 md:pb-0 h-full min-h-0 flex flex-col overflow-hidden">
       <header class="mb-6">
         <h1 class="text-3xl font-bold mb-2">{props.title}</h1>
         <Show when={props.subtitle}>
@@ -16,7 +16,7 @@ export default function FinancialPageLayout(props: FinancialPageLayoutProps) {
         </Show>
       </header>
 
-      <main class="flex-1">{props.children}</main>
+      <main class="flex-1 min-h-0 overflow-y-auto">{props.children}</main>
 
       <Show when={props.footer}>
         <footer class="sticky bottom-0 mt-auto border-t border-base-300 bg-base-100/95 backdrop-blur">

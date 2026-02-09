@@ -10,7 +10,7 @@ function App(props: { children: any }): JSX.Element {
         <input id="sidebar-drawer" type="checkbox" class="drawer-toggle" />
 
         {/* Main content */}
-        <div class="drawer-content min-h-screen bg-base-200">
+        <div class="drawer-content h-screen bg-base-200 flex flex-col overflow-hidden">
           {/* Burger menu for mobile/small screens */}
           <div class="lg:hidden navbar bg-base-300">
             <div class="flex-none">
@@ -35,7 +35,9 @@ function App(props: { children: any }): JSX.Element {
           </div>
 
           {/* Page content */}
-          {props.children}
+          <div class="flex-1 min-h-0">
+            {props.children}
+          </div>
         </div>
 
         {/* Sidebar */}
