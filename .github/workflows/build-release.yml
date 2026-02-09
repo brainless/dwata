@@ -23,6 +23,10 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Checkout nocodo dependency
+        run: |
+          git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/brainless/nocodo.git /home/runner/work/dwata/nocodo
+
       - name: Build production artifacts
         run: ./scripts/build-production.sh
 
