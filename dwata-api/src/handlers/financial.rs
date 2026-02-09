@@ -8,7 +8,6 @@ use crate::database::{
 use crate::database::Database;
 use crate::helpers::pattern_validator;
 use crate::jobs::financial_extraction_manager::FinancialExtractionManager;
-use regex::Regex;
 use serde::Deserialize;
 use shared_types::{
     FinancialEmailScanRequest, FinancialEmailScanResponse, FinancialEmailScanSender,
@@ -357,54 +356,37 @@ const DEFAULT_FINANCIAL_KEYWORDS: &[&str] = &[
     "debit",
 ];
 
-const DEFAULT_FINANCIAL_REGEXES: &[&str] = &[
-    r"(?i)\btransaction\s*(id|#|no\.?|number)\b",
-    r"(?i)\bconfirmation\s*(id|#|no\.?|number)\b",
-    r"(?i)\bpayment\s*(id|#|no\.?|number)\b",
-    r"(?i)\binvoice\s*(id|#|no\.?|number)\b",
-    r"(?i)\border\s*(id|#|no\.?|number)\b",
-    r"(?i)\b(auth|authorization)\s*(code|id|#|no\.?)\b",
-    r"(?i)\b(ref|reference)\s*(id|#|no\.?|number)\b",
-    r"(?i)\b(ach|sepa|swift|wire)\b",
-    r"(?i)\b(transfer|deposit|withdrawal)\b",
-    r"(?i)\b(card)\s*(ending|ends?)\s*in\s*\d{2,4}\b",
-    r"(?i)\b(last\s*4|ending)\s*\d{2,4}\b",
-    r"(?i)\b(balance|amount\s*due|amount\s*paid|total\s*paid)\b",
-    r"(?i)\b(refund|chargeback)\b",
-];
-
 const TEMPLATE_SIMILARITY_THRESHOLD: f32 = 0.45;
+
+fn build_fts_query(keywords: &[&str]) -> String {
+    let mut parts = Vec::with_capacity(keywords.len());
+    for keyword in keywords {
+        let escaped = keyword.replace('"', " ");
+        if !escaped.trim().is_empty() {
+            parts.push(escaped);
+        }
+    }
+    parts.join(" OR ")
+}
 
 pub async fn scan_financial_emails(
     db: web::Data<Arc<Database>>,
     request: web::Json<FinancialEmailScanRequest>,
 ) -> ActixResult<HttpResponse> {
-    let keywords: Vec<String> = DEFAULT_FINANCIAL_KEYWORDS
-        .iter()
-        .map(|k| k.to_string())
-        .collect();
-    let keywords_lower: Vec<String> = keywords
-        .iter()
-        .map(|k| k.to_lowercase())
-        .collect();
+    let fts_query = build_fts_query(DEFAULT_FINANCIAL_KEYWORDS);
 
-    let mut regexes = Vec::new();
-    for pattern in DEFAULT_FINANCIAL_REGEXES {
-        match Regex::new(pattern) {
-            Ok(re) => regexes.push(re),
-            Err(e) => {
-                return Err(actix_web::error::ErrorBadRequest(format!(
-                    "Invalid regex pattern '{}': {}",
-                    pattern, e
-                )));
-            }
-        }
-    }
+    let total_emails = crate::database::emails::count_emails(
+        db.async_connection.clone(),
+        request.credential_id,
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
-    let rows = crate::database::emails::list_email_scan_rows(
+    let rows = crate::database::emails::list_email_scan_rows_fts(
         db.async_connection.clone(),
         request.credential_id,
         request.max_emails,
+        &fts_query,
     )
     .await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
@@ -426,25 +408,12 @@ pub async fn scan_financial_emails(
             content.push_str(body_html);
         }
 
-        let mut matched = false;
-
-        if !keywords_lower.is_empty() {
-            let content_lower = content.to_lowercase();
-            matched = keywords_lower.iter().any(|k| content_lower.contains(k));
-        }
-
-        if !matched && !regexes.is_empty() {
-            matched = regexes.iter().any(|re| re.is_match(&content));
-        }
-
-        if matched {
-            let sender = row.from_address.clone();
-            *sender_counts.entry(sender.clone()).or_insert(0) += 1;
-            sender_tokens
-                .entry(sender)
-                .or_insert_with(Vec::new)
-                .push(tokenize_words(&content));
-        }
+        let sender = row.from_address.clone();
+        *sender_counts.entry(sender.clone()).or_insert(0) += 1;
+        sender_tokens
+            .entry(sender)
+            .or_insert_with(Vec::new)
+            .push(tokenize_words(&content));
     }
 
     // If a sender's matched emails differ too much at a word level, they are likely not
@@ -489,6 +458,7 @@ pub async fn scan_financial_emails(
     }
 
     Ok(HttpResponse::Ok().json(FinancialEmailScanResponse {
+        total_emails,
         total_emails_scanned: rows.len() as i64,
         total_matched_emails: total_matched,
         senders,

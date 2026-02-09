@@ -125,6 +125,7 @@ pub struct FinancialEmailScanSender {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct FinancialEmailScanResponse {
+    pub total_emails: i64,
     pub total_emails_scanned: i64,
     pub total_matched_emails: i64,
     pub senders: Vec<FinancialEmailScanSender>,

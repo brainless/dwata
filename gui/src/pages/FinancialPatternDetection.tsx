@@ -7,6 +7,7 @@ import FinancialPageLayout from "../components/FinancialPageLayout";
 import { usePrivacyMode } from "../contexts/PrivacyMode";
 
 const emptyResponse: FinancialEmailScanResponse = {
+  total_emails: 0,
   total_emails_scanned: 0,
   total_matched_emails: 0,
   senders: [],
@@ -85,9 +86,15 @@ export default function FinancialPatternDetection() {
               <div class="stat-figure text-primary">
                 <HiOutlineSparkles class="w-8 h-8" />
               </div>
-              <div class="stat-title">Emails Scanned</div>
+              <div class="stat-title">Potential Emails</div>
               <div class="stat-value">
                 {scanResult().total_emails_scanned}
+              </div>
+            </div>
+            <div class="stat">
+              <div class="stat-title">Total Emails</div>
+              <div class="stat-value">
+                {scanResult().total_emails}
               </div>
             </div>
             <div class="stat">

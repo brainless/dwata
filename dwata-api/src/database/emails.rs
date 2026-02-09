@@ -347,6 +347,81 @@ pub async fn list_email_scan_rows(
     .await?
 }
 
+/// List minimal email fields for scanning using FTS prefilter
+pub async fn list_email_scan_rows_fts(
+    conn: AsyncDbConnection,
+    credential_id: Option<i64>,
+    max_emails: Option<usize>,
+    fts_query: &str,
+) -> Result<Vec<EmailScanRow>> {
+    if fts_query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let fts_query = fts_query.to_string();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut query = String::from(
+            "SELECT e.from_address, e.subject, e.body_text, e.body_html
+             FROM emails e
+             JOIN emails_fts ON emails_fts.rowid = e.id
+             WHERE emails_fts MATCH ?",
+        );
+        let mut params: Vec<Value> = vec![Value::from(fts_query)];
+
+        if let Some(cred) = credential_id {
+            query.push_str(" AND e.credential_id = ?");
+            params.push(Value::from(cred));
+        }
+
+        query.push_str(" ORDER BY e.date_received DESC");
+
+        if let Some(limit) = max_emails {
+            query.push_str(" LIMIT ?");
+            params.push(Value::from(limit as i64));
+        }
+
+        let mut stmt = conn.prepare(&query)?;
+        let rows = stmt.query_map(params_from_iter(params), |row| {
+            Ok(EmailScanRow {
+                from_address: row.get(0)?,
+                subject: row.get(1)?,
+                body_text: row.get(2)?,
+                body_html: row.get(3)?,
+            })
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+
+        Ok(results)
+    })
+    .await?
+}
+
+/// Count total emails (optionally scoped by credential)
+pub async fn count_emails(
+    conn: AsyncDbConnection,
+    credential_id: Option<i64>,
+) -> Result<i64> {
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut query = String::from("SELECT COUNT(*) FROM emails");
+        let mut params: Vec<Value> = Vec::new();
+
+        if let Some(cred) = credential_id {
+            query.push_str(" WHERE credential_id = ?");
+            params.push(Value::from(cred));
+        }
+
+        let count: i64 = conn.query_row(&query, params_from_iter(params), |row| row.get(0))?;
+        Ok(count)
+    })
+    .await?
+}
+
 /// List emails by label with pagination
 pub async fn list_emails_by_label(
     conn: AsyncDbConnection,

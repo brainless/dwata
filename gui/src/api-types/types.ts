@@ -410,7 +410,7 @@ import type { FinancialEmailScanSender } from "./FinancialEmailScanSender";
 /**
  * Response for financial email scan
  */
-export type FinancialEmailScanResponse = { total_emails_scanned: bigint, total_matched_emails: bigint, senders: Array<FinancialEmailScanSender>, };
+export type FinancialEmailScanResponse = { total_emails: bigint, total_emails_scanned: bigint, total_matched_emails: bigint, senders: Array<FinancialEmailScanSender>, };
 
 
 /**
