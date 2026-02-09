@@ -47,6 +47,7 @@ export default function Emails() {
 
   // UI state
   const [searchQuery, setSearchQuery] = createSignal("");
+  const [activeSearchQuery, setActiveSearchQuery] = createSignal("");
   const [selectedEmail, setSelectedEmail] = createSignal<Email | null>(null);
 
   // Router hooks
@@ -104,9 +105,21 @@ export default function Emails() {
     }
   });
 
-  // Load emails when folder/label/account changes
+  // Trigger search
+  const performSearch = () => {
+    setActiveSearchQuery(searchQuery());
+  };
+
+  // Clear search
+  const clearSearch = () => {
+    setSearchQuery("");
+    setActiveSearchQuery("");
+  };
+
+  // Load emails when folder/label/account changes, or when search is performed
   createEffect(async () => {
     const { accountId, folderId, labelId } = params;
+    const search = activeSearchQuery();
 
     if (!accountId) return;
 
@@ -117,11 +130,11 @@ export default function Emails() {
       let response: ListEmailsResponse;
 
       if (folderId) {
-        response = await fetchEmailsByFolder(BigInt(folderId), 50, 0);
+        response = await fetchEmailsByFolder(BigInt(folderId), 50, 0, search || undefined);
       } else if (labelId) {
-        response = await fetchEmailsByLabel(BigInt(labelId), 50, 0);
+        response = await fetchEmailsByLabel(BigInt(labelId), 50, 0, search || undefined);
       } else {
-        response = await fetchEmailsByAccount(BigInt(accountId), 50, 0);
+        response = await fetchEmailsByAccount(BigInt(accountId), 50, 0, search || undefined);
       }
 
       setEmails(response.emails);
@@ -235,17 +248,36 @@ export default function Emails() {
         </div>
         <div class="flex-1 min-w-[360px]">
           <div class="form-control">
-            <div class="join w-full">
-              <input
-                type="text"
-                placeholder="Search emails..."
-                class="input input-bordered input-sm join-item w-full"
-                value={searchQuery()}
-                onInput={(e) => setSearchQuery(e.currentTarget.value)}
-              />
-              <button class="btn btn-outline btn-sm join-item">
-                Search
-              </button>
+            <div class="flex gap-2 w-full">
+              <div class="join flex-1">
+                <input
+                  type="text"
+                  placeholder="Search emails... (try: hdfc, from:amazon, subject:invoice)"
+                  class="input input-bordered input-sm join-item w-full"
+                  value={searchQuery()}
+                  onInput={(e) => setSearchQuery(e.currentTarget.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      performSearch();
+                    }
+                  }}
+                />
+                <button
+                  class="btn btn-outline btn-sm join-item"
+                  onClick={performSearch}
+                >
+                  Search
+                </button>
+              </div>
+              <Show when={activeSearchQuery()}>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onClick={clearSearch}
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              </Show>
             </div>
           </div>
         </div>
