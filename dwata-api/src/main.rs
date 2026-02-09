@@ -259,7 +259,7 @@ async fn main() -> std::io::Result<()> {
             }
         });
 
-        // Spawn periodic sync task (every 5 minutes)
+        // Spawn periodic sync task for recent emails (every 5 minutes)
         let manager_clone = download_manager.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
@@ -269,7 +269,22 @@ async fn main() -> std::io::Result<()> {
                     break;
                 }
                 if let Err(e) = manager_clone.sync_all_jobs().await {
-                    tracing::error!("Periodic sync failed: {}", e);
+                    tracing::error!("Periodic recent sync failed: {}", e);
+                }
+            }
+        });
+
+        // Spawn periodic historical backfill task (every 10 minutes)
+        let manager_clone_backfill_periodic = download_manager.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
+            loop {
+                interval.tick().await;
+                if manager_clone_backfill_periodic.is_shutting_down() {
+                    break;
+                }
+                if let Err(e) = manager_clone_backfill_periodic.sync_all_historical_backfill().await {
+                    tracing::error!("Periodic historical backfill failed: {}", e);
                 }
             }
         });
@@ -324,6 +339,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/oauth/google/callback", web::get().to(handlers::oauth::google_oauth_callback))
             .route("/api/downloads", web::post().to(handlers::downloads::create_download_job))
             .route("/api/downloads", web::get().to(handlers::downloads::list_download_jobs))
+            .route("/api/downloads/sync", web::post().to(handlers::downloads::trigger_sync))
             .route("/api/downloads/{id}", web::get().to(handlers::downloads::get_download_job))
             .route("/api/downloads/{id}/start", web::post().to(handlers::downloads::start_download))
             .route("/api/downloads/{id}/pause", web::post().to(handlers::downloads::pause_download))

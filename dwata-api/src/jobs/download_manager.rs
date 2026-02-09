@@ -407,6 +407,32 @@ impl DownloadManager {
 
                     tracing::info!("Processing folder: {}", db_folder.imap_path);
 
+                    // Get mailbox metadata including UIDVALIDITY
+                    let mailbox_metadata = match imap_client.get_mailbox_metadata(&db_folder.imap_path) {
+                        Ok(metadata) => metadata,
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to get mailbox metadata for '{}': {}. Skipping.",
+                                db_folder.imap_path,
+                                e
+                            );
+                            return Ok(());
+                        }
+                    };
+
+                    // Check for UIDVALIDITY changes (folder was recreated/reset)
+                    if let Some(stored_uidvalidity) = db_folder.uidvalidity {
+                        if stored_uidvalidity != mailbox_metadata.uidvalidity {
+                            tracing::warn!(
+                                "UIDVALIDITY changed for folder '{}' (was {}, now {}). Folder may need re-sync.",
+                                db_folder.imap_path,
+                                stored_uidvalidity,
+                                mailbox_metadata.uidvalidity
+                            );
+                            // TODO: Reset sync state and trigger full re-sync
+                        }
+                    }
+
                     let resume_uid = db_folder.last_synced_uid;
                     let uids = match job.job_type {
                         JobType::RecentSync => {
@@ -430,18 +456,42 @@ impl DownloadManager {
                         }
                         JobType::HistoricalBackfill => {
                             let mut oldest_uid = db_folder.oldest_synced_uid;
+
+                            tracing::info!(
+                                "Historical backfill starting for folder {} (oldest_synced_uid from DB: {:?})",
+                                db_folder.imap_path,
+                                oldest_uid
+                            );
+
                             if oldest_uid.is_none() {
+                                // Check if we have any emails in the database for this folder
                                 oldest_uid = handle.block_on(emails::get_oldest_uid_for_folder(
                                     db_conn.clone(),
                                     job.credential_id,
                                     db_folder.id,
                                 ))?;
+
+                                tracing::info!(
+                                    "Oldest UID from database: {:?} for folder {}",
+                                    oldest_uid,
+                                    db_folder.imap_path
+                                );
+
                                 if let Some(uid) = oldest_uid {
                                     handle.block_on(folders::update_folder_backfill_state(
                                         db_conn.clone(),
                                         db_folder.id,
                                         uid,
                                     ))?;
+                                } else {
+                                    // No emails in database yet - start from the highest UID in IMAP
+                                    // and work backwards
+                                    tracing::info!(
+                                        "No emails in database for folder {}, will download newest historical emails first",
+                                        db_folder.imap_path
+                                    );
+                                    // Don't return early - proceed to download emails
+                                    // The search will return all UIDs, and we'll take the newest ones
                                 }
                             }
 
@@ -450,9 +500,18 @@ impl DownloadManager {
                                 _ => None,
                             };
 
-                            if before_uid.is_none() {
-                                tracing::debug!(
-                                    "No older UIDs to backfill for {}",
+                            tracing::info!(
+                                "Historical backfill for folder {}: before_uid={:?}, mailbox has {} messages",
+                                db_folder.imap_path,
+                                before_uid,
+                                mailbox_metadata.exists
+                            );
+
+                            // If before_uid is None and there are no emails in DB,
+                            // we should still try to download - search will return all emails
+                            if before_uid.is_none() && oldest_uid.is_some() {
+                                tracing::info!(
+                                    "Oldest UID is 1 or less for {}, no older emails to backfill",
                                     db_folder.imap_path
                                 );
                                 return Ok(());
@@ -496,7 +555,10 @@ impl DownloadManager {
                         db_folder.imap_path
                     );
 
-                    let mut highest_uid = db_folder.last_synced_uid;
+                    // Track UIDs based on job type:
+                    // - RecentSync: track highest_uid for forward progress
+                    // - HistoricalBackfill: track lowest_uid for backward progress
+                    let mut highest_uid: Option<u32> = None;
                     let mut lowest_uid: Option<u32> = None;
 
                     for uid in uids {
@@ -554,10 +616,14 @@ impl DownloadManager {
                                             uid,
                                             email_id
                                         );
-                                        highest_uid =
-                                            Some(highest_uid.map_or(uid, |last| last.max(uid)));
-                                        lowest_uid =
-                                            Some(lowest_uid.map_or(uid, |last| last.min(uid)));
+                                        // Track processed UIDs using helper function
+                                        let (new_highest, new_lowest) = Self::track_processed_uids(
+                                            highest_uid,
+                                            lowest_uid,
+                                            uid,
+                                        );
+                                        highest_uid = new_highest;
+                                        lowest_uid = new_lowest;
                                     }
                                     Err(e) => {
                                         tracing::error!(
@@ -592,27 +658,30 @@ impl DownloadManager {
                         }
                     }
 
-                    if let Some(uid) = highest_uid {
-                        handle.block_on(folders::update_folder_sync_state(
-                            db_conn.clone(),
-                            db_folder.id,
-                            uid,
-                            uid,
-                        ))?;
-                        tracing::info!(
-                            "Updated folder {} sync state to UID {}",
-                            db_folder.imap_path,
-                            uid
-                        );
-                    }
-
-                    if matches!(job.job_type, JobType::HistoricalBackfill) {
-                        if let Some(uid) = lowest_uid {
-                            handle.block_on(folders::update_folder_backfill_state(
-                                db_conn.clone(),
-                                db_folder.id,
-                                uid,
-                            ))?;
+                    // Update folder sync state based on job type
+                    match job.job_type {
+                        JobType::RecentSync => {
+                            // Recent sync: update forward progress (last_synced_uid)
+                            if let Some(uid) = highest_uid {
+                                handle.block_on(Self::update_recent_sync_state(
+                                    db_conn.clone(),
+                                    db_folder.id,
+                                    &db_folder.imap_path,
+                                    mailbox_metadata.uidvalidity,
+                                    uid,
+                                ))?;
+                            }
+                        }
+                        JobType::HistoricalBackfill => {
+                            // Historical backfill: update backward progress (oldest_synced_uid)
+                            if let Some(uid) = lowest_uid {
+                                handle.block_on(Self::update_backfill_state(
+                                    db_conn.clone(),
+                                    db_folder.id,
+                                    &db_folder.imap_path,
+                                    uid,
+                                ))?;
+                            }
                         }
                     }
 
@@ -709,6 +778,59 @@ impl DownloadManager {
         Err(anyhow::anyhow!("No historical backfill job found for credential {}", credential_id))
     }
 
+    pub async fn sync_all_historical_backfill(&self) -> Result<()> {
+        tracing::info!("Starting sync for all historical-backfill jobs");
+        let jobs = db::list_download_jobs(self.db_conn.clone(), None, 100).await?;
+
+        let backfill_jobs: Vec<_> = jobs.iter()
+            .filter(|j| matches!(j.job_type, JobType::HistoricalBackfill))
+            .collect();
+
+        tracing::info!(
+            "Found {} historical-backfill jobs (total jobs: {})",
+            backfill_jobs.len(),
+            jobs.len()
+        );
+
+        for job in jobs {
+            // Only sync historical-backfill jobs
+            if !matches!(job.job_type, JobType::HistoricalBackfill) {
+                continue;
+            }
+
+            // Sync jobs that are pending, completed or paused (but not failed or cancelled)
+            if job.status == DownloadJobStatus::Pending
+                || job.status == DownloadJobStatus::Completed
+                || job.status == DownloadJobStatus::Paused
+            {
+                // Check if job is already running
+                let active_jobs = self.active_jobs.lock().await;
+                let is_running = active_jobs.contains_key(&job.id);
+                drop(active_jobs);
+
+                if !is_running {
+                    tracing::info!(
+                        "Starting historical-backfill job {} (credential {}, status: {:?})",
+                        job.id,
+                        job.credential_id,
+                        job.status
+                    );
+                    if let Err(e) = self.start_job(job.id).await {
+                        tracing::error!("Failed to start historical-backfill job {} during sync: {}", job.id, e);
+                    }
+                }
+            } else {
+                tracing::debug!(
+                    "Skipping historical-backfill job {} (status: {:?})",
+                    job.id,
+                    job.status
+                );
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn restore_interrupted_jobs(&self) -> Result<()> {
         // Don't try to restore interrupted jobs - we'll rely on ensure_jobs_for_all_credentials
         // and sync_all_jobs instead. Each job tracks its state (last_synced_uid) so it will
@@ -786,8 +908,8 @@ impl DownloadManager {
             let default_config = serde_json::json!({
                 "sync_strategy": "full-sync",
                 "last_highest_uid": {},
-                "fetch_batch_size": 10,
-                "max_age_months": 12
+                "fetch_batch_size": 100,
+                "max_age_months": null  // No age limit - download all emails
             });
 
             // Create RecentSync job
@@ -843,5 +965,66 @@ impl DownloadManager {
         }
 
         Ok(())
+    }
+
+    /// Helper: Update folder sync state for recent sync jobs
+    /// Only updates last_synced_uid (forward progress)
+    async fn update_recent_sync_state(
+        db_conn: AsyncDbConnection,
+        folder_id: i64,
+        folder_path: &str,
+        uidvalidity: u32,
+        highest_uid: u32,
+    ) -> Result<()> {
+        folders::update_folder_sync_state(
+            db_conn.clone(),
+            folder_id,
+            uidvalidity,
+            highest_uid,
+        ).await?;
+
+        tracing::info!(
+            "Updated folder {} recent sync state to UID {} (UIDVALIDITY: {})",
+            folder_path,
+            highest_uid,
+            uidvalidity
+        );
+
+        Ok(())
+    }
+
+    /// Helper: Update folder sync state for historical backfill jobs
+    /// Only updates oldest_synced_uid (backward progress)
+    async fn update_backfill_state(
+        db_conn: AsyncDbConnection,
+        folder_id: i64,
+        folder_path: &str,
+        lowest_uid: u32,
+    ) -> Result<()> {
+        folders::update_folder_backfill_state(
+            db_conn.clone(),
+            folder_id,
+            lowest_uid,
+        ).await?;
+
+        tracing::info!(
+            "Updated folder {} backfill state to UID {}",
+            folder_path,
+            lowest_uid
+        );
+
+        Ok(())
+    }
+
+    /// Helper: Track UIDs processed during email download
+    /// Returns (highest_uid, lowest_uid) for the batch
+    fn track_processed_uids(
+        highest_uid: Option<u32>,
+        lowest_uid: Option<u32>,
+        current_uid: u32,
+    ) -> (Option<u32>, Option<u32>) {
+        let new_highest = Some(highest_uid.map_or(current_uid, |last| last.max(current_uid)));
+        let new_lowest = Some(lowest_uid.map_or(current_uid, |last| last.min(current_uid)));
+        (new_highest, new_lowest)
     }
 }

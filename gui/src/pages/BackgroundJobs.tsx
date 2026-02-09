@@ -100,11 +100,8 @@ export default function BackgroundJobs() {
             credential_id: Number(credentialId),
             source_type: sourceType,
           };
-          console.log(
-            "Sending request body:",
-            JSON.stringify(requestBody, null, 2),
-          );
 
+          // Jobs now auto-start after creation, no need to call /start endpoint
           const response = await fetch(getApiUrl("/api/downloads"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -120,11 +117,6 @@ export default function BackgroundJobs() {
             );
             continue;
           }
-
-          const job = await response.json();
-          await fetch(getApiUrl(`/api/downloads/${job.id}/start`), {
-            method: "POST",
-          });
         }
         setSelectedDownloads(new Set());
         await fetchDownloadJobs();
@@ -143,6 +135,32 @@ export default function BackgroundJobs() {
       }
     } catch (error) {
       console.error("Failed to start jobs:", error);
+    } finally {
+      setStartFormLoading(false);
+    }
+  };
+
+  const syncAllAccounts = async () => {
+    try {
+      setStartFormLoading(true);
+      const response = await fetch(getApiUrl("/api/downloads/sync"), {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          "Failed to trigger sync:",
+          response.status,
+          errorText,
+        );
+      } else {
+        const result = await response.json();
+        console.log("Sync triggered:", result.message);
+      }
+      await fetchDownloadJobs();
+    } catch (error) {
+      console.error("Failed to sync all accounts:", error);
     } finally {
       setStartFormLoading(false);
     }
@@ -252,6 +270,7 @@ export default function BackgroundJobs() {
             selectedDownloads={selectedDownloads()}
             onSelectionChange={setSelectedDownloads}
             onStart={startSelectedJobs}
+            onSyncAll={syncAllAccounts}
             loading={startFormLoading()}
             getSourceTypeForCredential={getSourceTypeForCredential}
           />
@@ -402,6 +421,7 @@ function StartDownloadsForm(props: {
   selectedDownloads: Set<string>;
   onSelectionChange: (selected: Set<string>) => void;
   onStart: () => void;
+  onSyncAll: () => void;
   loading: boolean;
   getSourceTypeForCredential: (
     credential: CredentialMetadata,
@@ -504,7 +524,18 @@ function StartDownloadsForm(props: {
             </table>
           </div>
 
-          <div class="card-actions justify-end mt-4">
+          <div class="card-actions justify-between mt-4">
+            <button
+              class="btn btn-secondary"
+              onClick={props.onSyncAll}
+              disabled={props.loading}
+            >
+              {props.loading ? (
+                <span class="loading loading-spinner loading-sm"></span>
+              ) : (
+                "Sync All Accounts"
+              )}
+            </button>
             <button
               class="btn btn-primary"
               onClick={props.onStart}
