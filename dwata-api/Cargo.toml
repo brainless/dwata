@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Dwata API server - Personal data management system"
 
 [dependencies]
 actix-web.workspace = true
@@ -43,3 +44,8 @@ r2d2_sqlite = "0.25"
 mime_guess = "2.0"
 rust-embed = "8.5"
 webbrowser = "0.8.15"
+
+[package.metadata.generate-rpm]
+assets = [
+  { source = "target/release/dwata-api", dest = "/usr/bin/dwata-api", mode = "755" },
+]

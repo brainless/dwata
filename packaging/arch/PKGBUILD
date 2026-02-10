@@ -1,0 +1,42 @@
+# Maintainer: Dwata Team <https://github.com/brainless/dwata>
+pkgname=dwata-api
+pkgver=0.3.1
+pkgrel=1
+pkgdesc="Dwata API server - Personal data management system"
+arch=('x86_64')
+url="https://github.com/brainless/dwata"
+license=('MIT')
+depends=()
+makedepends=('rust' 'cargo' 'git' 'nodejs' 'npm')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/brainless/dwata/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')  # Update this with actual checksum after first release
+
+prepare() {
+  cd "$srcdir/dwata-$pkgver"
+
+  # Checkout nocodo dependency
+  git clone --depth 1 https://github.com/brainless/nocodo.git "$srcdir/nocodo"
+}
+
+build() {
+  cd "$srcdir/dwata-$pkgver"
+
+  # Build GUI
+  cd gui
+  npm install
+  npm run build
+  cd ..
+
+  # Build API with bundled GUI
+  cargo build --release --locked -p dwata-api --target-dir target
+}
+
+package() {
+  cd "$srcdir/dwata-$pkgver"
+
+  # Install binary
+  install -Dm755 "target/release/$pkgname" "$pkgdir/usr/bin/$pkgname"
+
+  # Install license
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
