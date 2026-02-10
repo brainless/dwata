@@ -144,7 +144,7 @@ export type SettingsResponse = { config_file_path: string, ai_provider_api_keys:
 /**
  * Request to update AI provider API keys
  */
-export type UpdateAiProviderApiKeysRequest = { gemini_api_key: string | null, claude_api_key: string | null, };
+export type UpdateAiProviderApiKeysRequest = { gemini_api_key: string | null, };
 
 
 /**

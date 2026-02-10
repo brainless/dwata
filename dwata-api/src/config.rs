@@ -37,7 +37,6 @@ impl Default for ApiConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AiProviderApiKeysConfig {
     pub gemini_api_key: Option<String>,
-    pub claude_api_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -84,7 +83,8 @@ impl Default for GoogleOAuthConfig {
 
 impl GoogleOAuthConfig {
     pub fn apply_compiled_defaults(&mut self) {
-        if self.client_id.trim().is_empty() && !oauth_defaults::DEFAULT_GOOGLE_CLIENT_ID.is_empty() {
+        if self.client_id.trim().is_empty() && !oauth_defaults::DEFAULT_GOOGLE_CLIENT_ID.is_empty()
+        {
             self.client_id = oauth_defaults::DEFAULT_GOOGLE_CLIENT_ID.to_string();
         }
 
@@ -114,7 +114,6 @@ impl ApiConfig {
             let default_config = r#"
 [ai_provider_api_keys]
 # gemini_api_key = "your-gemini-key"
-# claude_api_key = "your-claude-key"
 
 [database]
 # path = "/absolute/path/to/db.sqlite"

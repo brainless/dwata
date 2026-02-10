@@ -31,7 +31,6 @@ pub struct SettingsResponse {
 #[derive(Debug, Serialize, Deserialize, TS)]
 pub struct UpdateAiProviderApiKeysRequest {
     pub gemini_api_key: Option<String>,
-    pub claude_api_key: Option<String>,
 }
 
 /// Request to update OAuth client apps

@@ -5,7 +5,6 @@ import type { AiProviderApiKeyConfig, SettingsResponse, UpdateAiProviderApiKeysR
 export default function SettingsApiKeys() {
   const [apiKeys, setApiKeys] = createSignal<AiProviderApiKeyConfig[]>([]);
   const [geminiKey, setGeminiKey] = createSignal("");
-  const [claudeKey, setClaudeKey] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(false);
   const [message, setMessage] = createSignal("");
 
@@ -31,7 +30,6 @@ export default function SettingsApiKeys() {
     try {
       const requestBody: UpdateAiProviderApiKeysRequest = {
         gemini_api_key: geminiKey() || null,
-        claude_api_key: claudeKey() || null,
       };
 
       const response = await fetch(getApiUrl("/api/settings/ai-provider-api-keys"), {
@@ -44,7 +42,6 @@ export default function SettingsApiKeys() {
       if (response.ok) {
         setMessage("API keys saved successfully!");
         setGeminiKey("");
-        setClaudeKey("");
         await fetchSettings();
       } else {
         setMessage("Failed to save API keys.");
@@ -58,7 +55,6 @@ export default function SettingsApiKeys() {
   };
 
   const getGeminiKey = () => apiKeys().find((k) => k.name === "gemini");
-  const getClaudeKey = () => apiKeys().find((k) => k.name === "claude");
 
   return (
     <div class="card bg-base-100 shadow-xl">
@@ -87,30 +83,6 @@ export default function SettingsApiKeys() {
               class="input input-bordered w-full"
               value={geminiKey()}
               onInput={(e) => setGeminiKey(e.target.value)}
-            />
-          </div>
-
-          {/* Claude API Key */}
-          <div class="form-control w-full max-w-md">
-            <label class="label">
-              <span class="label-text">Claude API Key</span>
-              <span class="label-text-alt">
-                {getClaudeKey()?.is_configured
-                  ? "Configured"
-                  : "Not configured"}
-              </span>
-            </label>
-            {getClaudeKey()?.is_configured && getClaudeKey()?.key && (
-              <div class="text-sm text-gray-500 mb-2">
-                Current: {getClaudeKey()?.key}
-              </div>
-            )}
-            <input
-              type="password"
-              placeholder="Enter your Claude API key"
-              class="input input-bordered w-full"
-              value={claudeKey()}
-              onInput={(e) => setClaudeKey(e.target.value)}
             />
           </div>
         </div>
