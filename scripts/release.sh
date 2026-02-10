@@ -46,33 +46,53 @@ if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
   exit 1
 fi
 
-read -r CURRENT_API_VERSION < <(python3 - <<'PY'
+FALLBACK_VERSION=""
+if TAG="$(git tag --list "v*" --sort=-v:refname | head -n1)"; then
+  if [[ -n "$TAG" ]]; then
+    FALLBACK_VERSION="${TAG#v}"
+  fi
+fi
+
+read -r CURRENT_API_VERSION < <(FALLBACK_VERSION="$FALLBACK_VERSION" python3 - <<'PY'
 import re
 from pathlib import Path
+import os
 text = Path("Cargo.toml").read_text()
 m = re.search(r'^\[workspace\.package\][\s\S]*?^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
 if not m:
   raise SystemExit("Failed to read workspace version from Cargo.toml")
-print(m.group(1))
+version = m.group(1)
+if re.match(r'^\d+\.\d+\.\d+$', version):
+  print(version)
+  raise SystemExit(0)
+fallback = os.environ.get("FALLBACK_VERSION", "")
+if fallback:
+  print(fallback)
+  raise SystemExit(0)
+raise SystemExit("Failed to resolve current version (Cargo.toml uses template and no tags found)")
 PY
 )
 
-read -r CURRENT_GUI_VERSION < <(python3 - <<'PY'
+read -r CURRENT_GUI_VERSION < <(FALLBACK_VERSION="$CURRENT_API_VERSION" python3 - <<'PY'
 import json
 from pathlib import Path
+import os
 data = json.loads(Path("gui/package.json").read_text())
-print(data.get("version", "0.0.0"))
+version = data.get("version", "0.0.0")
+if version.count(".") == 2 and all(part.isdigit() for part in version.split(".")):
+  print(version)
+  raise SystemExit(0)
+fallback = os.environ.get("FALLBACK_VERSION", "")
+if fallback:
+  print(fallback)
+  raise SystemExit(0)
+raise SystemExit("Failed to resolve current GUI version (package.json uses template and no fallback found)")
 PY
 )
 
-read -r DEFAULT_VERSION < <(python3 - <<'PY'
-import re
-from pathlib import Path
-text = Path("Cargo.toml").read_text()
-m = re.search(r'^\[workspace\.package\][\s\S]*?^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
-if not m:
-  raise SystemExit("Failed to read workspace version from Cargo.toml")
-parts = m.group(1).split(".")
+read -r DEFAULT_VERSION < <(CURRENT_VERSION="$CURRENT_API_VERSION" python3 - <<'PY'
+import os
+parts = os.environ["CURRENT_VERSION"].split(".")
 if len(parts) < 3:
   raise SystemExit("Version must be in X.Y.Z form")
 major, minor, patch = parts[0], parts[1], parts[2]
