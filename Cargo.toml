@@ -27,7 +27,7 @@ clap = { version = "4.0", features = ["derive"] }
 # nocodo-tools = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
 
 [workspace.package]
-version = "0.3.5"
+version = "0.3.6"
 edition = "2021"
 authors = ["dwata"]
 license = "MIT"
