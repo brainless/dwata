@@ -144,7 +144,6 @@ Save a validated pattern to the database.
 Parameters:
 - name: Short name for the pattern (e.g., "stripe_payment_confirmation")
 - regex_pattern: The validated regex
-- description: What this pattern matches
 - document_type: Type of document (payment-confirmation, invoice, bill, receipt, etc.)
 - status: Transaction status (paid, pending, overdue, etc.)
 - amount_group: Which capture group has the amount

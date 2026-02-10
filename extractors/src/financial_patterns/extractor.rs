@@ -149,7 +149,7 @@ impl FinancialPatternExtractor {
             data_source_type: DataSourceType::Unknown,
             data_source_id: String::new(),
             document_type: self.parse_document_type(&pattern.document_type),
-            description: captures.get(0)?.as_str().to_string(),
+            description: None,
             amount,
             currency,
             transaction_date: transaction_date

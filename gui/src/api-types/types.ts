@@ -602,7 +602,7 @@ import type { TransactionStatus } from "./TransactionStatus";
 /**
  * Financial transaction extracted from documents
  */
-export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, description: string, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, vendor: string | null, source_vendor_id: bigint | null, destination_vendor_id: bigint | null, status: TransactionStatus, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
+export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, description: string | null, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, vendor: string | null, source_vendor_id: bigint | null, destination_vendor_id: bigint | null, status: TransactionStatus, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
 
 
 export type TransactionCategory = "income" | "expense" | "investment" | "tax" | "utility" | "subscription" | "entertainment" | "travel" | "healthcare" | "education" | "other";

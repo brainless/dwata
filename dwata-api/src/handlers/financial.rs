@@ -18,15 +18,67 @@ use std::collections::HashMap;
 use tracing::{error, info};
 use crate::financial_keywords::{DEFAULT_FINANCIAL_KEYWORDS, build_fts_query};
 
+#[derive(Deserialize)]
+pub struct TransactionFilters {
+    #[serde(default)]
+    pub source_vendor_id: Option<i64>,
+    #[serde(default)]
+    pub destination_vendor_id: Option<i64>,
+    #[serde(default)]
+    pub document_type: Option<String>,
+    #[serde(default)]
+    pub start_date: Option<String>,
+    #[serde(default)]
+    pub end_date: Option<String>,
+    #[serde(default)]
+    pub min_amount: Option<f64>,
+    #[serde(default)]
+    pub max_amount: Option<f64>,
+    #[serde(default = "default_page")]
+    pub page: usize,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+}
+
+fn default_page() -> usize {
+    1
+}
+
+fn default_limit() -> usize {
+    500
+}
+
 pub async fn list_transactions(
     db: web::Data<Arc<Database>>,
+    query: web::Query<TransactionFilters>,
 ) -> ActixResult<HttpResponse> {
-    let transactions = db::list_financial_transactions(db.async_connection.clone(), 100)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let offset = (query.page.saturating_sub(1)) * query.limit;
+
+    let (transactions, total_count) = db::list_financial_transactions_filtered(
+        db.async_connection.clone(),
+        query.source_vendor_id,
+        query.destination_vendor_id,
+        query.document_type.as_deref(),
+        query.start_date.as_deref(),
+        query.end_date.as_deref(),
+        query.min_amount,
+        query.max_amount,
+        query.limit,
+        offset,
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    let total_pages = (total_count as f64 / query.limit as f64).ceil() as usize;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "transactions": transactions
+        "transactions": transactions,
+        "pagination": {
+            "page": query.page,
+            "limit": query.limit,
+            "total_count": total_count,
+            "total_pages": total_pages,
+        }
     })))
 }
 

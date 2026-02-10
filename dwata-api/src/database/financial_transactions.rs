@@ -79,17 +79,16 @@ pub async fn insert_financial_transaction(
 
     let id: i64 = conn.query_row(
         "INSERT OR IGNORE INTO financial_transactions
-         (data_source_type, data_source_id, extraction_job_id, document_type, description, amount, currency,
+         (data_source_type, data_source_id, extraction_job_id, document_type, amount, currency,
           transaction_date, category, vendor, source_vendor_id, destination_vendor_id, status, source_file, confidence,
           requires_review, extracted_at, created_at, updated_at, notes, transaction_reference)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id",
         params![
             data_source_type,
             &transaction.data_source_id,
             extraction_job_id,
             document_type,
-            &transaction.description,
             transaction.amount,
             &transaction.currency,
             &transaction.transaction_date,
@@ -142,22 +141,97 @@ pub async fn insert_financial_transaction(
     Ok(id)
 }
 
-pub async fn list_financial_transactions(
+pub async fn list_financial_transactions_filtered(
     conn: AsyncDbConnection,
+    source_vendor_id: Option<i64>,
+    destination_vendor_id: Option<i64>,
+    document_type: Option<&str>,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+    min_amount: Option<f64>,
+    max_amount: Option<f64>,
     limit: usize,
-) -> Result<Vec<FinancialTransaction>> {
+    offset: usize,
+) -> Result<(Vec<FinancialTransaction>, usize)> {
     let conn = conn.lock().await;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, data_source_type, data_source_id, document_type, description, amount, currency,
+    // Build WHERE clauses dynamically
+    let mut where_clauses = Vec::new();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if let Some(vendor_id) = source_vendor_id {
+        where_clauses.push("source_vendor_id = ?");
+        params.push(Box::new(vendor_id));
+    }
+
+    if let Some(vendor_id) = destination_vendor_id {
+        where_clauses.push("destination_vendor_id = ?");
+        params.push(Box::new(vendor_id));
+    }
+
+    if let Some(doc_type) = document_type {
+        where_clauses.push("document_type = ?");
+        params.push(Box::new(doc_type.to_string()));
+    }
+
+    if let Some(start) = start_date {
+        where_clauses.push("transaction_date >= ?");
+        params.push(Box::new(start.to_string()));
+    }
+
+    if let Some(end) = end_date {
+        where_clauses.push("transaction_date <= ?");
+        params.push(Box::new(end.to_string()));
+    }
+
+    if let Some(min) = min_amount {
+        where_clauses.push("amount >= ?");
+        params.push(Box::new(min));
+    }
+
+    if let Some(max) = max_amount {
+        where_clauses.push("amount <= ?");
+        params.push(Box::new(max));
+    }
+
+    let where_clause = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    // Get total count
+    let count_query = format!(
+        "SELECT COUNT(*) FROM financial_transactions {}",
+        where_clause
+    );
+
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+    let total_count: usize = conn.query_row(
+        &count_query,
+        rusqlite::params_from_iter(param_refs.iter()),
+        |row| row.get(0),
+    )?;
+
+    // Get paginated results
+    let query = format!(
+        "SELECT id, data_source_type, data_source_id, document_type, amount, currency,
                 transaction_date, category, vendor, source_vendor_id, destination_vendor_id, status, source_file,
                 extracted_at, notes, transaction_reference
          FROM financial_transactions
+         {}
          ORDER BY transaction_date DESC
-         LIMIT ?",
-    )?;
+         LIMIT ? OFFSET ?",
+        where_clause
+    );
 
-    let rows = stmt.query_map([limit as i64], |row| {
+    // Add limit and offset to params
+    params.push(Box::new(limit as i64));
+    params.push(Box::new(offset as i64));
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+
+    let mut stmt = conn.prepare(&query)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(param_refs.iter()), |row| {
         let data_source_type_str: String = row.get(1)?;
         let document_type_str: String = row.get(3)?;
         let document_type = match document_type_str.as_str() {
@@ -170,7 +244,7 @@ pub async fn list_financial_transactions(
             _ => FinancialDocumentType::Bill,
         };
 
-        let status_str: String = row.get(12)?;
+        let status_str: String = row.get(11)?;
         let status = match status_str.as_str() {
             "paid" => TransactionStatus::Paid,
             "pending" => TransactionStatus::Pending,
@@ -180,7 +254,7 @@ pub async fn list_financial_transactions(
             _ => TransactionStatus::Pending,
         };
 
-        let category_str: Option<String> = row.get(8)?;
+        let category_str: Option<String> = row.get(7)?;
         let category = category_str.map(|c| match c.as_str() {
             "income" => TransactionCategory::Income,
             "expense" => TransactionCategory::Expense,
@@ -200,19 +274,19 @@ pub async fn list_financial_transactions(
             data_source_type: data_source_type_from_str(&data_source_type_str),
             data_source_id: row.get(2)?,
             document_type,
-            description: row.get(4)?,
-            amount: row.get(5)?,
-            currency: row.get(6)?,
-            transaction_date: row.get(7)?,
+            description: None,
+            amount: row.get(4)?,
+            currency: row.get(5)?,
+            transaction_date: row.get(6)?,
             category,
-            vendor: row.get(9)?,
-            source_vendor_id: row.get(10)?,
-            destination_vendor_id: row.get(11)?,
+            vendor: row.get(8)?,
+            source_vendor_id: row.get(9)?,
+            destination_vendor_id: row.get(10)?,
             status,
-            source_file: row.get(13)?,
-            extracted_at: row.get(14)?,
-            notes: row.get(15)?,
-            transaction_reference: row.get(16)?,
+            source_file: row.get(12)?,
+            extracted_at: row.get(13)?,
+            notes: row.get(14)?,
+            transaction_reference: row.get(15)?,
         })
     })?;
 
@@ -221,6 +295,26 @@ pub async fn list_financial_transactions(
         transactions.push(row_result?);
     }
 
+    Ok((transactions, total_count))
+}
+
+pub async fn list_financial_transactions(
+    conn: AsyncDbConnection,
+    limit: usize,
+) -> Result<Vec<FinancialTransaction>> {
+    let (transactions, _) = list_financial_transactions_filtered(
+        conn,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        limit,
+        0,
+    )
+    .await?;
     Ok(transactions)
 }
 

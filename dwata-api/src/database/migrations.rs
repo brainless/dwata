@@ -148,6 +148,66 @@ fn migrate_financial_schema(conn: &Connection) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn make_transaction_description_nullable(conn: &mut Connection) -> anyhow::Result<()> {
+    if table_sql_contains(conn, "financial_transactions", "description VARCHAR NOT NULL")? {
+        tracing::info!("Making financial_transactions.description nullable");
+
+        let tx = conn.transaction()?;
+
+        // SQLite requires table rebuild to change column constraints
+        tx.execute("ALTER TABLE financial_transactions RENAME TO financial_transactions_old", [])?;
+
+        // Create new table with nullable description
+        tx.execute(
+            "CREATE TABLE financial_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                data_source_type VARCHAR NOT NULL,
+                data_source_id VARCHAR NOT NULL,
+                extraction_job_id INTEGER,
+                document_type VARCHAR NOT NULL,
+                description VARCHAR,
+                amount DOUBLE NOT NULL,
+                currency VARCHAR NOT NULL DEFAULT 'USD',
+                transaction_date VARCHAR NOT NULL,
+                category VARCHAR,
+                vendor VARCHAR,
+                source_vendor_id INTEGER,
+                destination_vendor_id INTEGER,
+                status VARCHAR NOT NULL,
+                source_file VARCHAR,
+                confidence DOUBLE,
+                requires_review BOOLEAN DEFAULT false,
+                extracted_at BIGINT NOT NULL,
+                created_at BIGINT NOT NULL,
+                updated_at BIGINT NOT NULL,
+                notes VARCHAR,
+                transaction_reference VARCHAR,
+                UNIQUE(data_source_type, data_source_id, transaction_reference),
+                UNIQUE(data_source_type, data_source_id, amount, vendor, transaction_date, document_type),
+                FOREIGN KEY (source_vendor_id) REFERENCES transaction_vendors (id),
+                FOREIGN KEY (destination_vendor_id) REFERENCES transaction_vendors (id)
+            )",
+            [],
+        )?;
+
+        // Copy all data
+        tx.execute("INSERT INTO financial_transactions SELECT * FROM financial_transactions_old", [])?;
+        tx.execute("DROP TABLE financial_transactions_old", [])?;
+
+        // Recreate indexes
+        tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_data_source ON financial_transactions(data_source_type, data_source_id)", [])?;
+        tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_date ON financial_transactions(transaction_date DESC)", [])?;
+        tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_vendor ON financial_transactions(vendor)", [])?;
+        tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_source_vendor ON financial_transactions(source_vendor_id)", [])?;
+        tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_destination_vendor ON financial_transactions(destination_vendor_id)", [])?;
+        tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_reference ON financial_transactions(transaction_reference)", [])?;
+
+        tx.commit()?;
+        tracing::info!("Successfully made description nullable");
+    }
+    Ok(())
+}
+
 /// Run all database migrations
 #[allow(dead_code)]
 pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
@@ -729,6 +789,7 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
     conn.execute("CREATE INDEX IF NOT EXISTS idx_linkedin_connections_date ON linkedin_connections(connected_date DESC)", [])?;
 
     migrate_financial_schema(conn)?;
+    make_transaction_description_nullable(&mut *conn)?;
 
     // Create transaction_vendors table
     conn.execute(
@@ -765,7 +826,7 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
 
             -- Transaction data
             document_type VARCHAR NOT NULL,
-            description VARCHAR NOT NULL,
+            description VARCHAR,
             amount DOUBLE NOT NULL,
             currency VARCHAR NOT NULL DEFAULT 'USD',
             transaction_date VARCHAR NOT NULL,

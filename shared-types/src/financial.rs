@@ -38,7 +38,7 @@ pub struct FinancialTransaction {
 
     // Transaction data
     pub document_type: FinancialDocumentType,
-    pub description: String,
+    pub description: Option<String>,
     pub amount: f64,
     pub currency: String,
     pub transaction_date: String,

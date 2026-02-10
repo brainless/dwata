@@ -32,6 +32,13 @@ export default function FinancialHealth() {
   const [isExtracting, setIsExtracting] = createSignal(false);
   const [credentials, setCredentials] = createSignal<any[]>([]);
 
+  // Filter state
+  const [startDate, setStartDate] = createSignal("");
+  const [endDate, setEndDate] = createSignal("");
+  const [currentPage, setCurrentPage] = createSignal(1);
+  const [totalPages, setTotalPages] = createSignal(1);
+  const [totalCount, setTotalCount] = createSignal(0);
+
   const formatCurrency = (amount: number, currency?: string) => {
     const code = (currency || "USD").toUpperCase();
     try {
@@ -50,7 +57,7 @@ export default function FinancialHealth() {
     return `${sign}${formatted}`;
   };
 
-  const fetchFinancialData = async () => {
+  const fetchFinancialData = async (page = 1) => {
     setLoading(true);
     setError(null);
 
@@ -59,13 +66,23 @@ export default function FinancialHealth() {
       const start = new Date(now.getFullYear(), now.getMonth(), 1);
       const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
+      // Build transactions query params
+      const transactionParams = new URLSearchParams();
+      transactionParams.set("page", page.toString());
+      if (startDate()) {
+        transactionParams.set("start_date", startDate());
+      }
+      if (endDate()) {
+        transactionParams.set("end_date", endDate());
+      }
+
       const [summaryResponse, transactionsResponse] = await Promise.all([
         fetch(
           getApiUrl(
             `/api/financial/summary?start_date=${start.toISOString().split("T")[0]}&end_date=${end.toISOString().split("T")[0]}`,
           ),
         ),
-        fetch(getApiUrl("/api/financial/transactions")),
+        fetch(getApiUrl(`/api/financial/transactions?${transactionParams}`)),
       ]);
 
       if (!summaryResponse.ok) {
@@ -83,6 +100,12 @@ export default function FinancialHealth() {
 
       setSummary(summaryData);
       setTransactions(transactionsData.transactions || []);
+
+      if (transactionsData.pagination) {
+        setCurrentPage(transactionsData.pagination.page);
+        setTotalPages(transactionsData.pagination.total_pages);
+        setTotalCount(transactionsData.pagination.total_count);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to fetch financial data",
@@ -91,6 +114,18 @@ export default function FinancialHealth() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyFilters = () => {
+    setCurrentPage(1);
+    fetchFinancialData(1);
+  };
+
+  const clearFilters = () => {
+    setStartDate("");
+    setEndDate("");
+    setCurrentPage(1);
+    fetchFinancialData(1);
   };
 
   const fetchCredentials = async () => {
@@ -331,11 +366,61 @@ export default function FinancialHealth() {
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {/* Recent Transactions */}
             <div class="lg:col-span-2">
+              {/* Filter Bar */}
+              <div class="bg-base-100 rounded-lg p-4 mb-4 shadow-sm border border-base-300">
+                <div class="flex flex-wrap gap-3 items-end">
+                  {/* Date Range */}
+                  <div class="form-control flex-1 min-w-[140px]">
+                    <label class="label">
+                      <span class="label-text text-xs font-medium">Start Date</span>
+                    </label>
+                    <input
+                      type="date"
+                      class="input input-sm input-bordered w-full"
+                      value={startDate()}
+                      onInput={(e) => setStartDate(e.currentTarget.value)}
+                    />
+                  </div>
+
+                  <div class="form-control flex-1 min-w-[140px]">
+                    <label class="label">
+                      <span class="label-text text-xs font-medium">End Date</span>
+                    </label>
+                    <input
+                      type="date"
+                      class="input input-sm input-bordered w-full"
+                      value={endDate()}
+                      onInput={(e) => setEndDate(e.currentTarget.value)}
+                    />
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div class="flex gap-2">
+                    <button
+                      class="btn btn-sm btn-primary"
+                      onClick={applyFilters}
+                      disabled={loading()}
+                    >
+                      Apply
+                    </button>
+                    <button
+                      class="btn btn-sm btn-ghost"
+                      onClick={clearFilters}
+                      disabled={loading() || (!startDate() && !endDate())}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div class="card bg-base-100 shadow-sm border border-base-300">
                 <div class="card-body">
                   <div class="flex items-center justify-between mb-4">
                     <h2 class="card-title">Recent Transactions</h2>
-                    <button class="btn btn-ghost btn-sm">View All</button>
+                    <div class="text-sm text-base-content/60">
+                      {totalCount()} total transactions
+                    </div>
                   </div>
 
                   <Show
@@ -351,8 +436,7 @@ export default function FinancialHealth() {
                         <thead>
                           <tr>
                             <th>Date</th>
-                            <th>Description</th>
-                            <th>Category</th>
+                            <th>Transaction</th>
                             <th>Amount</th>
                             <th>Status</th>
                           </tr>
@@ -375,20 +459,13 @@ export default function FinancialHealth() {
                                       <CategoryIcon class="w-4 h-4 flex-shrink-0" />
                                       <div>
                                         <div class="font-medium text-sm">
-                                          {transaction.description}
+                                          {transaction.vendor || 'Unknown Vendor'}
                                         </div>
-                                        {transaction.vendor && (
-                                          <div class="text-xs text-base-content/60">
-                                            {transaction.vendor}
-                                          </div>
-                                        )}
+                                        <div class="text-xs text-base-content/60 capitalize">
+                                          {transaction.document_type.replace(/-/g, ' ')}
+                                        </div>
                                       </div>
                                     </div>
-                                  </td>
-                                  <td>
-                                    <span class="badge badge-sm badge-outline">
-                                      {transaction.category}
-                                    </span>
                                   </td>
                                   <td
                                     classList={{
@@ -416,6 +493,34 @@ export default function FinancialHealth() {
                         </tbody>
                       </table>
                     </div>
+
+                    {/* Pagination */}
+                    <Show when={totalPages() > 1}>
+                      <div class="flex items-center justify-between mt-4 pt-4 border-t border-base-300">
+                        <div class="text-sm text-base-content/60">
+                          Page {currentPage()} of {totalPages()}
+                        </div>
+                        <div class="join">
+                          <button
+                            class="join-item btn btn-sm"
+                            disabled={currentPage() === 1 || loading()}
+                            onClick={() => fetchFinancialData(currentPage() - 1)}
+                          >
+                            «
+                          </button>
+                          <button class="join-item btn btn-sm btn-disabled">
+                            Page {currentPage()}
+                          </button>
+                          <button
+                            class="join-item btn btn-sm"
+                            disabled={currentPage() === totalPages() || loading()}
+                            onClick={() => fetchFinancialData(currentPage() + 1)}
+                          >
+                            »
+                          </button>
+                        </div>
+                      </div>
+                    </Show>
                   </Show>
                 </div>
               </div>
@@ -456,7 +561,11 @@ export default function FinancialHealth() {
                             </div>
                             <div class="flex-1 min-w-0">
                               <div class="font-medium text-sm">
-                                {bill.description}
+                                {bill.vendor || 'Unknown Vendor'}
+                                {bill.vendor && ' - '}
+                                <span class="text-xs text-base-content/60 capitalize">
+                                  {bill.document_type?.replace(/-/g, ' ')}
+                                </span>
                               </div>
                               <div class="text-xs text-base-content/60 flex items-center gap-1 mt-1">
                                 <HiOutlineCalendar class="w-3 h-3" />

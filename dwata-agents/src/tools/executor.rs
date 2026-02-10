@@ -61,7 +61,7 @@ impl DwataToolExecutor {
                     data_source_type: DataSourceType::Email,
                     data_source_id: "test".to_string(),
                     document_type: FinancialDocumentType::Receipt,
-                    description: caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string(),
+                    description: None,
                     amount,
                     currency: "USD".to_string(),
                     transaction_date: transaction_date.unwrap_or_else(|| {
@@ -93,15 +93,14 @@ impl DwataToolExecutor {
 
         conn.execute(
             "INSERT INTO financial_patterns
-             (name, regex_pattern, description, document_type, status,
+             (name, regex_pattern, document_type, status,
               amount_group, vendor_group, source_vendor_group, destination_vendor_group,
               date_group, reference_group, is_default, is_active,
               match_count, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, true, 0, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, true, 0, ?, ?)",
             rusqlite::params![
                 params.name,
                 params.regex_pattern,
-                params.description,
                 params.document_type,
                 params.status,
                 params.amount_group as i64,

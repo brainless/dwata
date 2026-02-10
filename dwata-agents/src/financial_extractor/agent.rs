@@ -192,7 +192,7 @@ impl FinancialExtractorAgent {
                                 successful_test = true;
                                 last_test_params = Some(params);
                                 let save_hint = format!(
-                                    "Test succeeded. Now call save_pattern using the same regex and group indices. Suggested defaults: name=cerebras_receipt, description=Receipt from vendor with amount and paid date, document_type=receipt, status=paid."
+                                    "Test succeeded. Now call save_pattern using the same regex and group indices. Suggested defaults: name=cerebras_receipt, document_type=receipt, status=paid."
                                 );
                                 self.storage
                                     .create_message(Message {
@@ -243,7 +243,6 @@ impl FinancialExtractorAgent {
                             let auto_params = SavePatternParams {
                                 name: fallback_name,
                                 regex_pattern: params.regex_pattern,
-                                description: "Auto-saved pattern from successful test".to_string(),
                                 document_type: "receipt".to_string(),
                                 status: "paid".to_string(),
                                 amount_group: params.amount_group,

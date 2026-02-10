@@ -71,11 +71,7 @@ impl FinancialPattern {
             data_source_type: DataSourceType::Unknown,
             data_source_id: String::new(),
             document_type: self.transaction_type,
-            description: format!(
-                "{} from {}",
-                self.name,
-                vendor.as_ref().unwrap_or(&"unknown".to_string())
-            ),
+            description: None,
             amount,
             currency,
             transaction_date: transaction_date
@@ -110,7 +106,7 @@ pub(crate) fn normalize_currency(raw: &str) -> Option<String> {
         "EUR" | "€" => "EUR",
         "GBP" | "£" => "GBP",
         "JPY" | "¥" | "JP¥" => "JPY",
-        "INR" | "₹" => "INR",
+        "INR" | "₹" | "RS" | "RS." => "INR",
         "AUD" | "A$" => "AUD",
         "CAD" | "C$" => "CAD",
         "CHF" => "CHF",

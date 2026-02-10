@@ -19,7 +19,6 @@ pub struct TestPatternParams {
 pub struct SavePatternParams {
     pub name: String,
     pub regex_pattern: String,
-    pub description: String,
     pub document_type: String,
     pub status: String,
     pub amount_group: usize,
