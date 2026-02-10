@@ -49,9 +49,14 @@ webbrowser = "0.8.15"
 default = []
 vendored-openssl = ["native-tls/vendored"]
 
+[package.metadata.deb]
+assets = [
+  ["target/release/dwata", "usr/bin/", "755"],
+]
+
 [package.metadata.generate-rpm]
 assets = [
-  { source = "target/release/dwata-api", dest = "/usr/bin/dwata-api", mode = "755" },
+  { source = "target/release/dwata", dest = "/usr/bin/dwata", mode = "755" },
 ]
 
 [package.metadata.bundle]

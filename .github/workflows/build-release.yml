@@ -41,6 +41,15 @@ jobs:
           DWATA_DEFAULT_GOOGLE_CLIENT_SECRET: ${{ secrets.DWATA_GOOGLE_CLIENT_SECRET }}
         run: ./scripts/build-production.sh
 
+      - name: Rename binary for release
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            mv target/release/dwata-api.exe target/release/dwata.exe
+          else
+            mv target/release/dwata-api target/release/dwata
+          fi
+
       - name: Build static Linux binary (musl)
         if: startsWith(matrix.os, 'ubuntu')
         shell: bash
@@ -49,6 +58,7 @@ jobs:
           sudo apt-get install -y musl-tools musl-dev
           rustup target add x86_64-unknown-linux-musl
           cargo build --release --target x86_64-unknown-linux-musl -p dwata-api --features vendored-openssl
+          mv target/x86_64-unknown-linux-musl/release/dwata-api target/x86_64-unknown-linux-musl/release/dwata
 
       - name: Install Linux packaging tools
         if: startsWith(matrix.os, 'ubuntu')
@@ -63,20 +73,20 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          BIN="target/release/dwata-api"
-          MUSL_BIN="target/x86_64-unknown-linux-musl/release/dwata-api"
+          BIN="target/release/dwata"
+          MUSL_BIN="target/x86_64-unknown-linux-musl/release/dwata"
 
           # Regular dynamically linked binary
-          tar -czf "dwata-api-${VERSION}-linux-x64.tar.gz" "$BIN"
+          tar -czf "dwata-${VERSION}-linux-x64.tar.gz" "$BIN"
 
           # Static musl binary (universal, works on any Linux distro)
-          tar -czf "dwata-api-${VERSION}-linux-x64-static.tar.gz" "$MUSL_BIN"
+          tar -czf "dwata-${VERSION}-linux-x64-static.tar.gz" "$MUSL_BIN"
 
           # Debian package
-          cargo deb -p dwata-api --no-build --output "dwata-api-${VERSION}-linux-x64.deb"
+          cargo deb -p dwata-api --no-build --output "dwata-${VERSION}-linux-x64.deb"
 
           # RPM package
-          cargo generate-rpm -p dwata-api --output "dwata-api-${VERSION}-linux-x64.rpm"
+          cargo generate-rpm -p dwata-api --output "dwata-${VERSION}-linux-x64.rpm"
 
       - name: Install macOS packaging tools
         if: startsWith(matrix.os, 'macos')
@@ -89,10 +99,10 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          BIN="target/release/dwata-api"
+          BIN="target/release/dwata"
 
           # Create tar.gz (existing)
-          tar -czf "dwata-api-${VERSION}-macos-x64.tar.gz" "$BIN"
+          tar -czf "dwata-${VERSION}-macos-x64.tar.gz" "$BIN"
 
           # Create DMG using cargo-bundle
           cargo bundle --release -p dwata-api
@@ -100,7 +110,7 @@ jobs:
           # Find the generated DMG and rename it
           DMG_PATH=$(find target/release/bundle/osx -name "*.dmg" | head -n 1)
           if [ -n "$DMG_PATH" ]; then
-            cp "$DMG_PATH" "dwata-api-${VERSION}-macos-x64.dmg"
+            cp "$DMG_PATH" "dwata-${VERSION}-macos-x64.dmg"
           fi
 
       - name: Package Windows artifacts
@@ -108,26 +118,26 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          BIN="target/release/dwata-api.exe"
-          7z a "dwata-api-${VERSION}-windows-x64.zip" "$BIN"
+          BIN="target/release/dwata.exe"
+          7z a "dwata-${VERSION}-windows-x64.zip" "$BIN"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dwata-api-${{ matrix.os }}
+          name: dwata-${{ matrix.os }}
           path: |
-            dwata-api-*.tar.gz
-            dwata-api-*.zip
-            dwata-api-*.deb
-            dwata-api-*.rpm
-            dwata-api-*.dmg
+            dwata-*.tar.gz
+            dwata-*.zip
+            dwata-*.deb
+            dwata-*.rpm
+            dwata-*.dmg
 
       - name: Attach artifacts to GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dwata-api-*.tar.gz
-            dwata-api-*.zip
-            dwata-api-*.deb
-            dwata-api-*.rpm
-            dwata-api-*.dmg
+            dwata-*.tar.gz
+            dwata-*.zip
+            dwata-*.deb
+            dwata-*.rpm
+            dwata-*.dmg
