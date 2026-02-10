@@ -385,6 +385,12 @@ The server will:
 2. Load configuration from `~/Library/Application Support/dwata/api.toml` (on macOS)
 3. Start the HTTP server on `127.0.0.1:8080` (or as configured)
 
+## GitHub Actions Secrets
+
+The `build-release` workflow can embed default Google OAuth credentials at build time. Set these repository secrets:
+- `DWATA_GOOGLE_CLIENT_ID`
+- `DWATA_GOOGLE_CLIENT_SECRET`
+
 ### Running the GUI
 
 ```bash
