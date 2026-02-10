@@ -163,9 +163,15 @@ export default function FinancialPatterns() {
                           <td class="text-xs">
                             <div>Amount: {pattern.amount_group}</div>
                             <div>
-                              Vendor: {pattern.vendor_group ?? "—"}
+                              Source Vendor: {pattern.source_vendor_group ?? "—"}
+                            </div>
+                            <div>
+                              Destination Vendor: {pattern.destination_vendor_group ?? "—"}
                             </div>
                             <div>Date: {pattern.date_group ?? "—"}</div>
+                            <div>
+                              Currency: {pattern.currency_group ?? "—"}
+                            </div>
                           </td>
                           <td>
                             <span

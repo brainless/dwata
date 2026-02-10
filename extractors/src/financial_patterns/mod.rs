@@ -19,6 +19,7 @@ pub struct FinancialPattern {
     pub destination_vendor_group: Option<usize>,
     pub date_group: Option<usize>,
     pub reference_group: Option<usize>,
+    pub currency_group: Option<usize>,
 }
 
 impl FinancialPattern {
@@ -58,6 +59,13 @@ impl FinancialPattern {
             _ => None,
         };
 
+        let currency = self
+            .currency_group
+            .and_then(|g| captures.get(g))
+            .map(|m| m.as_str())
+            .and_then(normalize_currency)
+            .unwrap_or_else(|| "USD".to_string());
+
         Some(FinancialTransaction {
             id: 0,
             data_source_type: DataSourceType::Unknown,
@@ -69,7 +77,7 @@ impl FinancialPattern {
                 vendor.as_ref().unwrap_or(&"unknown".to_string())
             ),
             amount,
-            currency: "USD".to_string(),
+            currency,
             transaction_date: transaction_date
                 .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string()),
             category,
@@ -88,6 +96,46 @@ impl FinancialPattern {
     }
 }
 
+pub(crate) fn normalize_currency(raw: &str) -> Option<String> {
+    let cleaned = raw.trim();
+    if cleaned.is_empty() {
+        return None;
+    }
+
+    let upper = cleaned.to_ascii_uppercase();
+    let upper = upper.as_str();
+
+    let iso = match upper {
+        "$" | "USD" | "US$" | "US DOLLAR" | "USD$" => "USD",
+        "EUR" | "€" => "EUR",
+        "GBP" | "£" => "GBP",
+        "JPY" | "¥" | "JP¥" => "JPY",
+        "INR" | "₹" => "INR",
+        "AUD" | "A$" => "AUD",
+        "CAD" | "C$" => "CAD",
+        "CHF" => "CHF",
+        "CNY" | "RMB" | "CN¥" => "CNY",
+        "HKD" | "HK$" => "HKD",
+        "SGD" | "SG$" => "SGD",
+        "NZD" | "NZ$" => "NZD",
+        "SEK" => "SEK",
+        "NOK" => "NOK",
+        "DKK" => "DKK",
+        "BRL" | "R$" => "BRL",
+        "MXN" | "MX$" => "MXN",
+        "ZAR" => "ZAR",
+        _ => {
+            if upper.len() == 3 && upper.chars().all(|c| c.is_ascii_uppercase()) {
+                upper
+            } else {
+                return None;
+            }
+        }
+    };
+
+    Some(iso.to_string())
+}
+
 fn create_financial_patterns() -> Vec<FinancialPattern> {
     vec![
         // Payment Confirmation Patterns
@@ -102,6 +150,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "paid_vendor_short".to_string(),
@@ -114,6 +163,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "your_payment_to_vendor".to_string(),
@@ -126,6 +176,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "successfully_paid_vendor".to_string(),
@@ -138,6 +189,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "payment_processed_vendor".to_string(),
@@ -150,6 +202,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
 
         // Bill/Invoice Due Patterns
@@ -164,6 +217,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "invoice_for_amount_due".to_string(),
@@ -176,6 +230,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "your_vendor_bill_due".to_string(),
@@ -188,6 +243,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(1),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "due_by_date".to_string(),
@@ -200,6 +256,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
 
         // Payment Received Patterns
@@ -214,6 +271,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "payment_of_amount_from".to_string(),
@@ -226,6 +284,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "you_received_payment_from".to_string(),
@@ -238,6 +297,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
 
         // Overdue/Late Patterns
@@ -252,6 +312,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "payment_past_due".to_string(),
@@ -264,6 +325,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "overdue_bill_days_late".to_string(),
@@ -276,6 +338,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
 
         // Additional patterns for variety
@@ -290,6 +353,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "purchase_confirmation".to_string(),
@@ -302,6 +366,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "charge_of_amount".to_string(),
@@ -314,6 +379,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "refund_of_amount".to_string(),
@@ -326,6 +392,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "invoice_payment_received".to_string(),
@@ -338,6 +405,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
 
         // Invoice/Billing notification patterns
@@ -352,6 +420,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "amount_paid_line".to_string(),
@@ -364,6 +433,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "usage_charges_line".to_string(),
@@ -376,6 +446,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "total_charged_line".to_string(),
@@ -388,6 +459,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
         FinancialPattern {
             name: "due_on_date".to_string(),
@@ -400,6 +472,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: None,
             reference_group: None,
+            currency_group: None,
         },
 
         // Payment with Rs. (Indian Rupees) and account numbers
@@ -414,6 +487,7 @@ fn create_financial_patterns() -> Vec<FinancialPattern> {
             source_vendor_group: None,
             destination_vendor_group: Some(2),
             reference_group: None,
+            currency_group: None,
         },
     ]
 }

@@ -16,6 +16,7 @@ pub fn validate_pattern(
     destination_vendor_group: Option<usize>,
     date_group: Option<usize>,
     reference_group: Option<usize>,
+    currency_group: Option<usize>,
     document_type: &str,
     status: &str,
 ) -> Result<()> {
@@ -39,6 +40,7 @@ pub fn validate_pattern(
         destination_vendor_group,
         date_group,
         reference_group,
+        currency_group,
     )?;
 
     validate_document_type(document_type)?;
@@ -75,6 +77,7 @@ fn validate_capture_groups(
     destination_vendor_group: Option<usize>,
     date_group: Option<usize>,
     reference_group: Option<usize>,
+    currency_group: Option<usize>,
 ) -> Result<()> {
     let group_count = regex.captures_len();
 
@@ -131,6 +134,16 @@ fn validate_capture_groups(
             bail!(
                 "reference_group {} does not exist (regex has {} groups)",
                 rg,
+                group_count
+            );
+        }
+    }
+
+    if let Some(cg) = currency_group {
+        if cg >= group_count {
+            bail!(
+                "currency_group {} does not exist (regex has {} groups)",
+                cg,
                 group_count
             );
         }

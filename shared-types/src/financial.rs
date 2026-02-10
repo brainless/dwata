@@ -182,6 +182,7 @@ pub struct FinancialPattern {
     pub destination_vendor_group: Option<usize>,
     pub date_group: Option<usize>,
     pub reference_group: Option<usize>,
+    pub currency_group: Option<usize>,
     pub is_default: bool,
     pub is_active: bool,
     pub match_count: i32,

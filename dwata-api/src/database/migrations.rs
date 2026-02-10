@@ -38,6 +38,9 @@ fn rebuild_financial_patterns_table(conn: &mut Connection) -> anyhow::Result<()>
         [],
     )?;
 
+    let has_currency_group =
+        table_has_column(&tx, "financial_patterns_old", "currency_group")?;
+
     tx.execute(
         "CREATE TABLE financial_patterns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +62,7 @@ fn rebuild_financial_patterns_table(conn: &mut Connection) -> anyhow::Result<()>
             destination_vendor_group INTEGER,
             date_group INTEGER,
             reference_group INTEGER,
+            currency_group INTEGER,
 
             -- Management flags
             is_default BOOLEAN DEFAULT false,
@@ -78,17 +82,26 @@ fn rebuild_financial_patterns_table(conn: &mut Connection) -> anyhow::Result<()>
         [],
     )?;
 
+    let currency_select = if has_currency_group {
+        "currency_group"
+    } else {
+        "NULL as currency_group"
+    };
+
     tx.execute(
-        "INSERT INTO financial_patterns (
-            id, name, regex_pattern, description, sender_email, document_type, status,
-            amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group,
-            reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at
-        )
-        SELECT
-            id, name, regex_pattern, description, sender_email, document_type, status,
-            amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group,
-            reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at
-        FROM financial_patterns_old",
+        &format!(
+            "INSERT INTO financial_patterns (
+                id, name, regex_pattern, description, sender_email, document_type, status,
+                amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group,
+                reference_group, currency_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at
+            )
+            SELECT
+                id, name, regex_pattern, description, sender_email, document_type, status,
+                amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group,
+                reference_group, {}, is_default, is_active, match_count, last_matched_at, created_at, updated_at
+            FROM financial_patterns_old",
+            currency_select
+        ),
         [],
     )?;
 
@@ -871,6 +884,7 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
             destination_vendor_group INTEGER,
             date_group INTEGER,
             reference_group INTEGER,
+            currency_group INTEGER,
 
             -- Management flags
             is_default BOOLEAN DEFAULT false,
@@ -907,6 +921,13 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
     if !table_has_column(conn, "financial_patterns", "reference_group")? {
         conn.execute(
             "ALTER TABLE financial_patterns ADD COLUMN reference_group INTEGER",
+            [],
+        )?;
+    }
+
+    if !table_has_column(conn, "financial_patterns", "currency_group")? {
+        conn.execute(
+            "ALTER TABLE financial_patterns ADD COLUMN currency_group INTEGER",
             [],
         )?;
     }

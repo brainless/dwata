@@ -32,6 +32,24 @@ export default function FinancialHealth() {
   const [isExtracting, setIsExtracting] = createSignal(false);
   const [credentials, setCredentials] = createSignal<any[]>([]);
 
+  const formatCurrency = (amount: number, currency?: string) => {
+    const code = (currency || "USD").toUpperCase();
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: code,
+      }).format(amount);
+    } catch {
+      return `${amount.toLocaleString()} ${code}`;
+    }
+  };
+
+  const formatSignedAmount = (amount: number, currency?: string) => {
+    const sign = amount > 0 ? "+" : amount < 0 ? "-" : "";
+    const formatted = formatCurrency(Math.abs(amount), currency);
+    return `${sign}${formatted}`;
+  };
+
   const fetchFinancialData = async () => {
     setLoading(true);
     setError(null);
@@ -250,7 +268,10 @@ export default function FinancialHealth() {
               </div>
               <div class="stat-title">Total Income</div>
               <div class="stat-value text-success">
-                ${summary()!.total_income.toLocaleString()}
+                {formatCurrency(
+                  summary()!.total_income,
+                  summary()!.currency,
+                )}
               </div>
               <div class="stat-desc">
                 {summary()!.period_start} to {summary()!.period_end}
@@ -263,7 +284,10 @@ export default function FinancialHealth() {
               </div>
               <div class="stat-title">Total Expenses</div>
               <div class="stat-value text-error">
-                ${summary()!.total_expenses.toLocaleString()}
+                {formatCurrency(
+                  summary()!.total_expenses,
+                  summary()!.currency,
+                )}
               </div>
               <div class="stat-desc">
                 {Math.round(
@@ -279,7 +303,10 @@ export default function FinancialHealth() {
               </div>
               <div class="stat-title">Net Balance</div>
               <div class="stat-value text-primary">
-                ${summary()!.net_balance.toLocaleString()}
+                {formatCurrency(
+                  summary()!.net_balance,
+                  summary()!.currency,
+                )}
               </div>
               <div class="stat-desc">
                 {summary()!.net_balance > 0 ? "Positive" : "Negative"} cash flow
@@ -370,10 +397,10 @@ export default function FinancialHealth() {
                                       "text-error": transaction.amount < 0,
                                     }}
                                   >
-                                    {transaction.amount > 0 ? "+" : ""}$
-                                    {Math.abs(
+                                    {formatSignedAmount(
                                       transaction.amount,
-                                    ).toLocaleString()}
+                                      transaction.currency,
+                                    )}
                                   </td>
                                   <td>
                                     <span
@@ -446,7 +473,10 @@ export default function FinancialHealth() {
                             </div>
                             <div class="text-right">
                               <div class="font-semibold text-sm">
-                                ${Math.abs(bill.amount).toLocaleString()}
+                                {formatCurrency(
+                                  Math.abs(bill.amount),
+                                  bill.currency,
+                                )}
                               </div>
                               <span
                                 class={`badge badge-xs ${getStatusBadgeClass(bill.status)}`}
@@ -490,7 +520,11 @@ export default function FinancialHealth() {
                             {cat.category}
                           </span>
                           <span class="text-base-content/60">
-                            ${cat.amount.toLocaleString()} ({cat.percentage}%)
+                            {formatCurrency(
+                              cat.amount,
+                              summary()!.currency,
+                            )}{" "}
+                            ({cat.percentage}%)
                           </span>
                         </div>
                         <div class="flex items-center gap-3">

@@ -15,7 +15,7 @@ pub async fn list_patterns(
         let mut patterns = Vec::new();
         let columns = "id, name, regex_pattern, description, sender_email, document_type, status, \
             amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
-            reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
+            reference_group, currency_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
 
         if active_only || is_default.is_some() || document_type.is_some() {
             let mut query = format!("SELECT {} FROM financial_patterns WHERE 1=1", columns);
@@ -64,7 +64,7 @@ pub async fn get_pattern(
         let conn = db_conn.get_blocking();
         let columns = "id, name, regex_pattern, description, sender_email, document_type, status, \
             amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, \
-            reference_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
+            reference_group, currency_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at";
 
         let mut stmt = conn.prepare(&format!(
             "SELECT {} FROM financial_patterns WHERE id = ?1",
@@ -93,8 +93,8 @@ pub async fn insert_pattern(
         let id: i64 = conn.query_row(
             "INSERT INTO financial_patterns (name, regex_pattern, description, sender_email, document_type, status,
              amount_group, vendor_group, source_vendor_group, destination_vendor_group, date_group, reference_group,
-             is_default, is_active, match_count, last_matched_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+             currency_group, is_default, is_active, match_count, last_matched_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
              RETURNING id",
             params![
                 pattern.name,
@@ -109,6 +109,7 @@ pub async fn insert_pattern(
                 pattern.destination_vendor_group,
                 pattern.date_group,
                 pattern.reference_group,
+                pattern.currency_group,
                 pattern.is_default,
                 pattern.is_active,
                 pattern.match_count,
@@ -137,8 +138,8 @@ pub async fn update_pattern(
              SET name = ?1, regex_pattern = ?2, description = ?3, sender_email = ?4, document_type = ?5, status = ?6,
                  amount_group = ?7, vendor_group = ?8, source_vendor_group = ?9,
                  destination_vendor_group = ?10, date_group = ?11, reference_group = ?12,
-                 is_active = ?13, updated_at = ?14
-             WHERE id = ?15",
+                 currency_group = ?13, is_active = ?14, updated_at = ?15
+             WHERE id = ?16",
             params![
                 pattern.name,
                 pattern.regex_pattern,
@@ -152,6 +153,7 @@ pub async fn update_pattern(
                 pattern.destination_vendor_group,
                 pattern.date_group,
                 pattern.reference_group,
+                pattern.currency_group,
                 pattern.is_active,
                 pattern.updated_at,
                 id,
@@ -299,11 +301,12 @@ fn map_row_to_pattern(row: &Row) -> rusqlite::Result<FinancialPattern> {
         destination_vendor_group: row.get(10)?,
         date_group: row.get(11)?,
         reference_group: row.get(12)?,
-        is_default: row.get(13)?,
-        is_active: row.get(14)?,
-        match_count: row.get(15)?,
-        last_matched_at: row.get(16)?,
-        created_at: row.get(17)?,
-        updated_at: row.get(18)?,
+        currency_group: row.get(13)?,
+        is_default: row.get(14)?,
+        is_active: row.get(15)?,
+        match_count: row.get(16)?,
+        last_matched_at: row.get(17)?,
+        created_at: row.get(18)?,
+        updated_at: row.get(19)?,
     })
 }

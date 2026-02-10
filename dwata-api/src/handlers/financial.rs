@@ -159,6 +159,7 @@ pub struct CreatePatternRequest {
     pub destination_vendor_group: Option<usize>,
     pub date_group: Option<usize>,
     pub reference_group: Option<usize>,
+    pub currency_group: Option<usize>,
     pub is_active: Option<bool>,
 }
 
@@ -175,6 +176,7 @@ pub async fn create_pattern(
         request.destination_vendor_group,
         request.date_group,
         request.reference_group,
+        request.currency_group,
         &request.document_type,
         &request.status,
     )
@@ -221,6 +223,7 @@ pub async fn create_pattern(
         destination_vendor_group: request.destination_vendor_group,
         date_group: request.date_group,
         reference_group: request.reference_group,
+        currency_group: request.currency_group,
         is_default: false,
         is_active: request.is_active.unwrap_or(true),
         match_count: 0,
@@ -257,6 +260,7 @@ pub struct UpdatePatternRequest {
     pub destination_vendor_group: Option<usize>,
     pub date_group: Option<usize>,
     pub reference_group: Option<usize>,
+    pub currency_group: Option<usize>,
     pub is_active: Option<bool>,
 }
 
@@ -297,6 +301,7 @@ pub async fn update_pattern(
             .or(existing.destination_vendor_group),
         date_group: request.date_group.or(existing.date_group),
         reference_group: request.reference_group.or(existing.reference_group),
+        currency_group: request.currency_group.or(existing.currency_group),
         is_default: existing.is_default,
         is_active: request.is_active.unwrap_or(existing.is_active),
         match_count: existing.match_count,
@@ -314,6 +319,7 @@ pub async fn update_pattern(
         updated.destination_vendor_group,
         updated.date_group,
         updated.reference_group,
+        updated.currency_group,
         &updated.document_type,
         &updated.status,
     )

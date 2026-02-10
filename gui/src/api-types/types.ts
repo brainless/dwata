@@ -612,6 +612,12 @@ export type TransactionStatus = "pending" | "paid" | "overdue" | "cancelled" | "
 
 
 /**
+ * Financial pattern for extracting transactions
+ */
+export type FinancialPattern = { id: bigint, name: string, regex_pattern: string, description: string | null, sender_email: string | null, document_type: string, status: string, amount_group: number, vendor_group: number | null, source_vendor_group: number | null, destination_vendor_group: number | null, date_group: number | null, reference_group: number | null, currency_group: number | null, is_default: boolean, is_active: boolean, match_count: number, last_matched_at: bigint | null, created_at: bigint, updated_at: bigint, };
+
+
+/**
  * Financial summary/overview
  */
 export type FinancialSummary = { total_income: number, total_expenses: number, net_balance: number, pending_bills: number, overdue_payments: number, currency: string, period_start: string, period_end: string, };

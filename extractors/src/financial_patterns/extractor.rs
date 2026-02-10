@@ -5,6 +5,7 @@ use shared_types::{
     DataSourceType, FinancialDocumentType, FinancialTransaction, TransactionCategory,
     TransactionStatus,
 };
+use crate::financial_patterns::normalize_currency;
 
 pub struct FinancialPatternExtractor {
     patterns: Vec<CompiledPattern>,
@@ -22,6 +23,7 @@ struct CompiledPattern {
     destination_vendor_group: Option<usize>,
     date_group: Option<usize>,
     reference_group: Option<usize>,
+    currency_group: Option<usize>,
 }
 
 impl FinancialPatternExtractor {
@@ -43,6 +45,7 @@ impl FinancialPatternExtractor {
                     destination_vendor_group: p.destination_vendor_group,
                     date_group: p.date_group,
                     reference_group: p.reference_group,
+                    currency_group: p.currency_group,
                 })
                 .collect(),
         }
@@ -66,6 +69,7 @@ impl FinancialPatternExtractor {
                 destination_vendor_group: pattern.destination_vendor_group,
                 date_group: pattern.date_group,
                 reference_group: pattern.reference_group,
+                currency_group: pattern.currency_group,
             });
         }
 
@@ -133,6 +137,13 @@ impl FinancialPatternExtractor {
             _ => None,
         };
 
+        let currency = pattern
+            .currency_group
+            .and_then(|g| captures.get(g))
+            .map(|m| m.as_str())
+            .and_then(normalize_currency)
+            .unwrap_or_else(|| "USD".to_string());
+
         Some(FinancialTransaction {
             id: 0,
             data_source_type: DataSourceType::Unknown,
@@ -140,7 +151,7 @@ impl FinancialPatternExtractor {
             document_type: self.parse_document_type(&pattern.document_type),
             description: captures.get(0)?.as_str().to_string(),
             amount,
-            currency: "USD".to_string(),
+            currency,
             transaction_date: transaction_date
                 .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string()),
             category,

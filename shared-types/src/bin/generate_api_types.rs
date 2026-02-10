@@ -141,6 +141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(FinancialTransaction::export_to_string()?));
     types.push(clean_type(TransactionCategory::export_to_string()?));
     types.push(clean_type(TransactionStatus::export_to_string()?));
+    types.push(clean_type(FinancialPattern::export_to_string()?));
     types.push(clean_type(FinancialSummary::export_to_string()?));
     types.push(clean_type(FinancialHealth::export_to_string()?));
     types.push(clean_type(CategoryBreakdown::export_to_string()?));
