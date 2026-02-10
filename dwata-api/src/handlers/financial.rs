@@ -15,7 +15,7 @@ use shared_types::{
 };
 use std::sync::Arc;
 use std::collections::HashMap;
-use tracing::info;
+use tracing::{error, info};
 use crate::financial_keywords::{DEFAULT_FINANCIAL_KEYWORDS, build_fts_query};
 
 pub async fn list_transactions(
@@ -69,7 +69,15 @@ pub async fn trigger_extraction(
     let count = manager
         .extract_from_emails(request.email_ids.clone(), request.credential_id.clone())
         .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+        .map_err(|e| {
+            error!(
+                "Financial extraction failed: error={}, email_ids={:?}, credential_id={:?}",
+                e,
+                request.email_ids,
+                request.credential_id
+            );
+            actix_web::error::ErrorInternalServerError(e.to_string())
+        })?;
 
     info!(
         "Financial extraction completed: extracted_count={}",
