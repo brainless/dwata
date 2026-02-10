@@ -134,9 +134,10 @@ API_VERSION="$API_VERSION" GUI_VERSION="$GUI_VERSION" python3 - <<'PY'
 import json
 import re
 from pathlib import Path
+import os
 
-api_version = "${API_VERSION}"
-gui_version = "${GUI_VERSION}"
+api_version = os.environ["API_VERSION"]
+gui_version = os.environ["GUI_VERSION"]
 
 cargo_toml = Path("Cargo.toml")
 text = cargo_toml.read_text()
