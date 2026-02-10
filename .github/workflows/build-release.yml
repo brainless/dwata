@@ -44,14 +44,11 @@ jobs:
       - name: Build static Linux binary (musl)
         if: startsWith(matrix.os, 'ubuntu')
         shell: bash
-        env:
-          OPENSSL_STATIC: 1
-          OPENSSL_VENDORED: 1
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools musl-dev
           rustup target add x86_64-unknown-linux-musl
-          cargo build --release --target x86_64-unknown-linux-musl -p dwata-api
+          cargo build --release --target x86_64-unknown-linux-musl -p dwata-api --features vendored-openssl
 
       - name: Install Linux packaging tools
         if: startsWith(matrix.os, 'ubuntu')

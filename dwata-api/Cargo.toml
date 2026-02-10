@@ -45,6 +45,10 @@ mime_guess = "2.0"
 rust-embed = "8.5"
 webbrowser = "0.8.15"
 
+[features]
+default = []
+vendored-openssl = ["native-tls/vendored"]
+
 [package.metadata.generate-rpm]
 assets = [
   { source = "target/release/dwata-api", dest = "/usr/bin/dwata-api", mode = "755" },
