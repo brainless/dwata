@@ -1,6 +1,6 @@
 {
   "name": "dwata-gui",
-  "version": "0.2.0",
+  "version": "${GUI_VERSION}",
   "description": "",
   "type": "module",
   "scripts": {
