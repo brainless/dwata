@@ -78,13 +78,30 @@ jobs:
           # RPM package
           cargo generate-rpm -p dwata-api --output "dwata-api-${VERSION}-linux-x64.rpm"
 
+      - name: Install macOS packaging tools
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          cargo install cargo-bundle
+
       - name: Package macOS artifacts
         if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BIN="target/release/dwata-api"
+
+          # Create tar.gz (existing)
           tar -czf "dwata-api-${VERSION}-macos-x64.tar.gz" "$BIN"
+
+          # Create DMG using cargo-bundle
+          cargo bundle --release -p dwata-api
+
+          # Find the generated DMG and rename it
+          DMG_PATH=$(find target/release/bundle/osx -name "*.dmg" | head -n 1)
+          if [ -n "$DMG_PATH" ]; then
+            cp "$DMG_PATH" "dwata-api-${VERSION}-macos-x64.dmg"
+          fi
 
       - name: Package Windows artifacts
         if: startsWith(matrix.os, 'windows')
@@ -103,6 +120,7 @@ jobs:
             dwata-api-*.zip
             dwata-api-*.deb
             dwata-api-*.rpm
+            dwata-api-*.dmg
 
       - name: Attach artifacts to GitHub release
         uses: softprops/action-gh-release@v2
@@ -112,3 +130,4 @@ jobs:
             dwata-api-*.zip
             dwata-api-*.deb
             dwata-api-*.rpm
+            dwata-api-*.dmg

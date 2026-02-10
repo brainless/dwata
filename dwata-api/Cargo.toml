@@ -53,3 +53,11 @@ vendored-openssl = ["native-tls/vendored"]
 assets = [
   { source = "target/release/dwata-api", dest = "/usr/bin/dwata-api", mode = "755" },
 ]
+
+[package.metadata.bundle]
+name = "Dwata API"
+identifier = "com.dwata.api"
+category = "DeveloperTool"
+short_description = "Personal data management system"
+long_description = "Dwata API server - A personal data management system that helps you organize and manage your email, tasks, and other personal data."
+osx_minimum_system_version = "10.13"
