@@ -8,7 +8,7 @@ mod oauth_defaults {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ApiConfig {
-    pub api_keys: Option<ApiKeysConfig>,
+    pub ai_provider_api_keys: Option<AiProviderApiKeysConfig>,
     pub database: Option<DatabaseConfig>,
     pub cors: Option<CorsConfig>,
     pub server: Option<ServerConfig>,
@@ -19,7 +19,7 @@ pub struct ApiConfig {
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
-            api_keys: None,
+            ai_provider_api_keys: None,
             database: None,
             cors: Some(CorsConfig {
                 allowed_origins: vec!["http://localhost:3000".to_string()],
@@ -35,7 +35,7 @@ impl Default for ApiConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct ApiKeysConfig {
+pub struct AiProviderApiKeysConfig {
     pub gemini_api_key: Option<String>,
     pub claude_api_key: Option<String>,
 }
@@ -112,7 +112,7 @@ impl ApiConfig {
         // Create default config file if it doesn't exist
         if !config_path.exists() {
             let default_config = r#"
-[api_keys]
+[ai_provider_api_keys]
 # gemini_api_key = "your-gemini-key"
 # claude_api_key = "your-claude-key"
 

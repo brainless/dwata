@@ -37,9 +37,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(SessionListResponse::export_to_string()?));
 
     // Settings types
-    types.push(clean_type(ApiKeyConfig::export_to_string()?));
+    types.push(clean_type(AiProviderApiKeyConfig::export_to_string()?));
+    types.push(clean_type(OAuthClientAppConfig::export_to_string()?));
     types.push(clean_type(SettingsResponse::export_to_string()?));
-    types.push(clean_type(UpdateApiKeysRequest::export_to_string()?));
+    types.push(clean_type(UpdateAiProviderApiKeysRequest::export_to_string()?));
+    types.push(clean_type(UpdateOAuthClientAppsRequest::export_to_string()?));
 
     // Credential types
     types.push(clean_type(CredentialType::export_to_string()?));

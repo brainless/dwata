@@ -121,23 +121,36 @@ export type SessionListResponse = { sessions: Array<SessionListItem>, };
 
 
 /**
- * Configuration for an API key
+ * Configuration for an AI provider API key
  */
-export type ApiKeyConfig = { name: string, key: string | null, is_configured: boolean, };
+export type AiProviderApiKeyConfig = { name: string, key: string | null, is_configured: boolean, };
 
 
-import type { ApiKeyConfig } from "./ApiKeyConfig";
+/**
+ * Configuration for an OAuth client app
+ */
+export type OAuthClientAppConfig = { provider: string, client_id: string | null, client_secret: string | null, is_configured: boolean, };
+
+
+import type { AiProviderApiKeyConfig } from "./AiProviderApiKeyConfig";
+import type { OAuthClientAppConfig } from "./OAuthClientAppConfig";
 
 /**
  * Response for settings endpoint
  */
-export type SettingsResponse = { config_file_path: string, api_keys: Array<ApiKeyConfig>, projects_default_path: string | null, };
+export type SettingsResponse = { config_file_path: string, ai_provider_api_keys: Array<AiProviderApiKeyConfig>, oauth_client_apps: Array<OAuthClientAppConfig>, projects_default_path: string | null, };
 
 
 /**
- * Request to update API keys
+ * Request to update AI provider API keys
  */
-export type UpdateApiKeysRequest = { gemini_api_key: string | null, claude_api_key: string | null, };
+export type UpdateAiProviderApiKeysRequest = { gemini_api_key: string | null, claude_api_key: string | null, };
+
+
+/**
+ * Request to update OAuth client apps
+ */
+export type UpdateOAuthClientAppsRequest = { google_client_id: string | null, google_client_secret: string | null, };
 
 
 export type CredentialType = "imap" | "smtp" | "oauth" | "apikey" | "database" | "localfile" | "custom";

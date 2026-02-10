@@ -49,7 +49,7 @@ async fn run_financial_extractor(
     .await?;
 
     let api_key = config
-        .api_keys
+        .ai_provider_api_keys
         .as_ref()
         .and_then(|k| k.gemini_api_key.as_ref())
         .ok_or_else(|| anyhow::anyhow!("Gemini API key not configured"))?;

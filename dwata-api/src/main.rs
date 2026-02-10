@@ -83,13 +83,22 @@ async fn get_settings(data: web::Data<handlers::settings::SettingsAppState>) -> 
     handlers::settings::get_settings(data).await
 }
 
-#[post("/api/settings/api-keys")]
-async fn update_api_keys(
+#[post("/api/settings/ai-provider-api-keys")]
+async fn update_ai_provider_api_keys(
     data: web::Data<handlers::settings::SettingsAppState>,
-    request: web::Json<shared_types::UpdateApiKeysRequest>,
+    request: web::Json<shared_types::UpdateAiProviderApiKeysRequest>,
     req: actix_web::HttpRequest,
 ) -> impl Responder {
-    handlers::settings::update_api_keys(data, request, req).await
+    handlers::settings::update_ai_provider_api_keys(data, request, req).await
+}
+
+#[post("/api/settings/oauth-client-apps")]
+async fn update_oauth_client_apps(
+    data: web::Data<handlers::settings::SettingsAppState>,
+    request: web::Json<shared_types::UpdateOAuthClientAppsRequest>,
+    req: actix_web::HttpRequest,
+) -> impl Responder {
+    handlers::settings::update_oauth_client_apps(data, request, req).await
 }
 
 #[derive(Parser, Debug)]
@@ -395,7 +404,8 @@ async fn main() -> std::io::Result<()> {
             .service(hello)
             .service(health)
             .service(get_settings)
-            .service(update_api_keys)
+            .service(update_ai_provider_api_keys)
+            .service(update_oauth_client_apps)
             .route("/api/credentials", web::post().to(handlers::credentials::create_credential))
             .route("/api/credentials", web::get().to(handlers::credentials::list_credentials))
             .route("/api/credentials/{id}", web::get().to(handlers::credentials::get_credential))

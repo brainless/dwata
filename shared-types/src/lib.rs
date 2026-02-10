@@ -59,7 +59,10 @@ pub use session::{
     AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionListResponse,
     SessionMessage, SessionResponse, SessionToolCall,
 };
-pub use settings::{ApiKeyConfig, SettingsResponse, UpdateApiKeysRequest};
+pub use settings::{
+    AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse,
+    UpdateAiProviderApiKeysRequest, UpdateOAuthClientAppsRequest,
+};
 pub use task::{
     CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
 };

@@ -51,12 +51,12 @@ struct Cli {
 
 #[derive(Debug, Deserialize, Clone)]
 struct ApiConfig {
-    api_keys: Option<ApiKeysConfig>,
+    ai_provider_api_keys: Option<AiProviderApiKeysConfig>,
     database: Option<DatabaseConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct ApiKeysConfig {
+struct AiProviderApiKeysConfig {
     gemini_api_key: Option<String>,
 }
 
@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
         }
         "gemini" => {
             let api_key = config
-                .api_keys
+                .ai_provider_api_keys
                 .as_ref()
                 .and_then(|keys| keys.gemini_api_key.as_ref())
                 .cloned()

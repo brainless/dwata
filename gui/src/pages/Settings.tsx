@@ -2,6 +2,7 @@ import { A, useLocation } from "@solidjs/router";
 import { Show } from "solid-js";
 import SettingsGeneral from "./settings/General";
 import SettingsApiKeys from "./settings/ApiKeys";
+import SettingsOAuthClientApps from "./settings/OAuthClientApps";
 import SettingsAccounts from "./settings/Accounts";
 import SettingsFolders from "./settings/Folders";
 import SettingsPrivacy from "./settings/Privacy";
@@ -12,7 +13,8 @@ export default function Settings() {
   // Determine active tab from URL path
   const activeTab = () => {
     const path = location.pathname;
-    if (path === "/settings/api-keys") return "api-keys";
+    if (path === "/settings/ai-providers") return "ai-providers";
+    if (path === "/settings/oauth-apps") return "oauth-apps";
     if (path === "/settings/accounts") return "accounts";
     if (path === "/settings/folders") return "folders";
     if (path === "/settings/privacy") return "privacy";
@@ -32,10 +34,16 @@ export default function Settings() {
           General
         </A>
         <A
-          href="/settings/api-keys"
-          class={`tab ${activeTab() === "api-keys" ? "tab-active" : ""}`}
+          href="/settings/ai-providers"
+          class={`tab ${activeTab() === "ai-providers" ? "tab-active" : ""}`}
         >
-          API Keys
+          AI Providers
+        </A>
+        <A
+          href="/settings/oauth-apps"
+          class={`tab ${activeTab() === "oauth-apps" ? "tab-active" : ""}`}
+        >
+          OAuth Client Apps
         </A>
         <A
           href="/settings/accounts"
@@ -57,8 +65,12 @@ export default function Settings() {
           <SettingsGeneral />
         </Show>
 
-        <Show when={activeTab() === "api-keys"}>
+        <Show when={activeTab() === "ai-providers"}>
           <SettingsApiKeys />
+        </Show>
+
+        <Show when={activeTab() === "oauth-apps"}>
+          <SettingsOAuthClientApps />
         </Show>
 
         <Show when={activeTab() === "accounts"}>
