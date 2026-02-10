@@ -2,6 +2,10 @@ use config::{Config, ConfigError, File};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+mod oauth_defaults {
+    include!(concat!(env!("OUT_DIR"), "/dwata_oauth_defaults.rs"));
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ApiConfig {
     pub api_keys: Option<ApiKeysConfig>,
@@ -78,6 +82,22 @@ impl Default for GoogleOAuthConfig {
     }
 }
 
+impl GoogleOAuthConfig {
+    pub fn apply_compiled_defaults(&mut self) {
+        if self.client_id.trim().is_empty() && !oauth_defaults::DEFAULT_GOOGLE_CLIENT_ID.is_empty() {
+            self.client_id = oauth_defaults::DEFAULT_GOOGLE_CLIENT_ID.to_string();
+        }
+
+        if self.client_secret.is_none() {
+            if let Some(secret) = oauth_defaults::DEFAULT_GOOGLE_CLIENT_SECRET {
+                if !secret.is_empty() {
+                    self.client_secret = Some(secret.to_string());
+                }
+            }
+        }
+    }
+}
+
 impl ApiConfig {
     pub fn load() -> Result<(Self, PathBuf), ConfigError> {
         let config_path = get_config_path();
@@ -109,7 +129,7 @@ port = 8080
 [google_oauth]
 # Google Cloud Console OAuth2 client ID for Gmail
 # client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
-# client_secret = "YOUR_CLIENT_SECRET" # Optional, for Desktop apps
+# client_secret = "YOUR_CLIENT_SECRET" # Optional, but required by Google in practice
 # Redirect URI is automatically constructed from server host and port
 
 [downloads]

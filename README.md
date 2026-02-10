@@ -10,6 +10,8 @@ Dwata is your personal data assistant that transforms raw information from your 
 
 **All your data stays local and private.** Dwata runs on your machine, ensuring complete data sovereignty and privacy.
 
+We support bring-your-own Google OAuth apps for Gmail/IMAP access. Set your own `client_id`/`client_secret` in the local config and those will be used.
+
 ## What Can Dwata Do?
 
 Dwata includes multiple extractors designed to help you understand different aspects of your personal data:

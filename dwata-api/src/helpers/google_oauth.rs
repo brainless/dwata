@@ -3,6 +3,7 @@ use oauth2::{
     RedirectUrl, Scope, TokenUrl,
 };
 use oauth2::basic::BasicClient;
+use oauth2::RequestTokenError;
 use anyhow::Result;
 use std::time::Duration;
 
@@ -41,6 +42,27 @@ impl GoogleOAuthClient {
 }
 
 impl GoogleOAuthClient {
+    fn format_token_error(
+        &self,
+        error: &RequestTokenError<reqwest::Error, oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>>,
+    ) -> String {
+        match error {
+            RequestTokenError::ServerResponse(err) => format!(
+                "server_response: error={:?} description={:?} uri={:?}",
+                err.error(),
+                err.error_description(),
+                err.error_uri()
+            ),
+            RequestTokenError::Request(err) => format!("request_error: {}", err),
+            RequestTokenError::Parse(err, body) => format!(
+                "parse_error: {} body={}",
+                err,
+                String::from_utf8_lossy(body)
+            ),
+            RequestTokenError::Other(err) => format!("other_error: {}", err),
+        }
+    }
+
     pub fn new(client_id: &str, client_secret: Option<&str>, redirect_uri: &str) -> Result<Self> {
         let client = BasicClient::new(
             ClientId::new(client_id.to_string()),
@@ -87,7 +109,12 @@ impl GoogleOAuthClient {
             .exchange_code(AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
             .request_async(self.async_http_client())
-            .await?;
+            .await
+            .map_err(|e| {
+                let details = self.format_token_error(&e);
+                tracing::warn!("OAuth token exchange failed: {}", details);
+                anyhow::anyhow!("Failed to exchange OAuth code: {}", details)
+            })?;
 
         Ok(token)
     }
@@ -103,8 +130,9 @@ impl GoogleOAuthClient {
             .request_async(self.async_http_client())
             .await
             .map_err(|e| {
-                tracing::warn!("OAuth token refresh failed: {}", e);
-                anyhow::anyhow!("Failed to refresh OAuth token: {}", e)
+                let details = self.format_token_error(&e);
+                tracing::warn!("OAuth token refresh failed: {}", details);
+                anyhow::anyhow!("Failed to refresh OAuth token: {}", details)
             })?;
 
         tracing::debug!("OAuth token refreshed successfully");

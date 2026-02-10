@@ -36,7 +36,17 @@ jobs:
 
       - name: Build production artifacts
         shell: bash
+        env:
+          DWATA_DEFAULT_GOOGLE_CLIENT_ID: ${{ secrets.DWATA_GOOGLE_CLIENT_ID }}
+          DWATA_DEFAULT_GOOGLE_CLIENT_SECRET: ${{ secrets.DWATA_GOOGLE_CLIENT_SECRET }}
         run: ./scripts/build-production.sh
+
+      - name: Build static Linux binary (musl)
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --target x86_64-unknown-linux-musl -p dwata-api
 
       - name: Install Linux packaging tools
         if: startsWith(matrix.os, 'ubuntu')
@@ -52,8 +62,18 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BIN="target/release/dwata-api"
+          MUSL_BIN="target/x86_64-unknown-linux-musl/release/dwata-api"
+
+          # Regular dynamically linked binary
           tar -czf "dwata-api-${VERSION}-linux-x64.tar.gz" "$BIN"
+
+          # Static musl binary (universal, works on any Linux distro)
+          tar -czf "dwata-api-${VERSION}-linux-x64-static.tar.gz" "$MUSL_BIN"
+
+          # Debian package
           cargo deb -p dwata-api --no-build --output "dwata-api-${VERSION}-linux-x64.deb"
+
+          # RPM package
           cargo generate-rpm -p dwata-api --output "dwata-api-${VERSION}-linux-x64.rpm"
 
       - name: Package macOS artifacts

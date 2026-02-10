@@ -193,6 +193,10 @@ port = 8080
 auto_start = false
 ```
 
+**Desktop OAuth note:** Google Desktop OAuth is sensitive to the exact host in the redirect URI. Use `server.host = "localhost"` (not `127.0.0.1`) to avoid token exchange failures. We support bring-your-own Google OAuth apps; if you set `client_id`/`client_secret` in the config, those are always used.
+
+**Release defaults:** Release builds can embed a default Google OAuth `client_id`/`client_secret` at compile time. `scripts/build-production.sh` will read them from your local `api.toml` (or from `DWATA_DEFAULT_GOOGLE_CLIENT_ID` / `DWATA_DEFAULT_GOOGLE_CLIENT_SECRET`) and compile them in. The runtime config still overrides these defaults when set.
+
 ## Database Storage
 
 ### Database Location

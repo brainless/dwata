@@ -162,8 +162,16 @@ async fn main() -> std::io::Result<()> {
     tracing::info!("Server will listen on {}:{}", host, port);
 
     // Initialize OAuth components
-    let google_oauth_config = config.google_oauth.clone().unwrap_or_default();
+    let mut google_oauth_config = config.google_oauth.clone().unwrap_or_default();
+    google_oauth_config.apply_compiled_defaults();
     let redirect_uri = format!("http://{}:{}/api/oauth/google/callback", host, port);
+    if host != "localhost" {
+        tracing::warn!(
+            "OAuth redirect URI uses host '{}'. For Google Desktop OAuth, set server.host to 'localhost' to avoid token exchange errors. Redirect URI: {}",
+            host,
+            redirect_uri
+        );
+    }
     let oauth_client = Arc::new(
         crate::helpers::google_oauth::GoogleOAuthClient::new(
             &google_oauth_config.client_id,
