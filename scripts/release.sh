@@ -143,7 +143,8 @@ cargo_toml = Path("Cargo.toml")
 text = cargo_toml.read_text()
 
 pattern = re.compile(r'(\[workspace\.package\][\s\S]*?^version\s*=\s*")[^"]+(")', re.MULTILINE)
-new_text, count = pattern.subn(rf'\1{api_version}\2', text, count=1)
+replacement = rf'\g<1>{api_version}\g<2>'
+new_text, count = pattern.subn(replacement, text, count=1)
 if count != 1:
   raise SystemExit("Failed to update Cargo.toml workspace version")
 cargo_toml.write_text(new_text)
