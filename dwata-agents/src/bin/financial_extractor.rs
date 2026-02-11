@@ -13,8 +13,10 @@ use dwata_agents::tools::DwataToolExecutor;
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::gemini::GeminiClient;
 use nocodo_llm_sdk::ollama::OllamaClient;
+use nocodo_llm_sdk::openai::OpenAIClient;
 use nocodo_llm_sdk::models::gemini::GEMINI_3_FLASH_ID;
 use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
+use nocodo_llm_sdk::models::openai::GPT_5_NANO_ID;
 
 #[derive(Parser, Debug)]
 #[command(name = "financial-extractor", about = "Run the financial extractor agent on an email")]
@@ -41,7 +43,7 @@ struct Cli {
     subject: Option<String>,
 
     /// LLM provider to use
-    #[arg(long, default_value = "gemini", value_parser = ["gemini", "ollama"])]
+    #[arg(long, default_value = "gemini", value_parser = ["gemini", "ollama", "openai"])]
     provider: String,
 
     /// Model ID to use (provider-specific)
@@ -58,6 +60,7 @@ struct ApiConfig {
 #[derive(Debug, Deserialize, Clone)]
 struct AiProviderApiKeysConfig {
     gemini_api_key: Option<String>,
+    openai_api_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -78,6 +81,7 @@ async fn main() -> Result<()> {
         None => match cli.provider.as_str() {
             "ollama" => MINISTRAL_3_3B_ID.to_string(),
             "gemini" => GEMINI_3_FLASH_ID.to_string(),
+            "openai" => GPT_5_NANO_ID.to_string(),
             _ => GEMINI_3_FLASH_ID.to_string(),
         },
     };
@@ -132,6 +136,15 @@ async fn main() -> Result<()> {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Missing gemini_api_key in config at {:?}", config_path))?;
             Arc::new(GeminiClient::new(api_key)?)
+        }
+        "openai" => {
+            let api_key = config
+                .ai_provider_api_keys
+                .as_ref()
+                .and_then(|keys| keys.openai_api_key.as_ref())
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("Missing openai_api_key in config at {:?}", config_path))?;
+            Arc::new(OpenAIClient::new(api_key)?)
         }
         _ => {
             return Err(anyhow::anyhow!("Unsupported provider: {}", cli.provider));

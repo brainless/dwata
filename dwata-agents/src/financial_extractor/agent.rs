@@ -44,25 +44,25 @@ impl FinancialExtractorAgent {
 
         let test_pattern_tool = Tool::from_type::<TestPatternParams>()
             .name("test_pattern")
-            .description("Test a regex pattern against the email content")
+            .description("Test a regex pattern against the email content. Returns extracted transactions with amount and vendor. Use this to validate your regex before saving.")
             .build();
 
         let save_pattern_tool = Tool::from_type::<SavePatternParams>()
             .name("save_pattern")
-            .description("Save a validated pattern to the database")
+            .description("Save a validated regex pattern to the database. Only call this after test_pattern succeeds. Use the same regex and group numbers from the successful test.")
             .build();
 
         let tools = vec![test_pattern_tool, save_pattern_tool];
 
         'attempts: for attempt in 0..2 {
-            let (system_prompt, email_content_for_user) = super::system_prompt::build_system_prompt(
+            // Use model-specific prompts for better results
+            let (system_prompt, email_content_for_user) = super::prompts::get_system_prompt(
+                self.llm_client.provider_name(),
+                &self.model,
                 &self.email_subject,
                 &self.email_body,
-                &self.existing_patterns,
                 high_signal_line.as_deref(),
                 attempt == 1,
-                // Pass provider name to optimize for Ollama
-                self.llm_client.provider_name(),
             );
 
             // Create initial message with email content if needed (for Ollama)
@@ -103,13 +103,31 @@ impl FinancialExtractorAgent {
                     }
                 }
 
+                // Use lower temperature for more reliable function calling with small models
+                // Based on Mistral best practices for function calling
+                // Note: GPT-5 nano/mini don't support custom temperature - only default (1)
+                let temperature = if self.model.contains("nano") || self.model.contains("mini") {
+                    None // GPT-5 nano/mini only support default temperature
+                } else if self.llm_client.provider_name() == "ollama" {
+                    Some(0.1) // More deterministic for small models
+                } else {
+                    Some(0.3) // Slightly higher for larger models
+                };
+
+                // GPT-5 nano/mini also don't support custom top_p
+                let top_p = if self.model.contains("nano") || self.model.contains("mini") {
+                    None
+                } else {
+                    Some(0.9) // Mistral recommends top_p for function calling
+                };
+
                 let request = CompletionRequest {
                     messages: llm_messages,
                     max_tokens: 4096,
                     model: self.model.clone(),
                     system: Some(system_prompt.clone()),
-                    temperature: None,
-                    top_p: None,
+                    temperature,
+                    top_p,
                     stop_sequences: None,
                     tools: Some(tools.clone()),
                     tool_choice: None,
