@@ -29,7 +29,7 @@ impl TemplateFinancialExtractorAgent {
 
     pub async fn execute(&self, session_id: i64) -> anyhow::Result<TranslateVariablesParams> {
         let system_prompt =
-            super::system_prompt::build_system_prompt(&self.template);
+            super::prompts::get_system_prompt(&self.model, &self.template);
 
         let translate_tool = Tool::from_type::<TranslateVariablesParams>()
             .name("translate_variables")
@@ -74,7 +74,12 @@ impl TemplateFinancialExtractorAgent {
                 max_tokens: 4096,
                 model: self.model.clone(),
                 system: Some(system_prompt.clone()),
-                temperature: Some(0.1),
+                // GPT-5 nano/mini don't support custom temperature or top_p
+                temperature: if self.model.contains("nano") || self.model.contains("mini") {
+                    None
+                } else {
+                    Some(0.1)
+                },
                 top_p: None,
                 stop_sequences: None,
                 tools: Some(tools.clone()),

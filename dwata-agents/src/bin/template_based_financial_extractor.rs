@@ -10,6 +10,10 @@ use dwata_agents::template_financial_extractor::TemplateFinancialExtractorAgent;
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::gemini::GeminiClient;
 use nocodo_llm_sdk::models::gemini::GEMINI_3_FLASH_ID;
+use nocodo_llm_sdk::ollama::OllamaClient;
+use nocodo_llm_sdk::openai::OpenAIClient;
+use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
+use nocodo_llm_sdk::models::openai::GPT_5_MINI_ID;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -27,6 +31,14 @@ struct Cli {
     /// Skip the LLM agent step and only output the raw template
     #[arg(long, default_value_t = false)]
     template_only: bool,
+
+    /// LLM provider to use
+    #[arg(long, default_value = "gemini", value_parser = ["gemini", "openai", "ollama"])]
+    provider: String,
+
+    /// Model ID to use (provider-specific)
+    #[arg(long)]
+    model: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +49,7 @@ struct ApiConfig {
 #[derive(Debug, Deserialize)]
 struct AiProviderApiKeysConfig {
     gemini_api_key: Option<String>,
+    openai_api_key: Option<String>,
 }
 
 /// Holds the subject and plain-text body extracted from an email.
@@ -82,17 +95,47 @@ async fn main() -> Result<()> {
 
     // 4. Run the LLM agent to translate placeholders
     let config = load_api_config()?;
-    let api_key = config
-        .ai_provider_api_keys
-        .as_ref()
-        .and_then(|keys| keys.gemini_api_key.as_ref())
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("Missing gemini_api_key in dwata config"))?;
 
-    let model = GEMINI_3_FLASH_ID.to_string();
+    // Determine model based on provider
+    let model = match cli.model {
+        Some(ref m) => m.clone(),
+        None => match cli.provider.as_str() {
+            "gemini" => GEMINI_3_FLASH_ID.to_string(),
+            "openai" => GPT_5_MINI_ID.to_string(),
+            "ollama" => MINISTRAL_3_3B_ID.to_string(),
+            _ => GEMINI_3_FLASH_ID.to_string(),
+        },
+    };
+
+    println!("Using provider: {}", cli.provider);
     println!("Using model: {model}");
 
-    let llm_client: Arc<dyn LlmClient> = Arc::new(GeminiClient::new(api_key)?);
+    let llm_client: Arc<dyn LlmClient> = match cli.provider.as_str() {
+        "gemini" => {
+            let api_key = config
+                .ai_provider_api_keys
+                .as_ref()
+                .and_then(|keys| keys.gemini_api_key.as_ref())
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("Missing gemini_api_key in dwata config"))?;
+            Arc::new(GeminiClient::new(api_key)?)
+        }
+        "openai" => {
+            let api_key = config
+                .ai_provider_api_keys
+                .as_ref()
+                .and_then(|keys| keys.openai_api_key.as_ref())
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("Missing openai_api_key in dwata config"))?;
+            Arc::new(OpenAIClient::new(api_key)?)
+        }
+        "ollama" => {
+            Arc::new(OllamaClient::new()?)
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Unsupported provider: {}", cli.provider));
+        }
+    };
     let storage: Arc<dyn dwata_agents::AgentStorage> =
         Arc::new(InMemoryAgentStorage::new());
 
