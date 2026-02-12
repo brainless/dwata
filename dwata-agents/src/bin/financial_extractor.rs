@@ -16,7 +16,7 @@ use nocodo_llm_sdk::ollama::OllamaClient;
 use nocodo_llm_sdk::openai::OpenAIClient;
 use nocodo_llm_sdk::models::gemini::GEMINI_3_FLASH_ID;
 use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
-use nocodo_llm_sdk::models::openai::GPT_5_NANO_ID;
+use nocodo_llm_sdk::models::openai::GPT_5_MINI_ID;
 
 #[derive(Parser, Debug)]
 #[command(name = "financial-extractor", about = "Run the financial extractor agent on an email")]
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
         None => match cli.provider.as_str() {
             "ollama" => MINISTRAL_3_3B_ID.to_string(),
             "gemini" => GEMINI_3_FLASH_ID.to_string(),
-            "openai" => GPT_5_NANO_ID.to_string(),
+            "openai" => GPT_5_MINI_ID.to_string(),
             _ => GEMINI_3_FLASH_ID.to_string(),
         },
     };
