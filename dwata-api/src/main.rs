@@ -237,12 +237,6 @@ async fn main() -> std::io::Result<()> {
         db.async_connection.clone(),
     ));
 
-    // Initialize financial extraction manager
-    let financial_extraction_manager = Arc::new(
-        jobs::financial_extraction_manager::FinancialExtractionManager::new(
-            db.async_connection.clone(),
-        ),
-    );
 
     // Restore interrupted jobs on startup
     if let Err(e) = download_manager.restore_interrupted_jobs().await {
@@ -263,7 +257,6 @@ async fn main() -> std::io::Result<()> {
     if downloads_auto_start {
         // Spawn background task for initial sync (delayed to allow full initialization)
         let manager_clone_startup = download_manager.clone();
-        let extraction_manager_clone_startup = financial_extraction_manager.clone();
         tokio::spawn(async move {
             // Wait 2 seconds for server to fully initialize
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -279,18 +272,6 @@ async fn main() -> std::io::Result<()> {
                 tracing::warn!("Failed to run initial sync: {}", e);
             }
 
-            // Run initial financial extraction
-            match extraction_manager_clone_startup.extract_from_emails(None, None).await {
-                Ok(count) => {
-                    tracing::info!(
-                        "Financial extraction completed on startup: {} transactions extracted",
-                        count
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to run initial financial extraction: {}", e);
-                }
-            }
         });
 
         // Spawn historical backfill on startup
@@ -395,7 +376,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(settings_state.clone()))
             .app_data(web::Data::new(download_manager_for_server.clone()))
             .app_data(web::Data::new(extraction_manager.clone()))
-            .app_data(web::Data::new(financial_extraction_manager.clone()))
             .app_data(web::Data::new(oauth_client.clone()))
             .app_data(web::Data::new(state_manager.clone()))
             .app_data(web::Data::new(token_cache.clone()))
@@ -446,17 +426,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/contacts/{id}/positions", web::get().to(handlers::positions::list_contact_positions))
             .route("/api/financial/transactions", web::get().to(handlers::financial::list_transactions))
             .route("/api/financial/summary", web::get().to(handlers::financial::get_summary))
-            .route("/api/financial/extract", web::post().to(handlers::financial::trigger_extraction))
-            .route("/api/financial/extractions/summary", web::get().to(handlers::financial::get_extraction_summary))
-            .route("/api/financial/extractions/attempts", web::get().to(handlers::financial::list_extraction_attempts))
             .route("/api/financial/email-scan", web::post().to(handlers::financial::scan_financial_emails))
-            .route("/api/financial/patterns", web::get().to(handlers::financial::list_patterns))
-            .route("/api/financial/patterns", web::post().to(handlers::financial::create_pattern))
-            .route("/api/financial/patterns/{id}", web::get().to(handlers::financial::get_pattern))
-            .route("/api/financial/patterns/{id}", web::put().to(handlers::financial::update_pattern))
-            .route("/api/financial/patterns/{id}/toggle", web::patch().to(handlers::financial::toggle_pattern))
-            .service(handlers::pattern_generation::process_sender)
-            .service(handlers::pattern_generation::generate_pattern)
             .default_service(web::route().to(gui_embed::serve_gui))
     })
     .bind((host.as_str(), port))?

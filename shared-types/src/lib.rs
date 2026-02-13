@@ -44,10 +44,10 @@ pub use extraction_job::{
     ExtractionSourceType, ExtractorType,
 };
 pub use financial::{
-    CategoryBreakdown, DataSourceType, FinancialDocumentType, FinancialExtractionAttempt,
-    FinancialExtractionAttemptsResponse, FinancialExtractionSummary, FinancialHealth,
-    FinancialPattern, FinancialSummary, FinancialTransaction, TransactionCategory, TransactionStatus,
-    TransactionVendor, TransactionVendorType,
+    CategoryBreakdown, DataSourceType, EnrichmentStatus, FinancialDocumentType, FinancialExtractionSummary,
+    FinancialHealth, FinancialSummary, FinancialTransaction, PartyEvidence,
+    PartyIdentity, PartyRole, TransactionCategory, TransactionParty, TransactionStatus,
+    TransactionVendor, TransactionVendorType, UnresolvedField,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};

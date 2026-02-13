@@ -1,8 +1,9 @@
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use shared_types::{
-    DataSourceType, FinancialDocumentType, FinancialTransaction, TransactionCategory,
-    TransactionStatus, FinancialSummary,
+    DataSourceType, EnrichmentStatus, FinancialDocumentType, FinancialSummary,
+    FinancialTransaction, PartyEvidence, PartyIdentity, PartyRole, TransactionCategory,
+    TransactionParty, TransactionStatus, UnresolvedField,
 };
 use rusqlite::params;
 
@@ -29,6 +30,31 @@ fn data_source_type_from_str(value: &str) -> DataSourceType {
         "csv-upload" => DataSourceType::CsvUpload,
         "manual" => DataSourceType::Manual,
         _ => DataSourceType::Unknown,
+    }
+}
+
+fn party_vendor_id(party: &TransactionParty) -> Option<i64> {
+    match party.identity {
+        PartyIdentity::KnownVendorId(id) => Some(id),
+        PartyIdentity::CandidateVendorId(id) => Some(id),
+        _ => None,
+    }
+}
+
+fn mk_party(role: PartyRole, vendor_id: Option<i64>) -> TransactionParty {
+    let identity = if let Some(id) = vendor_id {
+        PartyIdentity::KnownVendorId(id)
+    } else {
+        PartyIdentity::Unknown
+    };
+
+    let needs_user_confirmation = !matches!(identity, PartyIdentity::KnownVendorId(_));
+
+    TransactionParty {
+        role,
+        identity,
+        evidence: vec![PartyEvidence::PatternDefault],
+        needs_user_confirmation,
     }
 }
 
@@ -72,7 +98,7 @@ pub async fn insert_financial_transaction(
     });
 
     let data_source_type = data_source_type_to_str(&transaction.data_source_type);
-    let vendor_ref = transaction.vendor.as_deref().unwrap_or("");
+    let vendor_ref = String::new();
     let notes_ref = transaction.notes.as_deref();
     let source_file_ref = transaction.source_file.as_deref();
     let transaction_reference_ref = transaction.transaction_reference.as_deref();
@@ -94,8 +120,8 @@ pub async fn insert_financial_transaction(
             &transaction.transaction_date,
             category,
             vendor_ref,
-            transaction.source_vendor_id,
-            transaction.destination_vendor_id,
+            party_vendor_id(&transaction.payer),
+            party_vendor_id(&transaction.payee),
             status,
             source_file_ref,
             0.85f64,
@@ -279,10 +305,14 @@ pub async fn list_financial_transactions_filtered(
             currency: row.get(5)?,
             transaction_date: row.get(6)?,
             category,
-            vendor: row.get(8)?,
-            source_vendor_id: row.get(9)?,
-            destination_vendor_id: row.get(10)?,
+            payer: mk_party(PartyRole::Payer, row.get(9)?),
+            payee: mk_party(PartyRole::Payee, row.get(10)?),
             status,
+            enrichment_status: EnrichmentStatus::RawExtracted,
+            unresolved_items: vec![
+                UnresolvedField::PayerIdentity,
+                UnresolvedField::PayeeIdentity,
+            ],
             source_file: row.get(12)?,
             extracted_at: row.get(13)?,
             notes: row.get(14)?,

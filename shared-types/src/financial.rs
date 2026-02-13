@@ -45,10 +45,15 @@ pub struct FinancialTransaction {
 
     // Additional fields
     pub category: Option<TransactionCategory>,
-    pub vendor: Option<String>,
-    pub source_vendor_id: Option<i64>,
-    pub destination_vendor_id: Option<i64>,
+    // Transaction endpoints are always required in this model.
+    // If unresolved, use PartyIdentity::Unknown or candidate identities.
+    pub payer: TransactionParty,
+    pub payee: TransactionParty,
     pub status: TransactionStatus,
+    // Progression state for user-in-the-loop enrichment.
+    pub enrichment_status: EnrichmentStatus,
+    // Explicit queue of fields still waiting for user confirmation/correction.
+    pub unresolved_items: Vec<UnresolvedField>,
 
     // Metadata
     pub source_file: Option<String>,
@@ -57,13 +62,85 @@ pub struct FinancialTransaction {
     pub transaction_reference: Option<String>,
 }
 
+/// Relative role of an endpoint party in a transaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum PartyRole {
+    Payer,
+    Payee,
+}
+
+/// Strongly typed transaction endpoint. Always present for both payer and payee.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TransactionParty {
+    pub role: PartyRole,
+    // Canonical identity state. Never null; unknown is explicit.
+    pub identity: PartyIdentity,
+    // Why this identity was assigned.
+    pub evidence: Vec<PartyEvidence>,
+    // UI/job systems can route this directly into follow-up tasks.
+    pub needs_user_confirmation: bool,
+}
+
+/// Canonical identity of a party endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", content = "value", rename_all = "kebab-case")]
+pub enum PartyIdentity {
+    // The user's own identity (workspace owner side of transaction).
+    SelfEntity,
+    // Resolved party in TransactionVendor table.
+    KnownVendorId(i64),
+    // Single candidate awaiting user confirmation.
+    CandidateVendorId(i64),
+    // Parsing captured a party role exists but could not infer identity yet.
+    Unknown,
+}
+
+/// Provenance for party identity assignment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum PartyEvidence {
+    ExplicitInDocument,
+    PatternDefault,
+    UserProvided,
+}
+
+/// Lifecycle status for user-in-the-loop transaction enrichment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum EnrichmentStatus {
+    // Parser/LLM produced an initial record with potential unknowns.
+    RawExtracted,
+    // Some fields resolved, but transaction still has unresolved_items.
+    PartiallyResolved,
+    // User explicitly reviewed/confirmed key fields.
+    UserConfirmed,
+    // No unresolved_items remain.
+    FullyResolved,
+}
+
+/// Explicitly tracked unresolved fields requiring user input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum UnresolvedField {
+    PayerIdentity,
+    PayeeIdentity,
+    Category,
+    TransactionReference,
+    TransactionDate,
+    Currency,
+}
+
 /// Vendor type for transaction parties
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 pub enum TransactionVendorType {
+    SelfUser,
+    SelfBusiness,
+    FinancialInstrument,
+    Merchant,
+    Employer,
     Bank,
-    Business,
-    Employee,
     Individual,
     Platform,
     Unknown,
@@ -129,25 +206,6 @@ pub struct FinancialExtractionSummary {
     pub last_extracted_at: Option<i64>,
 }
 
-/// Financial extraction attempt details
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct FinancialExtractionAttempt {
-    pub id: i64,
-    pub source_type: String,
-    pub source_account_id: i64,
-    pub attempted_at: i64,
-    pub total_items_scanned: i64,
-    pub transactions_extracted: i64,
-    pub status: String,
-    pub error_message: Option<String>,
-}
-
-/// Response for extraction attempt history
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct FinancialExtractionAttemptsResponse {
-    pub attempts: Vec<FinancialExtractionAttempt>,
-}
-
 /// Financial health metrics
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct FinancialHealth {
@@ -164,29 +222,4 @@ pub struct CategoryBreakdown {
     pub amount: f64,
     pub percentage: f64,
     pub transaction_count: i32,
-}
-
-/// Financial pattern for extracting transactions
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct FinancialPattern {
-    pub id: i64,
-    pub name: String,
-    pub regex_pattern: String,
-    pub description: Option<String>,
-    pub sender_email: Option<String>,
-    pub document_type: String,
-    pub status: String,
-    pub amount_group: usize,
-    pub vendor_group: Option<usize>,
-    pub source_vendor_group: Option<usize>,
-    pub destination_vendor_group: Option<usize>,
-    pub date_group: Option<usize>,
-    pub reference_group: Option<usize>,
-    pub currency_group: Option<usize>,
-    pub is_default: bool,
-    pub is_active: bool,
-    pub match_count: i32,
-    pub last_matched_at: Option<i64>,
-    pub created_at: i64,
-    pub updated_at: i64,
 }
