@@ -60,6 +60,41 @@ pub struct DocumentSource {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub enum DocumentSortBy {
+    ReceivedAtDesc,
+    ModifiedAtDesc,
+    CreatedAtDesc,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub struct DocumentCursor {
+    pub sort_value: i64,
+    pub id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ListDocumentsRequest {
+    pub source_id: Option<i64>,
+    pub credential_id: Option<i64>,
+    pub kind: Option<DocumentKind>,
+    pub parent_document_id: Option<i64>,
+    pub limit: Option<usize>,
+    pub cursor: Option<DocumentCursor>,
+    pub sort_by: Option<DocumentSortBy>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ListDocumentsResponse {
+    pub documents: Vec<Document>,
+    pub next_cursor: Option<DocumentCursor>,
+    pub has_more: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Document {

@@ -2,6 +2,7 @@ pub mod companies;
 pub mod contact_links;
 pub mod contacts;
 pub mod credentials;
+pub mod documents;
 pub mod downloads;
 pub mod emails;
 pub mod events;
@@ -15,9 +16,9 @@ pub mod models;
 pub mod positions;
 pub mod queries;
 
-use rusqlite::{params, Connection};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::{params, Connection};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -70,7 +71,7 @@ impl Database {
         // Run migrations on sync connection before opening async connection
         {
             let mut conn = sync_mutex.lock().unwrap();
-        migrations::run_migrations(&mut conn)?;
+            migrations::run_migrations(&mut conn)?;
             migrations::migrate_folders_and_labels(&mut *conn)?;
         }
 

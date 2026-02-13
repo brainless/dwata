@@ -38,8 +38,7 @@ fn rebuild_financial_patterns_table(conn: &mut Connection) -> anyhow::Result<()>
         [],
     )?;
 
-    let has_currency_group =
-        table_has_column(&tx, "financial_patterns_old", "currency_group")?;
+    let has_currency_group = table_has_column(&tx, "financial_patterns_old", "currency_group")?;
 
     tx.execute(
         "CREATE TABLE financial_patterns (
@@ -149,13 +148,20 @@ fn migrate_financial_schema(conn: &Connection) -> anyhow::Result<()> {
 }
 
 fn make_transaction_description_nullable(conn: &mut Connection) -> anyhow::Result<()> {
-    if table_sql_contains(conn, "financial_transactions", "description VARCHAR NOT NULL")? {
+    if table_sql_contains(
+        conn,
+        "financial_transactions",
+        "description VARCHAR NOT NULL",
+    )? {
         tracing::info!("Making financial_transactions.description nullable");
 
         let tx = conn.transaction()?;
 
         // SQLite requires table rebuild to change column constraints
-        tx.execute("ALTER TABLE financial_transactions RENAME TO financial_transactions_old", [])?;
+        tx.execute(
+            "ALTER TABLE financial_transactions RENAME TO financial_transactions_old",
+            [],
+        )?;
 
         // Create new table with nullable description
         tx.execute(
@@ -191,7 +197,10 @@ fn make_transaction_description_nullable(conn: &mut Connection) -> anyhow::Resul
         )?;
 
         // Copy all data
-        tx.execute("INSERT INTO financial_transactions SELECT * FROM financial_transactions_old", [])?;
+        tx.execute(
+            "INSERT INTO financial_transactions SELECT * FROM financial_transactions_old",
+            [],
+        )?;
         tx.execute("DROP TABLE financial_transactions_old", [])?;
 
         // Recreate indexes
@@ -517,10 +526,7 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
     )?;
 
     if !had_emails_fts {
-        conn.execute(
-            "INSERT INTO emails_fts(emails_fts) VALUES('rebuild')",
-            [],
-        )?;
+        conn.execute("INSERT INTO emails_fts(emails_fts) VALUES('rebuild')", [])?;
     }
 
     // Create email_attachments table
@@ -648,6 +654,12 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_documents_modified_date
             ON documents(date_modified DESC, id DESC)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_created_date
+            ON documents(created_at DESC, id DESC)",
         [],
     )?;
 
@@ -1276,7 +1288,10 @@ pub fn migrate_folders_and_labels(conn: &mut Connection) -> anyhow::Result<()> {
         )?;
 
         if dup_count > 0 {
-            tracing::warn!("Found {} duplicate email UID groups, deduplicating", dup_count);
+            tracing::warn!(
+                "Found {} duplicate email UID groups, deduplicating",
+                dup_count
+            );
 
             tx.execute(
                 "CREATE TEMP TABLE email_uid_dedupe AS

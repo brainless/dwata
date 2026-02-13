@@ -6,11 +6,11 @@ use tracing_subscriber::prelude::*;
 
 mod config;
 mod database;
+mod financial_keywords;
 mod handlers;
 mod helpers;
 mod integrations;
 mod jobs;
-mod financial_keywords;
 
 #[cfg(not(debug_assertions))]
 mod gui_embed {
@@ -216,12 +216,8 @@ async fn main() -> std::io::Result<()> {
             }
         }
     } else {
-        tracing::info!(
-            "ℹ️  No master credentials found. This is normal for first-time setup."
-        );
-        tracing::info!(
-            "   New credentials will be automatically stored in master mode."
-        );
+        tracing::info!("ℹ️  No master credentials found. This is normal for first-time setup.");
+        tracing::info!("   New credentials will be automatically stored in master mode.");
     }
 
     // Initialize download manager
@@ -236,7 +232,6 @@ async fn main() -> std::io::Result<()> {
     let extraction_manager = Arc::new(jobs::extraction_manager::ExtractionManager::new(
         db.async_connection.clone(),
     ));
-
 
     // Restore interrupted jobs on startup
     if let Err(e) = download_manager.restore_interrupted_jobs().await {
@@ -271,7 +266,6 @@ async fn main() -> std::io::Result<()> {
             if let Err(e) = manager_clone_startup.sync_all_jobs().await {
                 tracing::warn!("Failed to run initial sync: {}", e);
             }
-
         });
 
         // Spawn historical backfill on startup
@@ -339,7 +333,10 @@ async fn main() -> std::io::Result<()> {
                 if manager_clone_backfill_periodic.is_shutting_down() {
                     break;
                 }
-                if let Err(e) = manager_clone_backfill_periodic.sync_all_historical_backfill().await {
+                if let Err(e) = manager_clone_backfill_periodic
+                    .sync_all_historical_backfill()
+                    .await
+                {
                     tracing::error!("Periodic historical backfill failed: {}", e);
                 }
             }
@@ -386,47 +383,172 @@ async fn main() -> std::io::Result<()> {
             .service(get_settings)
             .service(update_ai_provider_api_keys)
             .service(update_oauth_client_apps)
-            .route("/api/credentials", web::post().to(handlers::credentials::create_credential))
-            .route("/api/credentials", web::get().to(handlers::credentials::list_credentials))
-            .route("/api/credentials/{id}", web::get().to(handlers::credentials::get_credential))
-            .route("/api/credentials/{id}/password", web::get().to(handlers::credentials::get_password))
-            .route("/api/credentials/{id}", web::put().to(handlers::credentials::update_credential))
-            .route("/api/credentials/{id}", web::delete().to(handlers::credentials::delete_credential))
-            .route("/api/credentials/gmail/initiate", web::post().to(handlers::oauth::initiate_gmail_oauth))
-            .route("/api/oauth/google/callback", web::get().to(handlers::oauth::google_oauth_callback))
-            .route("/api/downloads", web::post().to(handlers::downloads::create_download_job))
-            .route("/api/downloads", web::get().to(handlers::downloads::list_download_jobs))
-            .route("/api/downloads/sync", web::post().to(handlers::downloads::trigger_sync))
-            .route("/api/downloads/{id}", web::get().to(handlers::downloads::get_download_job))
-            .route("/api/downloads/{id}/start", web::post().to(handlers::downloads::start_download))
-            .route("/api/downloads/{id}/pause", web::post().to(handlers::downloads::pause_download))
-            .route("/api/downloads/{id}", web::delete().to(handlers::downloads::delete_download_job))
-            .route("/api/extractions", web::post().to(handlers::extraction_jobs::create_extraction_job))
-            .route("/api/extractions", web::get().to(handlers::extraction_jobs::list_extraction_jobs))
-            .route("/api/extractions/{id}", web::get().to(handlers::extraction_jobs::get_extraction_job))
-            .route("/api/extractions/{id}/start", web::post().to(handlers::extraction_jobs::start_extraction))
+            .route(
+                "/api/credentials",
+                web::post().to(handlers::credentials::create_credential),
+            )
+            .route(
+                "/api/credentials",
+                web::get().to(handlers::credentials::list_credentials),
+            )
+            .route(
+                "/api/credentials/{id}",
+                web::get().to(handlers::credentials::get_credential),
+            )
+            .route(
+                "/api/credentials/{id}/password",
+                web::get().to(handlers::credentials::get_password),
+            )
+            .route(
+                "/api/credentials/{id}",
+                web::put().to(handlers::credentials::update_credential),
+            )
+            .route(
+                "/api/credentials/{id}",
+                web::delete().to(handlers::credentials::delete_credential),
+            )
+            .route(
+                "/api/credentials/gmail/initiate",
+                web::post().to(handlers::oauth::initiate_gmail_oauth),
+            )
+            .route(
+                "/api/oauth/google/callback",
+                web::get().to(handlers::oauth::google_oauth_callback),
+            )
+            .route(
+                "/api/downloads",
+                web::post().to(handlers::downloads::create_download_job),
+            )
+            .route(
+                "/api/downloads",
+                web::get().to(handlers::downloads::list_download_jobs),
+            )
+            .route(
+                "/api/downloads/sync",
+                web::post().to(handlers::downloads::trigger_sync),
+            )
+            .route(
+                "/api/downloads/{id}",
+                web::get().to(handlers::downloads::get_download_job),
+            )
+            .route(
+                "/api/downloads/{id}/start",
+                web::post().to(handlers::downloads::start_download),
+            )
+            .route(
+                "/api/downloads/{id}/pause",
+                web::post().to(handlers::downloads::pause_download),
+            )
+            .route(
+                "/api/downloads/{id}",
+                web::delete().to(handlers::downloads::delete_download_job),
+            )
+            .route(
+                "/api/extractions",
+                web::post().to(handlers::extraction_jobs::create_extraction_job),
+            )
+            .route(
+                "/api/extractions",
+                web::get().to(handlers::extraction_jobs::list_extraction_jobs),
+            )
+            .route(
+                "/api/extractions/{id}",
+                web::get().to(handlers::extraction_jobs::get_extraction_job),
+            )
+            .route(
+                "/api/extractions/{id}/start",
+                web::post().to(handlers::extraction_jobs::start_extraction),
+            )
             .route("/api/emails", web::get().to(handlers::emails::list_emails))
-            .route("/api/emails/{id}", web::get().to(handlers::emails::get_email))
-            .route("/api/emails/{id}/labels", web::get().to(handlers::emails::get_email_labels))
-            .route("/api/credentials/{credential_id}/folders", web::get().to(handlers::folders::list_folders))
-            .route("/api/folders/{folder_id}", web::get().to(handlers::folders::get_folder))
-            .route("/api/folders/{folder_id}/emails", web::get().to(handlers::folders::list_folder_emails))
-            .route("/api/credentials/{credential_id}/labels", web::get().to(handlers::labels::list_labels))
-            .route("/api/labels/{label_id}", web::get().to(handlers::labels::get_label))
-            .route("/api/labels/{label_id}/emails", web::get().to(handlers::labels::list_label_emails))
+            .route(
+                "/api/emails/{id}",
+                web::get().to(handlers::emails::get_email),
+            )
+            .route(
+                "/api/emails/{id}/labels",
+                web::get().to(handlers::emails::get_email_labels),
+            )
+            .route(
+                "/api/documents",
+                web::get().to(handlers::documents::list_documents),
+            )
+            .route(
+                "/api/documents/{id}",
+                web::get().to(handlers::documents::get_document),
+            )
+            .route(
+                "/api/credentials/{credential_id}/folders",
+                web::get().to(handlers::folders::list_folders),
+            )
+            .route(
+                "/api/folders/{folder_id}",
+                web::get().to(handlers::folders::get_folder),
+            )
+            .route(
+                "/api/folders/{folder_id}/emails",
+                web::get().to(handlers::folders::list_folder_emails),
+            )
+            .route(
+                "/api/credentials/{credential_id}/labels",
+                web::get().to(handlers::labels::list_labels),
+            )
+            .route(
+                "/api/labels/{label_id}",
+                web::get().to(handlers::labels::get_label),
+            )
+            .route(
+                "/api/labels/{label_id}/emails",
+                web::get().to(handlers::labels::list_label_emails),
+            )
             .route("/api/events", web::get().to(handlers::events::list_events))
-            .route("/api/events/{id}", web::get().to(handlers::events::get_event))
-            .route("/api/contacts", web::get().to(handlers::contacts::list_contacts))
-            .route("/api/contacts/{id}", web::get().to(handlers::contacts::get_contact))
-            .route("/api/contacts/{id}/links", web::get().to(handlers::contacts::get_contact_links))
-            .route("/api/companies", web::get().to(handlers::companies::list_companies))
-            .route("/api/companies/{id}", web::get().to(handlers::companies::get_company))
-            .route("/api/positions", web::get().to(handlers::positions::list_positions))
-            .route("/api/positions/{id}", web::get().to(handlers::positions::get_position))
-            .route("/api/contacts/{id}/positions", web::get().to(handlers::positions::list_contact_positions))
-            .route("/api/financial/transactions", web::get().to(handlers::financial::list_transactions))
-            .route("/api/financial/summary", web::get().to(handlers::financial::get_summary))
-            .route("/api/financial/email-scan", web::post().to(handlers::financial::scan_financial_emails))
+            .route(
+                "/api/events/{id}",
+                web::get().to(handlers::events::get_event),
+            )
+            .route(
+                "/api/contacts",
+                web::get().to(handlers::contacts::list_contacts),
+            )
+            .route(
+                "/api/contacts/{id}",
+                web::get().to(handlers::contacts::get_contact),
+            )
+            .route(
+                "/api/contacts/{id}/links",
+                web::get().to(handlers::contacts::get_contact_links),
+            )
+            .route(
+                "/api/companies",
+                web::get().to(handlers::companies::list_companies),
+            )
+            .route(
+                "/api/companies/{id}",
+                web::get().to(handlers::companies::get_company),
+            )
+            .route(
+                "/api/positions",
+                web::get().to(handlers::positions::list_positions),
+            )
+            .route(
+                "/api/positions/{id}",
+                web::get().to(handlers::positions::get_position),
+            )
+            .route(
+                "/api/contacts/{id}/positions",
+                web::get().to(handlers::positions::list_contact_positions),
+            )
+            .route(
+                "/api/financial/transactions",
+                web::get().to(handlers::financial::list_transactions),
+            )
+            .route(
+                "/api/financial/summary",
+                web::get().to(handlers::financial::get_summary),
+            )
+            .route(
+                "/api/financial/email-scan",
+                web::post().to(handlers::financial::scan_financial_emails),
+            )
             .default_service(web::route().to(gui_embed::serve_gui))
     })
     .bind((host.as_str(), port))?
@@ -435,9 +557,8 @@ async fn main() -> std::io::Result<()> {
     let handle = server.handle();
     let shutdown_manager = download_manager.clone();
 
-    let open_in_browser = !cfg!(debug_assertions)
-        && !args.no_open
-        && std::env::var("DWATA_NO_OPEN").is_err();
+    let open_in_browser =
+        !cfg!(debug_assertions) && !args.no_open && std::env::var("DWATA_NO_OPEN").is_err();
     if open_in_browser {
         let url = format!("http://{}:{}/", host, port);
         tokio::spawn(async move {

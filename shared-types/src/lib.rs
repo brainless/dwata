@@ -4,8 +4,8 @@ pub mod company;
 pub mod contact;
 pub mod contact_link;
 pub mod credential;
-pub mod download;
 pub mod document;
+pub mod download;
 pub mod email;
 pub mod event;
 pub mod extraction;
@@ -29,14 +29,14 @@ pub use credential::{
     CredentialMetadata, CredentialType, ImapAccountSettings, ImapAuthMethod,
     ImapCredentialMetadata, PasswordResponse, SmtpAccountSettings, UpdateCredentialRequest,
 };
+pub use document::{
+    Document, DocumentCursor, DocumentKind, DocumentSortBy, DocumentSource, DocumentSourceType,
+    ListDocumentsRequest, ListDocumentsResponse, SourceAccessState, SourcePermissionState,
+};
 pub use download::{
     CloudStorageDownloadState, CreateDownloadJobRequest, DirectoryStatus, DownloadItem,
     DownloadItemStatus, DownloadJob, DownloadJobListResponse, DownloadJobStatus, DownloadProgress,
     FileFilter, ImapDownloadState, ImapFolderStatus, ImapSyncStrategy, SourceType,
-};
-pub use document::{
-    Document, DocumentKind, DocumentSource, DocumentSourceType, SourceAccessState,
-    SourcePermissionState,
 };
 pub use email::{
     AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, FinancialEmailScanRequest,
@@ -49,10 +49,10 @@ pub use extraction_job::{
     ExtractionSourceType, ExtractorType,
 };
 pub use financial::{
-    CategoryBreakdown, DataSourceType, EnrichmentStatus, FinancialDocumentType, FinancialExtractionSummary,
-    FinancialHealth, FinancialSummary, FinancialTransaction, PartyEvidence,
-    PartyIdentity, PartyRole, TransactionCategory, TransactionParty, TransactionStatus,
-    TransactionVendor, TransactionVendorType, UnresolvedField,
+    CategoryBreakdown, DataSourceType, EnrichmentStatus, FinancialDocumentType,
+    FinancialExtractionSummary, FinancialHealth, FinancialSummary, FinancialTransaction,
+    PartyEvidence, PartyIdentity, PartyRole, TransactionCategory, TransactionParty,
+    TransactionStatus, TransactionVendor, TransactionVendorType, UnresolvedField,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
@@ -65,8 +65,8 @@ pub use session::{
     SessionMessage, SessionResponse, SessionToolCall,
 };
 pub use settings::{
-    AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse,
-    UpdateAiProviderApiKeysRequest, UpdateOAuthClientAppsRequest,
+    AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse, UpdateAiProviderApiKeysRequest,
+    UpdateOAuthClientAppsRequest,
 };
 pub use task::{
     CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
