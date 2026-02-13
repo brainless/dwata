@@ -15,6 +15,7 @@ pub mod folder;
 pub mod label;
 pub mod position;
 pub mod project;
+pub mod search;
 pub mod session;
 pub mod settings;
 pub mod task;
@@ -59,6 +60,9 @@ pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
 pub use position::{CreatePositionRequest, Position, PositionsResponse};
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
+};
+pub use search::{
+    SearchDocumentsRequest, SearchDocumentsResponse, SearchField, SearchHit, SearchTerm,
 };
 pub use session::{
     AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionListResponse,

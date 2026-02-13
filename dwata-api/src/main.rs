@@ -11,6 +11,7 @@ mod handlers;
 mod helpers;
 mod integrations;
 mod jobs;
+mod search;
 
 #[cfg(not(debug_assertions))]
 mod gui_embed {
@@ -160,6 +161,58 @@ async fn main() -> std::io::Result<()> {
     let settings_state = handlers::settings::SettingsAppState {
         config: config_arc.clone(),
     };
+
+    let search_index_path = config
+        .search
+        .as_ref()
+        .and_then(|s| s.index_path.as_ref())
+        .map(std::path::PathBuf::from)
+        .or_else(|| dirs::data_local_dir().map(|d| d.join("dwata").join("tantivy-index")))
+        .expect("Failed to resolve search index path");
+    let search_index = Arc::new(
+        search::tantivy::open_or_create_index(&search_index_path)
+            .expect("Failed to initialize tantivy index"),
+    );
+    tracing::info!("Tantivy index path: {}", search_index_path.display());
+
+    let search_index_backfill = search_index.clone();
+    let db_for_backfill = db.clone();
+    tokio::spawn(async move {
+        let mut after_id = 0_i64;
+        let page_size = 500_usize;
+        loop {
+            let page = match crate::database::documents::list_documents_for_indexing_page(
+                db_for_backfill.async_connection.clone(),
+                after_id,
+                page_size,
+            )
+            .await
+            {
+                Ok(rows) => rows,
+                Err(err) => {
+                    tracing::warn!("Failed to backfill search index page: {}", err);
+                    break;
+                }
+            };
+
+            if page.is_empty() {
+                break;
+            }
+
+            for row in &page {
+                if let Err(err) =
+                    search_index_backfill.index_document(&row.document, &row.indexed_text)
+                {
+                    tracing::warn!("Failed to index document {}: {}", row.document.id, err);
+                }
+            }
+
+            if let Some(last) = page.last() {
+                after_id = last.document.id;
+            }
+        }
+        tracing::info!("Search index backfill completed");
+    });
 
     // Get server config or use defaults
     let (host, port) = if let Some(server_config) = &config.server {
@@ -378,6 +431,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(token_cache.clone()))
             .app_data(web::Data::new(keyring_service.clone()))
             .app_data(web::Data::new(config.clone()))
+            .app_data(web::Data::new(search_index.clone()))
             .service(hello)
             .service(health)
             .service(get_settings)
@@ -471,6 +525,10 @@ async fn main() -> std::io::Result<()> {
             .route(
                 "/api/documents",
                 web::get().to(handlers::documents::list_documents),
+            )
+            .route(
+                "/api/documents/search",
+                web::get().to(handlers::documents::search_documents),
             )
             .route(
                 "/api/documents/{id}",

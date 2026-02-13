@@ -1,10 +1,14 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
-use shared_types::{DocumentKind, DocumentSortBy, ListDocumentsRequest};
+use shared_types::{
+    DocumentKind, DocumentSortBy, ListDocumentsRequest, SearchDocumentsRequest,
+    SearchDocumentsResponse, SearchField, SearchTerm,
+};
 use std::sync::Arc;
 
 use crate::database::documents as documents_db;
 use crate::database::Database;
+use crate::search::tantivy::TantivySearchIndex;
 
 #[derive(Debug, Deserialize)]
 pub struct ListDocumentsQuery {
@@ -17,6 +21,19 @@ pub struct ListDocumentsQuery {
     pub cursor_sort_value: Option<i64>,
     pub cursor_id: Option<i64>,
     pub sort_by: Option<DocumentSortBy>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SearchDocumentsQuery {
+    pub q: Option<String>,
+    pub terms: Option<String>,
+    pub field: Option<SearchField>,
+    pub is_phrase: Option<bool>,
+    pub kind: Option<DocumentKind>,
+    pub source_id: Option<i64>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
 }
 
 fn parse_cursor(
@@ -100,4 +117,71 @@ pub async fn get_document(
             error: format!("Document {} not found", id),
         })),
     }
+}
+
+pub async fn search_documents(
+    db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
+    query: web::Query<SearchDocumentsQuery>,
+) -> ActixResult<HttpResponse> {
+    let query = query.into_inner();
+    let terms = if let Some(terms_json) = query.terms.as_ref().filter(|s| !s.trim().is_empty()) {
+        serde_json::from_str::<Vec<SearchTerm>>(terms_json)
+            .map_err(|e| actix_web::error::ErrorBadRequest(format!("Invalid terms: {e}")))?
+    } else if let Some(q) = query.q.as_ref().filter(|s| !s.trim().is_empty()) {
+        vec![SearchTerm {
+            field: query.field.unwrap_or(SearchField::Any),
+            value: q.clone(),
+            is_phrase: query.is_phrase.unwrap_or(false),
+        }]
+    } else {
+        Vec::new()
+    };
+
+    if terms.is_empty() {
+        return Ok(
+            HttpResponse::BadRequest().json(shared_types::ErrorResponse {
+                error: "terms must not be empty".to_string(),
+            }),
+        );
+    }
+
+    let request = SearchDocumentsRequest {
+        terms,
+        kind: query.kind,
+        source_id: query.source_id,
+        limit: query.limit,
+        offset: query.offset,
+    };
+
+    if request.limit.unwrap_or(25) > 100 {
+        return Ok(
+            HttpResponse::BadRequest().json(shared_types::ErrorResponse {
+                error: "limit must be <= 100".to_string(),
+            }),
+        );
+    }
+
+    let search_result = search_index
+        .search(&request)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let ids: Vec<i64> = search_result.hits.iter().map(|h| h.document_id).collect();
+
+    let docs = documents_db::get_documents_by_ids(db.async_connection.clone(), &ids)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let docs_by_id = docs
+        .into_iter()
+        .map(|d| (d.id, d))
+        .collect::<std::collections::HashMap<_, _>>();
+    let documents = ids
+        .iter()
+        .filter_map(|id| docs_by_id.get(id).cloned())
+        .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(SearchDocumentsResponse {
+        hits: search_result.hits,
+        documents,
+        total_hits: search_result.total_hits,
+    }))
 }

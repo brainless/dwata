@@ -44,6 +44,7 @@ r2d2_sqlite = "0.25"
 mime_guess = "2.0"
 rust-embed = "8.5"
 webbrowser = "0.8.15"
+tantivy = "0.22"
 
 [features]
 default = []

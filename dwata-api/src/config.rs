@@ -14,6 +14,7 @@ pub struct ApiConfig {
     pub server: Option<ServerConfig>,
     pub google_oauth: Option<GoogleOAuthConfig>,
     pub downloads: Option<DownloadsConfig>,
+    pub search: Option<SearchConfig>,
 }
 
 impl Default for ApiConfig {
@@ -30,6 +31,7 @@ impl Default for ApiConfig {
             }),
             google_oauth: Some(GoogleOAuthConfig::default()),
             downloads: Some(DownloadsConfig::default()),
+            search: Some(SearchConfig::default()),
         }
     }
 }
@@ -66,9 +68,20 @@ pub struct DownloadsConfig {
     pub auto_start: bool,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SearchConfig {
+    pub index_path: Option<String>,
+}
+
 impl Default for DownloadsConfig {
     fn default() -> Self {
         Self { auto_start: false }
+    }
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self { index_path: None }
     }
 }
 
@@ -134,6 +147,11 @@ port = 8080
 [downloads]
 # When false, the API will not auto-start download jobs on startup.
 auto_start = false
+
+[search]
+# Optional absolute path for Tantivy index directory.
+# If omitted, defaults to OS local data dir + dwata/tantivy-index
+# index_path = "/absolute/path/to/tantivy-index"
 "#;
             std::fs::write(&config_path, default_config).map_err(|e| {
                 ConfigError::Message(format!("Failed to write default config: {e}"))

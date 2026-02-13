@@ -7,6 +7,7 @@ use shared_types::{
 use tokio::task;
 
 use crate::database::AsyncDbConnection;
+use crate::search::tantivy::IndexedTextFields;
 
 fn parse_document_kind(value: &str) -> Result<DocumentKind> {
     match value {
@@ -240,6 +241,83 @@ pub async fn get_document(conn: AsyncDbConnection, id: i64) -> Result<Option<Doc
 
         let document = stmt.query_row([id], map_document_row).optional()?;
         Ok(document)
+    })
+    .await?
+}
+
+pub async fn get_documents_by_ids(conn: AsyncDbConnection, ids: &[i64]) -> Result<Vec<Document>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids = ids.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let query = format!(
+            "SELECT id, source_id, kind, parent_document_id, email_id, attachment_id,
+                    title, canonical_name, mime_type, size_bytes, checksum_sha256,
+                    storage_path, external_uri, date_created, date_modified,
+                    date_received, indexed_at, created_at, updated_at
+             FROM documents
+             WHERE id IN ({})",
+            placeholders
+        );
+
+        let mut stmt = conn.prepare(&query)?;
+        let docs = stmt
+            .query_map(params_from_iter(ids), map_document_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(docs)
+    })
+    .await?
+}
+
+#[derive(Debug, Clone)]
+pub struct DocumentForIndexing {
+    pub document: Document,
+    pub indexed_text: IndexedTextFields,
+}
+
+pub async fn list_documents_for_indexing_page(
+    conn: AsyncDbConnection,
+    after_id: i64,
+    limit: usize,
+) -> Result<Vec<DocumentForIndexing>> {
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut stmt = conn.prepare(
+            "SELECT d.id, d.source_id, d.kind, d.parent_document_id, d.email_id, d.attachment_id,
+                    d.title, d.canonical_name, d.mime_type, d.size_bytes, d.checksum_sha256,
+                    d.storage_path, d.external_uri, d.date_created, d.date_modified,
+                    d.date_received, d.indexed_at, d.created_at, d.updated_at,
+                    e.subject, e.from_address, e.body_text
+             FROM documents d
+             LEFT JOIN emails e ON e.id = d.email_id
+             WHERE d.id > ?1
+             ORDER BY d.id ASC
+             LIMIT ?2",
+        )?;
+
+        let rows = stmt.query_map(params![after_id, limit as i64], |row| {
+            let document = map_document_row(row)?;
+            let subject: Option<String> = row.get(19)?;
+            let from_address: Option<String> = row.get(20)?;
+            let body_text: Option<String> = row.get(21)?;
+            Ok(DocumentForIndexing {
+                document,
+                indexed_text: IndexedTextFields {
+                    title: subject,
+                    from_address,
+                    body_text,
+                    attachment_text: None,
+                },
+            })
+        })?;
+
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     })
     .await?
 }
