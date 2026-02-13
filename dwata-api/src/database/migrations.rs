@@ -553,6 +553,118 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
         [],
     )?;
 
+    // Create document_sources table (source-level state for unified documents)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS document_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_type VARCHAR NOT NULL CHECK (source_type IN ('imap-account', 'local-folder', 'cloud-drive', 'cloud-mailbox', 'manual-import')),
+            display_name VARCHAR NOT NULL,
+            credential_id INTEGER,
+            root_reference VARCHAR,
+            access_state VARCHAR NOT NULL DEFAULT 'unknown'
+                CHECK (access_state IN ('accessible', 'offline', 'unreachable', 'disabled', 'unknown')),
+            permission_state VARCHAR NOT NULL DEFAULT 'unknown'
+                CHECK (permission_state IN ('granted', 'expired', 'revoked', 'insufficient-scope', 'forbidden', 'unknown')),
+            access_checked_at BIGINT,
+            permission_checked_at BIGINT,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_document_sources_type
+            ON document_sources(source_type)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_document_sources_credential
+            ON document_sources(credential_id)",
+        [],
+    )?;
+
+    // Create documents table (unified browse/search identity for emails, attachments, and files)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            kind VARCHAR NOT NULL CHECK (kind IN ('email', 'attachment', 'file')),
+            parent_document_id INTEGER,
+            email_id INTEGER,
+            attachment_id INTEGER,
+            title VARCHAR,
+            canonical_name VARCHAR,
+            mime_type VARCHAR,
+            size_bytes BIGINT,
+            checksum_sha256 VARCHAR,
+            storage_path VARCHAR,
+            external_uri VARCHAR,
+            date_created BIGINT,
+            date_modified BIGINT,
+            date_received BIGINT,
+            indexed_at BIGINT,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            FOREIGN KEY (source_id) REFERENCES document_sources(id) ON DELETE CASCADE,
+            FOREIGN KEY (parent_document_id) REFERENCES documents(id) ON DELETE SET NULL,
+            FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE SET NULL,
+            FOREIGN KEY (attachment_id) REFERENCES email_attachments(id) ON DELETE SET NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_source_kind
+            ON documents(source_id, kind)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_parent
+            ON documents(parent_document_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_email_id
+            ON documents(email_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_attachment_id
+            ON documents(attachment_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_received_date
+            ON documents(date_received DESC, id DESC)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_modified_date
+            ON documents(date_modified DESC, id DESC)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_source_external_uri_unique
+         ON documents(source_id, external_uri)
+         WHERE external_uri IS NOT NULL",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_source_storage_path_unique
+         ON documents(source_id, storage_path)
+         WHERE storage_path IS NOT NULL",
+        [],
+    )?;
+
     // Create extraction_jobs table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS extraction_jobs (

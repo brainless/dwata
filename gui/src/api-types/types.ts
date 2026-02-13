@@ -432,6 +432,30 @@ export type FinancialEmailScanResponse = { total_emails: bigint, total_emails_sc
 export type FinancialEmailScanSender = { sender_email: string, matched_count: bigint, };
 
 
+export type DocumentSourceType = "imap-account" | "local-folder" | "cloud-drive" | "cloud-mailbox" | "manual-import";
+
+
+export type SourceAccessState = "accessible" | "offline" | "unreachable" | "disabled" | "unknown";
+
+
+export type SourcePermissionState = "granted" | "expired" | "revoked" | "insufficient-scope" | "forbidden" | "unknown";
+
+
+export type DocumentKind = "email" | "attachment" | "file";
+
+
+import type { DocumentSourceType } from "./DocumentSourceType";
+import type { SourceAccessState } from "./SourceAccessState";
+import type { SourcePermissionState } from "./SourcePermissionState";
+
+export type DocumentSource = { id: bigint, source_type: DocumentSourceType, display_name: string, credential_id: bigint | null, root_reference: string | null, access_state: SourceAccessState, permission_state: SourcePermissionState, access_checked_at: bigint | null, permission_checked_at: bigint | null, created_at: bigint, updated_at: bigint, };
+
+
+import type { DocumentKind } from "./DocumentKind";
+
+export type Document = { id: bigint, source_id: bigint, kind: DocumentKind, parent_document_id: bigint | null, email_id: bigint | null, attachment_id: bigint | null, title: string | null, canonical_name: string | null, mime_type: string | null, size_bytes: bigint | null, checksum_sha256: string | null, storage_path: string | null, external_uri: string | null, date_created: bigint | null, date_modified: bigint | null, date_received: bigint | null, indexed_at: bigint | null, created_at: bigint, updated_at: bigint, };
+
+
 export type EmailFolder = { id: bigint, credential_id: bigint, name: string, display_name: string | null, imap_path: string, folder_type: string | null, parent_folder_id: bigint | null, uidvalidity: number | null, last_synced_uid: number | null, oldest_synced_uid: number | null, total_messages: number, unread_messages: number, is_subscribed: boolean, is_selectable: boolean, created_at: bigint, updated_at: bigint, last_synced_at: bigint | null, };
 
 
@@ -608,26 +632,23 @@ export type FinancialDocumentType = "invoice" | "bill" | "bank-statement" | "rec
 
 
 import type { DataSourceType } from "./DataSourceType";
+import type { EnrichmentStatus } from "./EnrichmentStatus";
 import type { FinancialDocumentType } from "./FinancialDocumentType";
 import type { TransactionCategory } from "./TransactionCategory";
+import type { TransactionParty } from "./TransactionParty";
 import type { TransactionStatus } from "./TransactionStatus";
+import type { UnresolvedField } from "./UnresolvedField";
 
 /**
  * Financial transaction extracted from documents
  */
-export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, description: string | null, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, vendor: string | null, source_vendor_id: bigint | null, destination_vendor_id: bigint | null, status: TransactionStatus, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
+export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, description: string | null, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, payer: TransactionParty, payee: TransactionParty, status: TransactionStatus, enrichment_status: EnrichmentStatus, unresolved_items: Array<UnresolvedField>, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
 
 
 export type TransactionCategory = "income" | "expense" | "investment" | "tax" | "utility" | "subscription" | "entertainment" | "travel" | "healthcare" | "education" | "other";
 
 
 export type TransactionStatus = "pending" | "paid" | "overdue" | "cancelled" | "refunded";
-
-
-/**
- * Financial pattern for extracting transactions
- */
-export type FinancialPattern = { id: bigint, name: string, regex_pattern: string, description: string | null, sender_email: string | null, document_type: string, status: string, amount_group: number, vendor_group: number | null, source_vendor_group: number | null, destination_vendor_group: number | null, date_group: number | null, reference_group: number | null, currency_group: number | null, is_default: boolean, is_active: boolean, match_count: number, last_matched_at: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
 /**

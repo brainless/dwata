@@ -5,6 +5,7 @@ pub mod contact;
 pub mod contact_link;
 pub mod credential;
 pub mod download;
+pub mod document;
 pub mod email;
 pub mod event;
 pub mod extraction;
@@ -32,6 +33,10 @@ pub use download::{
     CloudStorageDownloadState, CreateDownloadJobRequest, DirectoryStatus, DownloadItem,
     DownloadItemStatus, DownloadJob, DownloadJobListResponse, DownloadJobStatus, DownloadProgress,
     FileFilter, ImapDownloadState, ImapFolderStatus, ImapSyncStrategy, SourceType,
+};
+pub use document::{
+    Document, DocumentKind, DocumentSource, DocumentSourceType, SourceAccessState,
+    SourcePermissionState,
 };
 pub use email::{
     AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, FinancialEmailScanRequest,
