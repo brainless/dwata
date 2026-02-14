@@ -2,11 +2,14 @@ import { getApiUrl } from "../config/api";
 import type {
   CredentialMetadata,
   CredentialListResponse,
+  Document,
   EmailFolder,
   EmailLabel,
+  Email,
   ListFoldersResponse,
   ListLabelsResponse,
   ListEmailsResponse,
+  SearchDocumentsResponse,
 } from "../api-types/types";
 
 export async function fetchCredentials(): Promise<CredentialMetadata[]> {
@@ -43,14 +46,14 @@ export async function fetchEmailsByFolder(
   offset: number = 0,
   searchQuery?: string
 ): Promise<ListEmailsResponse> {
+  if (searchQuery && searchQuery.trim()) {
+    return searchEmails(searchQuery, limit, offset, { folderId });
+  }
   const params = new URLSearchParams({
     folder_id: folderId.toString(),
     limit: limit.toString(),
     offset: offset.toString(),
   });
-  if (searchQuery && searchQuery.trim()) {
-    params.append('search_query', searchQuery);
-  }
   const response = await fetch(getApiUrl(`/api/emails?${params}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();
@@ -62,14 +65,14 @@ export async function fetchEmailsByLabel(
   offset: number = 0,
   searchQuery?: string
 ): Promise<ListEmailsResponse> {
+  if (searchQuery && searchQuery.trim()) {
+    return searchEmails(searchQuery, limit, offset, { labelId });
+  }
   const params = new URLSearchParams({
     label_id: labelId.toString(),
     limit: limit.toString(),
     offset: offset.toString(),
   });
-  if (searchQuery && searchQuery.trim()) {
-    params.append('search_query', searchQuery);
-  }
   const response = await fetch(getApiUrl(`/api/emails?${params}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();
@@ -81,15 +84,84 @@ export async function fetchEmailsByAccount(
   offset: number = 0,
   searchQuery?: string
 ): Promise<ListEmailsResponse> {
+  if (searchQuery && searchQuery.trim()) {
+    return searchEmails(searchQuery, limit, offset, { credentialId });
+  }
   const params = new URLSearchParams({
     credential_id: credentialId.toString(),
     limit: limit.toString(),
     offset: offset.toString(),
   });
-  if (searchQuery && searchQuery.trim()) {
-    params.append('search_query', searchQuery);
-  }
   const response = await fetch(getApiUrl(`/api/emails?${params}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();
+}
+
+type SearchScope = {
+  credentialId?: bigint;
+  folderId?: bigint;
+  labelId?: bigint;
+};
+
+async function fetchEmail(emailId: bigint): Promise<Email> {
+  const response = await fetch(getApiUrl(`/api/emails/${emailId.toString()}`));
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return await response.json();
+}
+
+async function fetchEmailLabels(emailId: bigint): Promise<Array<{ id: bigint }>> {
+  const response = await fetch(getApiUrl(`/api/emails/${emailId.toString()}/labels`));
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return await response.json();
+}
+
+function applyScopeFilter(emails: Email[], scope: SearchScope): Email[] {
+  return emails.filter((email) => {
+    if (scope.credentialId && email.credential_id !== scope.credentialId) return false;
+    if (scope.folderId && email.folder_id !== scope.folderId) return false;
+    return true;
+  });
+}
+
+async function searchEmails(
+  searchQuery: string,
+  limit: number,
+  offset: number,
+  scope: SearchScope,
+): Promise<ListEmailsResponse> {
+  const params = new URLSearchParams({
+    q: searchQuery,
+    kind: "email",
+    limit: "100",
+    offset: "0",
+  });
+  const response = await fetch(getApiUrl(`/api/documents/search?${params}`));
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const searchData: SearchDocumentsResponse = await response.json();
+  const emailIds = searchData.documents
+    .map((doc: Document) => doc.email_id)
+    .filter((emailId): emailId is bigint => emailId !== null);
+
+  const hydratedEmails = await Promise.all(emailIds.map((emailId) => fetchEmail(emailId)));
+  let scoped = applyScopeFilter(hydratedEmails, scope);
+
+  if (scope.labelId) {
+    const byEmailLabels = await Promise.all(
+      scoped.map(async (email) => ({
+        email,
+        labels: await fetchEmailLabels(email.id),
+      })),
+    );
+    scoped = byEmailLabels
+      .filter((row) => row.labels.some((label) => label.id === scope.labelId))
+      .map((row) => row.email);
+  }
+
+  const page = scoped.slice(offset, offset + limit);
+  return {
+    emails: page,
+    total_count: BigInt(scoped.length),
+    has_more: offset + limit < scoped.length,
+  };
 }

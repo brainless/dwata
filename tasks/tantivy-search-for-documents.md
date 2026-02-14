@@ -4,6 +4,13 @@
 
 Replace SQLite FTS usage with Tantivy-based search for emails, attachments, and files while keeping SQLite as source-of-record metadata.
 
+## Current Status (2026-02-14)
+
+- TODO: Event-driven upsert/delete triggers into Tantivy are not implemented yet (startup backfill exists).
+- TODO: Dedicated resumable `BackfillDocumentsIndexJob` with persisted cursor/commit cadence metadata is not implemented yet.
+- Done: GUI search now uses `/api/documents/search`.
+- Done: Legacy SQLite FTS search path for email listing has been removed.
+
 ## Non-Goals
 
 - Do not implement attachment binary parsing in this task.
