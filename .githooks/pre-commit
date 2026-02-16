@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+rust_files=()
+while IFS= read -r -d '' file; do
+  if [[ "$file" == *.rs ]]; then
+    rust_files+=("$file")
+  fi
+done < <(git diff --cached --name-only -z --diff-filter=ACMR)
+
+if (( ${#rust_files[@]} == 0 )); then
+  exit 0
+fi
+
+echo "Running rustfmt on staged Rust files..."
+cargo fmt --all -- "${rust_files[@]}"
+git add -- "${rust_files[@]}"
