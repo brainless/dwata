@@ -116,7 +116,7 @@ async fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,tantivy=warn"));
 
     if let Some(log_path) = args.log_file_path {
         let log_path = std::path::Path::new(&log_path);
@@ -175,11 +175,31 @@ async fn main() -> std::io::Result<()> {
     );
     tracing::info!("Tantivy index path: {}", search_index_path.display());
 
+    match crate::database::documents::backfill_email_documents_from_emails(
+        db.async_connection.clone(),
+    )
+    .await
+    {
+        Ok(inserted) => {
+            tracing::info!(
+                "Email document backfill complete: inserted {} missing rows",
+                inserted
+            );
+        }
+        Err(err) => {
+            tracing::warn!("Email document backfill failed: {}", err);
+        }
+    }
+
     let search_index_backfill = search_index.clone();
     let db_for_backfill = db.clone();
     tokio::spawn(async move {
         let mut after_id = 0_i64;
         let page_size = 500_usize;
+        let mut total_seen = 0usize;
+        let mut total_indexed = 0usize;
+        let mut total_failed = 0usize;
+        let mut pages_processed = 0usize;
         loop {
             let page = match crate::database::documents::list_documents_for_indexing_page(
                 db_for_backfill.async_connection.clone(),
@@ -199,19 +219,45 @@ async fn main() -> std::io::Result<()> {
                 break;
             }
 
-            for row in &page {
-                if let Err(err) =
-                    search_index_backfill.index_document(&row.document, &row.indexed_text)
-                {
-                    tracing::warn!("Failed to index document {}: {}", row.document.id, err);
-                }
+            total_seen += page.len();
+            let page_rows = page
+                .iter()
+                .map(|row| (row.document.clone(), row.indexed_text.clone()))
+                .collect::<Vec<_>>();
+            let page_count = page_rows.len();
+            if let Err(err) = search_index_backfill.index_documents_page(&page_rows) {
+                total_failed += page_count;
+                tracing::warn!(
+                    page_size = page_count,
+                    first_doc_id = page.first().map(|r| r.document.id),
+                    last_doc_id = page.last().map(|r| r.document.id),
+                    error = %err,
+                    "Backfill page failed to index"
+                );
+            } else {
+                total_indexed += page_count;
+            }
+            pages_processed += 1;
+            if pages_processed % 2 == 0 {
+                tracing::info!(
+                    pages_processed,
+                    total_seen,
+                    total_indexed,
+                    total_failed,
+                    "Search index backfill progress"
+                );
             }
 
             if let Some(last) = page.last() {
                 after_id = last.document.id;
             }
         }
-        tracing::info!("Search index backfill completed");
+        tracing::info!(
+            total_seen,
+            total_indexed,
+            total_failed,
+            "Search index backfill completed"
+        );
     });
 
     // Get server config or use defaults

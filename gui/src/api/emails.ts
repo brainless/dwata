@@ -41,13 +41,14 @@ export async function fetchLabels(credentialId: bigint): Promise<EmailLabel[]> {
 }
 
 export async function fetchEmailsByFolder(
+  credentialId: bigint,
   folderId: bigint,
   limit: number = 50,
   offset: number = 0,
   searchQuery?: string
 ): Promise<ListEmailsResponse> {
   if (searchQuery && searchQuery.trim()) {
-    return searchEmails(searchQuery, limit, offset, { folderId });
+    return searchEmails(searchQuery, limit, offset, { credentialId, folderId });
   }
   const params = new URLSearchParams({
     folder_id: folderId.toString(),
@@ -60,13 +61,14 @@ export async function fetchEmailsByFolder(
 }
 
 export async function fetchEmailsByLabel(
+  credentialId: bigint,
   labelId: bigint,
   limit: number = 50,
   offset: number = 0,
   searchQuery?: string
 ): Promise<ListEmailsResponse> {
   if (searchQuery && searchQuery.trim()) {
-    return searchEmails(searchQuery, limit, offset, { labelId });
+    return searchEmails(searchQuery, limit, offset, { credentialId, labelId });
   }
   const params = new URLSearchParams({
     label_id: labelId.toString(),
@@ -132,6 +134,7 @@ async function searchEmails(
   const params = new URLSearchParams({
     q: searchQuery,
     kind: "email",
+    ...(scope.credentialId ? { credential_id: scope.credentialId.toString() } : {}),
     limit: "100",
     offset: "0",
   });

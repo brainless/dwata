@@ -10,6 +10,48 @@ use crate::database::documents as documents_db;
 use crate::database::Database;
 use crate::search::tantivy::TantivySearchIndex;
 
+fn parse_q_term(q: &str, explicit_field: Option<SearchField>, is_phrase: bool) -> Option<SearchTerm> {
+    let trimmed = q.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(field) = explicit_field {
+        return Some(SearchTerm {
+            field,
+            value: trimmed.to_string(),
+            is_phrase,
+        });
+    }
+
+    if let Some((prefix, value)) = trimmed.split_once(':') {
+        let field = match prefix.trim().to_ascii_lowercase().as_str() {
+            "from" | "sender" => Some(SearchField::FromAddress),
+            "subject" | "title" => Some(SearchField::Title),
+            "body" | "text" => Some(SearchField::BodyText),
+            "attachment" | "attachments" => Some(SearchField::AttachmentText),
+            _ => None,
+        };
+
+        if let Some(field) = field {
+            let value = value.trim();
+            if !value.is_empty() {
+                return Some(SearchTerm {
+                    field,
+                    value: value.to_string(),
+                    is_phrase,
+                });
+            }
+        }
+    }
+
+    Some(SearchTerm {
+        field: SearchField::Any,
+        value: trimmed.to_string(),
+        is_phrase,
+    })
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ListDocumentsQuery {
     pub source_id: Option<i64>,
@@ -32,6 +74,7 @@ pub struct SearchDocumentsQuery {
     pub is_phrase: Option<bool>,
     pub kind: Option<DocumentKind>,
     pub source_id: Option<i64>,
+    pub credential_id: Option<i64>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
@@ -129,11 +172,9 @@ pub async fn search_documents(
         serde_json::from_str::<Vec<SearchTerm>>(terms_json)
             .map_err(|e| actix_web::error::ErrorBadRequest(format!("Invalid terms: {e}")))?
     } else if let Some(q) = query.q.as_ref().filter(|s| !s.trim().is_empty()) {
-        vec![SearchTerm {
-            field: query.field.unwrap_or(SearchField::Any),
-            value: q.clone(),
-            is_phrase: query.is_phrase.unwrap_or(false),
-        }]
+        parse_q_term(q, query.field, query.is_phrase.unwrap_or(false))
+            .map(|term| vec![term])
+            .unwrap_or_default()
     } else {
         Vec::new()
     };
@@ -150,6 +191,7 @@ pub async fn search_documents(
         terms,
         kind: query.kind,
         source_id: query.source_id,
+        credential_id: query.credential_id,
         limit: query.limit,
         offset: query.offset,
     };
@@ -178,6 +220,18 @@ pub async fn search_documents(
         .iter()
         .filter_map(|id| docs_by_id.get(id).cloned())
         .collect::<Vec<_>>();
+    let missing_ids = ids
+        .iter()
+        .filter(|id| !docs_by_id.contains_key(id))
+        .copied()
+        .collect::<Vec<_>>();
+    if !missing_ids.is_empty() {
+        tracing::warn!(
+            missing_count = missing_ids.len(),
+            sample_ids = ?missing_ids.iter().take(5).copied().collect::<Vec<_>>(),
+            "Search hydration missing documents for some indexed IDs"
+        );
+    }
 
     Ok(HttpResponse::Ok().json(SearchDocumentsResponse {
         hits: search_result.hits,

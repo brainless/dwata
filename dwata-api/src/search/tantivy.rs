@@ -5,7 +5,7 @@ use shared_types::{
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tantivy::collector::{Count, TopDocs};
-use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery};
+use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, RegexQuery, TermQuery};
 use tantivy::schema::{
     Field, IndexRecordOption, NumericOptions, Schema, TantivyDocument, TextFieldIndexing,
     TextOptions, Value, FAST, INDEXED, STORED,
@@ -25,6 +25,7 @@ pub struct TantivyFields {
     pub document_id: Field,
     pub kind: Field,
     pub source_id: Field,
+    pub credential_id: Field,
     pub title: Field,
     pub from_address: Field,
     pub body_text: Field,
@@ -40,6 +41,7 @@ pub struct IndexedTextFields {
     pub from_address: Option<String>,
     pub body_text: Option<String>,
     pub attachment_text: Option<String>,
+    pub credential_id: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +68,7 @@ pub fn build_schema() -> Schema {
     builder.add_u64_field("document_id", INDEXED | STORED | FAST);
     builder.add_text_field("kind", exact_text.clone());
     builder.add_u64_field("source_id", INDEXED | FAST);
+    builder.add_u64_field("credential_id", INDEXED | FAST);
     builder.add_text_field("title", free_text.clone());
     builder.add_text_field("from_address", exact_text.clone());
     builder.add_text_field("body_text", free_text.clone());
@@ -98,6 +101,7 @@ fn fields_from_schema(schema: &Schema) -> Result<TantivyFields> {
         document_id: get("document_id")?,
         kind: get("kind")?,
         source_id: get("source_id")?,
+        credential_id: get("credential_id")?,
         title: get("title")?,
         from_address: get("from_address")?,
         body_text: get("body_text")?,
@@ -109,13 +113,12 @@ fn fields_from_schema(schema: &Schema) -> Result<TantivyFields> {
 }
 
 pub fn open_or_create_index(path: &Path) -> Result<TantivySearchIndex> {
-    std::fs::create_dir_all(path)?;
-
     let schema = build_schema();
-    let index = match Index::open_in_dir(path) {
-        Ok(idx) => idx,
-        Err(_) => Index::create_in_dir(path, schema.clone())?,
-    };
+    if path.exists() {
+        std::fs::remove_dir_all(path)?;
+    }
+    std::fs::create_dir_all(path)?;
+    let index = Index::create_in_dir(path, schema.clone())?;
 
     let fields = fields_from_schema(&index.schema())?;
     let reader = index
@@ -142,6 +145,23 @@ impl TantivySearchIndex {
 
     pub fn index_document(&self, doc_row: &Document, extracted: &IndexedTextFields) -> Result<()> {
         let mut writer = self.writer.lock().map_err(|_| anyhow!("poisoned writer"))?;
+        self.index_document_with_writer(&mut writer, doc_row, extracted)?;
+        writer.commit()?;
+        self.reader.reload()?;
+        Ok(())
+    }
+
+    fn index_document_with_writer(
+        &self,
+        writer: &mut IndexWriter,
+        doc_row: &Document,
+        extracted: &IndexedTextFields,
+    ) -> Result<()> {
+        let from_address = extracted
+            .from_address
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         writer.delete_term(Term::from_field_u64(
             self.fields.document_id,
             doc_row.id.max(0) as u64,
@@ -150,14 +170,23 @@ impl TantivySearchIndex {
             self.fields.document_id => doc_row.id.max(0) as u64,
             self.fields.kind => kind_to_str(&doc_row.kind),
             self.fields.source_id => doc_row.source_id.max(0) as u64,
+            self.fields.credential_id => extracted.credential_id.unwrap_or(0).max(0) as u64,
             self.fields.title => extracted.title.clone().or_else(|| doc_row.title.clone()).unwrap_or_default(),
-            self.fields.from_address => extracted.from_address.clone().unwrap_or_default(),
+            self.fields.from_address => from_address,
             self.fields.body_text => extracted.body_text.clone().unwrap_or_default(),
             self.fields.attachment_text => extracted.attachment_text.clone().unwrap_or_default(),
             self.fields.date_received => doc_row.date_received.unwrap_or(0),
             self.fields.date_modified => doc_row.date_modified.unwrap_or(0),
             self.fields.indexed_at => chrono::Utc::now().timestamp_millis(),
         ))?;
+        Ok(())
+    }
+
+    pub fn index_documents_page(&self, rows: &[(Document, IndexedTextFields)]) -> Result<()> {
+        let mut writer = self.writer.lock().map_err(|_| anyhow!("poisoned writer"))?;
+        for (doc_row, extracted) in rows {
+            self.index_document_with_writer(&mut writer, doc_row, extracted)?;
+        }
         writer.commit()?;
         self.reader.reload()?;
         Ok(())
@@ -175,10 +204,41 @@ impl TantivySearchIndex {
     }
 
     fn build_term_query(&self, term: &SearchTerm) -> Result<Box<dyn Query>> {
+        if matches!(term.field, SearchField::FromAddress) {
+            let lowered = term.value.trim().to_lowercase();
+            let pattern = format!(".*{}.*", regex::escape(&lowered));
+            return Ok(Box::new(RegexQuery::from_pattern(
+                &pattern,
+                self.fields.from_address,
+            )?));
+        }
+
+        if matches!(term.field, SearchField::Any) {
+            let parser = QueryParser::for_index(
+                &self.index,
+                vec![self.fields.title, self.fields.body_text, self.fields.attachment_text],
+            );
+            let escaped = Self::escape_query_value(&term.value);
+            let query_str = if term.is_phrase {
+                format!("\"{escaped}\"")
+            } else {
+                escaped
+            };
+            let text_query = parser.parse_query(&query_str)?;
+
+            let lowered = term.value.trim().to_lowercase();
+            let pattern = format!(".*{}.*", regex::escape(&lowered));
+            let from_query = RegexQuery::from_pattern(&pattern, self.fields.from_address)?;
+
+            return Ok(Box::new(BooleanQuery::new(vec![
+                (Occur::Should, text_query),
+                (Occur::Should, Box::new(from_query)),
+            ])));
+        }
+
         let target_fields = match term.field {
             SearchField::Any => vec![
                 self.fields.title,
-                self.fields.from_address,
                 self.fields.body_text,
                 self.fields.attachment_text,
             ],
@@ -233,6 +293,16 @@ impl TantivySearchIndex {
                 Occur::Must,
                 Box::new(TermQuery::new(
                     Term::from_field_u64(self.fields.source_id, source_id.max(0) as u64),
+                    IndexRecordOption::Basic,
+                )),
+            ));
+        }
+
+        if let Some(credential_id) = request.credential_id {
+            must_clauses.push((
+                Occur::Must,
+                Box::new(TermQuery::new(
+                    Term::from_field_u64(self.fields.credential_id, credential_id.max(0) as u64),
                     IndexRecordOption::Basic,
                 )),
             ));

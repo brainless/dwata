@@ -28,6 +28,7 @@ pub struct SearchDocumentsRequest {
     pub terms: Vec<SearchTerm>,
     pub kind: Option<DocumentKind>,
     pub source_id: Option<i64>,
+    pub credential_id: Option<i64>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }

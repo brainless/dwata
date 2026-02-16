@@ -130,9 +130,21 @@ export default function Emails() {
       let response: ListEmailsResponse;
 
       if (folderId) {
-        response = await fetchEmailsByFolder(BigInt(folderId), 50, 0, search || undefined);
+        response = await fetchEmailsByFolder(
+          BigInt(accountId),
+          BigInt(folderId),
+          50,
+          0,
+          search || undefined,
+        );
       } else if (labelId) {
-        response = await fetchEmailsByLabel(BigInt(labelId), 50, 0, search || undefined);
+        response = await fetchEmailsByLabel(
+          BigInt(accountId),
+          BigInt(labelId),
+          50,
+          0,
+          search || undefined,
+        );
       } else {
         response = await fetchEmailsByAccount(BigInt(accountId), 50, 0, search || undefined);
       }

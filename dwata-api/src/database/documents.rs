@@ -292,9 +292,10 @@ pub async fn list_documents_for_indexing_page(
             "SELECT d.id, d.source_id, d.kind, d.parent_document_id, d.email_id, d.attachment_id,
                     d.title, d.canonical_name, d.mime_type, d.size_bytes, d.checksum_sha256,
                     d.storage_path, d.external_uri, d.date_created, d.date_modified,
-                    d.date_received, d.indexed_at, d.created_at, d.updated_at,
+                    d.date_received, d.indexed_at, d.created_at, d.updated_at, s.credential_id,
                     e.subject, e.from_address, e.body_text
              FROM documents d
+             JOIN document_sources s ON s.id = d.source_id
              LEFT JOIN emails e ON e.id = d.email_id
              WHERE d.id > ?1
              ORDER BY d.id ASC
@@ -303,9 +304,10 @@ pub async fn list_documents_for_indexing_page(
 
         let rows = stmt.query_map(params![after_id, limit as i64], |row| {
             let document = map_document_row(row)?;
-            let subject: Option<String> = row.get(19)?;
-            let from_address: Option<String> = row.get(20)?;
-            let body_text: Option<String> = row.get(21)?;
+            let credential_id: Option<i64> = row.get(19)?;
+            let subject: Option<String> = row.get(20)?;
+            let from_address: Option<String> = row.get(21)?;
+            let body_text: Option<String> = row.get(22)?;
             Ok(DocumentForIndexing {
                 document,
                 indexed_text: IndexedTextFields {
@@ -313,11 +315,83 @@ pub async fn list_documents_for_indexing_page(
                     from_address,
                     body_text,
                     attachment_text: None,
+                    credential_id,
                 },
             })
         })?;
 
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    })
+    .await?
+}
+
+pub async fn backfill_email_documents_from_emails(conn: AsyncDbConnection) -> Result<usize> {
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let now = chrono::Utc::now().timestamp_millis();
+
+        // Ensure one IMAP document source per credential that has emails.
+        conn.execute(
+            "INSERT INTO document_sources (
+                source_type, display_name, credential_id, root_reference,
+                access_state, permission_state, created_at, updated_at
+            )
+            SELECT
+                'imap-account',
+                COALESCE(cm.identifier, 'IMAP Account ' || CAST(e.credential_id AS TEXT)),
+                e.credential_id,
+                'credential:' || CAST(e.credential_id AS TEXT),
+                'unknown',
+                'unknown',
+                ?1,
+                ?1
+            FROM (
+                SELECT DISTINCT credential_id
+                FROM emails
+                WHERE credential_id IS NOT NULL
+            ) e
+            LEFT JOIN credentials_metadata cm ON cm.id = e.credential_id
+            LEFT JOIN document_sources ds
+                ON ds.source_type = 'imap-account'
+               AND ds.credential_id = e.credential_id
+               AND ds.root_reference = 'credential:' || CAST(e.credential_id AS TEXT)
+            WHERE ds.id IS NULL",
+            params![now],
+        )?;
+
+        // Create missing email-kind documents for existing emails.
+        let inserted = conn.execute(
+            "INSERT INTO documents (
+                source_id, kind, email_id, title, canonical_name, mime_type,
+                size_bytes, date_created, date_modified, date_received,
+                created_at, updated_at
+            )
+            SELECT
+                ds.id,
+                'email',
+                e.id,
+                e.subject,
+                e.subject,
+                'message/rfc822',
+                e.size_bytes,
+                e.date_sent,
+                e.updated_at,
+                e.date_received,
+                e.created_at,
+                e.updated_at
+            FROM emails e
+            JOIN document_sources ds
+                ON ds.source_type = 'imap-account'
+               AND ds.credential_id = e.credential_id
+               AND ds.root_reference = 'credential:' || CAST(e.credential_id AS TEXT)
+            LEFT JOIN documents d
+                ON d.kind = 'email'
+               AND d.email_id = e.id
+            WHERE d.id IS NULL",
+            [],
+        )?;
+
+        Ok(inserted)
     })
     .await?
 }

@@ -130,6 +130,7 @@ pub async fn scan_financial_emails(
                 }],
                 kind: Some(DocumentKind::Email),
                 source_id: None,
+                credential_id: request.credential_id,
                 limit: Some(page_limit),
                 offset: Some(offset),
             })
