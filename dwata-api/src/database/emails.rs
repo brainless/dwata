@@ -2,7 +2,6 @@ use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use rusqlite::params_from_iter;
 use rusqlite::types::Value;
-use rusqlite::OptionalExtension;
 use shared_types::email::{AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment};
 use std::collections::HashSet;
 use tokio::task;
@@ -348,56 +347,71 @@ pub async fn list_email_scan_rows(
     .await?
 }
 
-/// List minimal email fields for scanning using FTS prefilter
-pub async fn list_email_scan_rows_fts(
+/// List minimal email fields for scanning using matched document IDs
+pub async fn list_email_scan_rows_by_document_ids(
     conn: AsyncDbConnection,
+    document_ids: &[i64],
     credential_id: Option<i64>,
     max_emails: Option<usize>,
-    fts_query: &str,
 ) -> Result<Vec<EmailScanRow>> {
-    if fts_query.trim().is_empty() {
+    if document_ids.is_empty() {
         return Ok(Vec::new());
     }
 
-    let fts_query = fts_query.to_string();
+    let document_ids = document_ids.to_vec();
     task::spawn_blocking(move || {
         let conn = conn.get_blocking();
-        let mut query = String::from(
-            "SELECT e.from_address, e.subject, e.body_text, e.body_html
-             FROM emails e
-             JOIN emails_fts ON emails_fts.rowid = e.id
-             WHERE emails_fts MATCH ?",
-        );
-        let mut params: Vec<Value> = vec![Value::from(fts_query)];
+        let mut seen_email_ids = HashSet::new();
+        let mut rows: Vec<(i64, EmailScanRow)> = Vec::new();
 
-        if let Some(cred) = credential_id {
-            query.push_str(" AND e.credential_id = ?");
-            params.push(Value::from(cred));
+        for chunk in document_ids.chunks(900) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut query = format!(
+                "SELECT e.id, e.date_received, e.from_address, e.subject, e.body_text, e.body_html
+                 FROM documents d
+                 JOIN emails e ON e.id = d.email_id
+                 WHERE d.id IN ({})
+                   AND d.kind = 'email'",
+                placeholders
+            );
+            let mut params: Vec<Value> = chunk.iter().copied().map(Value::from).collect();
+
+            if let Some(cred) = credential_id {
+                query.push_str(" AND e.credential_id = ?");
+                params.push(Value::from(cred));
+            }
+
+            let mut stmt = conn.prepare(&query)?;
+            let mapped = stmt.query_map(params_from_iter(params), |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    EmailScanRow {
+                        from_address: row.get(2)?,
+                        subject: row.get(3)?,
+                        body_text: row.get(4)?,
+                        body_html: row.get(5)?,
+                    },
+                ))
+            })?;
+
+            for item in mapped {
+                let (email_id, date_received, scan_row) = item?;
+                if seen_email_ids.insert(email_id) {
+                    rows.push((date_received, scan_row));
+                }
+            }
         }
 
-        query.push_str(" ORDER BY e.date_received DESC");
-
+        rows.sort_by(|a, b| b.0.cmp(&a.0));
         if let Some(limit) = max_emails {
-            query.push_str(" LIMIT ?");
-            params.push(Value::from(limit as i64));
+            rows.truncate(limit);
         }
 
-        let mut stmt = conn.prepare(&query)?;
-        let rows = stmt.query_map(params_from_iter(params), |row| {
-            Ok(EmailScanRow {
-                from_address: row.get(0)?,
-                subject: row.get(1)?,
-                body_text: row.get(2)?,
-                body_html: row.get(3)?,
-            })
-        })?;
-
-        let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
-        }
-
-        Ok(results)
+        Ok(rows.into_iter().map(|(_, row)| row).collect())
     })
     .await?
 }
@@ -416,46 +430,6 @@ pub async fn count_emails(conn: AsyncDbConnection, credential_id: Option<i64>) -
 
         let count: i64 = conn.query_row(&query, params_from_iter(params), |row| row.get(0))?;
         Ok(count)
-    })
-    .await?
-}
-
-/// Get latest email id for a sender using FTS prefilter
-pub async fn get_latest_email_id_for_sender_fts(
-    conn: AsyncDbConnection,
-    credential_id: Option<i64>,
-    from_address: &str,
-    fts_query: &str,
-) -> Result<Option<i64>> {
-    if fts_query.trim().is_empty() {
-        return Ok(None);
-    }
-
-    let from_address = from_address.to_string();
-    let fts_query = fts_query.to_string();
-    task::spawn_blocking(move || {
-        let conn = conn.get_blocking();
-        let mut query = String::from(
-            "SELECT e.id
-             FROM emails e
-             JOIN emails_fts ON emails_fts.rowid = e.id
-             WHERE emails_fts MATCH ?
-               AND e.from_address = ?",
-        );
-        let mut params: Vec<Value> = vec![Value::from(fts_query), Value::from(from_address)];
-
-        if let Some(cred) = credential_id {
-            query.push_str(" AND e.credential_id = ?");
-            params.push(Value::from(cred));
-        }
-
-        query.push_str(" ORDER BY e.date_received DESC LIMIT 1");
-
-        let email_id: Option<i64> = conn
-            .query_row(&query, params_from_iter(params), |row| row.get(0))
-            .optional()?;
-
-        Ok(email_id)
     })
     .await?
 }

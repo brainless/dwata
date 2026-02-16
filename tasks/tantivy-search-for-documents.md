@@ -4,17 +4,18 @@
 
 Replace SQLite FTS usage with Tantivy-based search for emails, attachments, and files while keeping SQLite as source-of-record metadata.
 
-## Current Status (2026-02-14)
+## Current Status (2026-02-16)
 
 - TODO: Event-driven upsert/delete triggers into Tantivy are not implemented yet (startup backfill exists).
 - TODO: Dedicated resumable `BackfillDocumentsIndexJob` with persisted cursor/commit cadence metadata is not implemented yet.
 - Done: GUI search now uses `/api/documents/search`.
 - Done: Legacy SQLite FTS search path for email listing has been removed.
+- Done: Financial email scan prefilter no longer uses SQLite FTS.
+- Done: SQLite FTS creation/maintenance code was removed from migrations and maintenance binaries.
 
 ## Non-Goals
 
 - Do not implement attachment binary parsing in this task.
-- Do not remove legacy SQLite FTS code until parity is verified.
 
 ## Tantivy Schema
 
@@ -128,11 +129,11 @@ Add job:
 
 ## Migration & Cutover
 
-1. Keep existing `list_emails_fts` path as fallback.
+1. Keep existing search behavior parity checks during rollout.
 2. Add Tantivy search endpoint and compare top-N against SQLite FTS for seeded datasets.
 3. Switch GUI search requests to `/api/documents/search`.
 4. After validation window, disable SQLite FTS route in handlers.
-5. Keep FTS table for one release in case rollback is needed, then drop in dedicated migration.
+5. Optionally add a dedicated migration later to drop legacy FTS tables in existing DB files.
 
 ## Testing Matrix
 

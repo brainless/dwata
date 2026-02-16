@@ -1,10 +1,14 @@
-use actix_web::{web, HttpResponse, Result as ActixResult};
 use crate::database::{financial_transactions as db, Database};
+use crate::financial_keywords::{build_tantivy_query, DEFAULT_FINANCIAL_KEYWORDS};
+use crate::search::tantivy::TantivySearchIndex;
+use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
-use shared_types::{FinancialEmailScanRequest, FinancialEmailScanResponse, FinancialEmailScanSender};
-use std::collections::HashMap;
+use shared_types::{
+    DocumentKind, FinancialEmailScanRequest, FinancialEmailScanResponse, FinancialEmailScanSender,
+    SearchDocumentsRequest, SearchField, SearchTerm,
+};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use crate::financial_keywords::{DEFAULT_FINANCIAL_KEYWORDS, build_fts_query};
 
 #[derive(Deserialize)]
 pub struct TransactionFilters {
@@ -95,22 +99,64 @@ const TEMPLATE_SIMILARITY_THRESHOLD: f32 = 0.45;
 
 pub async fn scan_financial_emails(
     db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
     request: web::Json<FinancialEmailScanRequest>,
 ) -> ActixResult<HttpResponse> {
-    let fts_query = build_fts_query(DEFAULT_FINANCIAL_KEYWORDS);
+    let tantivy_query = build_tantivy_query(DEFAULT_FINANCIAL_KEYWORDS);
 
-    let total_emails = crate::database::emails::count_emails(
-        db.async_connection.clone(),
-        request.credential_id,
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let total_emails =
+        crate::database::emails::count_emails(db.async_connection.clone(), request.credential_id)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
-    let rows = crate::database::emails::list_email_scan_rows_fts(
+    let max_results = request.max_emails.unwrap_or(usize::MAX);
+    let mut matched_document_ids = Vec::new();
+    let mut seen_document_ids = HashSet::new();
+    let mut offset = 0usize;
+
+    while matched_document_ids.len() < max_results {
+        let remaining = max_results.saturating_sub(matched_document_ids.len());
+        let page_limit = remaining.min(100);
+        if page_limit == 0 {
+            break;
+        }
+
+        let search_result = search_index
+            .search(&SearchDocumentsRequest {
+                terms: vec![SearchTerm {
+                    field: SearchField::Any,
+                    value: tantivy_query.clone(),
+                    is_phrase: false,
+                }],
+                kind: Some(DocumentKind::Email),
+                source_id: None,
+                limit: Some(page_limit),
+                offset: Some(offset),
+            })
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+        if search_result.hits.is_empty() {
+            break;
+        }
+
+        for hit in &search_result.hits {
+            if seen_document_ids.insert(hit.document_id) {
+                matched_document_ids.push(hit.document_id);
+            }
+        }
+
+        let fetched_count = search_result.hits.len();
+        if fetched_count < page_limit {
+            break;
+        }
+        offset += fetched_count;
+    }
+
+    let rows = crate::database::emails::list_email_scan_rows_by_document_ids(
         db.async_connection.clone(),
+        &matched_document_ids,
         request.credential_id,
         request.max_emails,
-        &fts_query,
     )
     .await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;

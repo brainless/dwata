@@ -16,7 +16,7 @@ pub const DEFAULT_FINANCIAL_KEYWORDS: &[&str] = &[
     "debit",
 ];
 
-pub fn build_fts_query(keywords: &[&str]) -> String {
+pub fn build_tantivy_query(keywords: &[&str]) -> String {
     let mut parts = Vec::with_capacity(keywords.len());
     for keyword in keywords {
         let escaped = keyword.replace('"', " ");

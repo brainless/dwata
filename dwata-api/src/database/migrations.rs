@@ -21,15 +21,6 @@ fn table_sql_contains(conn: &Connection, table: &str, needle: &str) -> anyhow::R
     Ok(sql.map(|s| s.contains(needle)).unwrap_or(false))
 }
 
-fn table_exists(conn: &Connection, table: &str) -> anyhow::Result<bool> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
-        [table],
-        |row| row.get(0),
-    )?;
-    Ok(count > 0)
-}
-
 fn rebuild_financial_patterns_table(conn: &mut Connection) -> anyhow::Result<()> {
     let tx = conn.transaction()?;
 
@@ -480,54 +471,6 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_emails_date_sent ON emails(date_sent DESC)",
         [],
     )?;
-
-    let had_emails_fts = table_exists(conn, "emails_fts")?;
-
-    conn.execute(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts
-            USING fts5(
-                subject,
-                body_text,
-                body_html,
-                from_address,
-                content='emails',
-                content_rowid='id'
-            )",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TRIGGER IF NOT EXISTS emails_fts_ai
-            AFTER INSERT ON emails BEGIN
-                INSERT INTO emails_fts(rowid, subject, body_text, body_html, from_address)
-                VALUES (new.id, new.subject, new.body_text, new.body_html, new.from_address);
-            END",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TRIGGER IF NOT EXISTS emails_fts_ad
-            AFTER DELETE ON emails BEGIN
-                INSERT INTO emails_fts(emails_fts, rowid, subject, body_text, body_html, from_address)
-                VALUES('delete', old.id, old.subject, old.body_text, old.body_html, old.from_address);
-            END",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TRIGGER IF NOT EXISTS emails_fts_au
-            AFTER UPDATE ON emails BEGIN
-                INSERT INTO emails_fts(emails_fts, rowid, subject, body_text, body_html, from_address)
-                VALUES('delete', old.id, old.subject, old.body_text, old.body_html, old.from_address);
-                INSERT INTO emails_fts(rowid, subject, body_text, body_html, from_address)
-                VALUES (new.id, new.subject, new.body_text, new.body_html, new.from_address);
-            END",
-        [],
-    )?;
-
-    if !had_emails_fts {
-        conn.execute("INSERT INTO emails_fts(emails_fts) VALUES('rebuild')", [])?;
-    }
 
     // Create email_attachments table
     conn.execute(
