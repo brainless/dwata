@@ -86,7 +86,8 @@ pub async fn list_events(conn: AsyncDbConnection, limit: usize) -> Result<Vec<Ev
 
     let mut stmt = conn_guard.prepare("SELECT id FROM events ORDER BY event_date DESC LIMIT ?")?;
 
-    let ids: Vec<i64> = stmt.query_map([limit], |row| row.get::<_, i64>(0))?
+    let ids: Vec<i64> = stmt
+        .query_map([limit], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
     drop(stmt);

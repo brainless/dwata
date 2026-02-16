@@ -89,9 +89,11 @@ pub async fn get_position(conn: AsyncDbConnection, id: i64) -> Result<Position> 
 pub async fn list_positions(conn: AsyncDbConnection, limit: usize) -> Result<Vec<Position>> {
     let conn_guard = conn.lock().await;
 
-    let mut stmt = conn_guard.prepare("SELECT id FROM positions ORDER BY created_at DESC LIMIT ?")?;
+    let mut stmt =
+        conn_guard.prepare("SELECT id FROM positions ORDER BY created_at DESC LIMIT ?")?;
 
-    let ids: Vec<i64> = stmt.query_map([limit], |row| row.get::<_, i64>(0))?
+    let ids: Vec<i64> = stmt
+        .query_map([limit], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
     drop(stmt);
@@ -107,14 +109,18 @@ pub async fn list_positions(conn: AsyncDbConnection, limit: usize) -> Result<Vec
     Ok(positions)
 }
 
-pub async fn list_contact_positions(conn: AsyncDbConnection, contact_id: i64) -> Result<Vec<Position>> {
+pub async fn list_contact_positions(
+    conn: AsyncDbConnection,
+    contact_id: i64,
+) -> Result<Vec<Position>> {
     let conn_guard = conn.lock().await;
 
     let mut stmt = conn_guard.prepare(
         "SELECT id FROM positions WHERE contact_id = ? ORDER BY started_date DESC, created_at DESC",
     )?;
 
-    let ids: Vec<i64> = stmt.query_map([contact_id], |row| row.get::<_, i64>(0))?
+    let ids: Vec<i64> = stmt
+        .query_map([contact_id], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
     drop(stmt);

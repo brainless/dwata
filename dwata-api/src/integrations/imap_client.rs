@@ -1,5 +1,5 @@
-use native_tls::TlsConnector;
 use anyhow::Result;
+use native_tls::TlsConnector;
 
 use crate::helpers::imap_oauth::get_access_token_for_imap;
 

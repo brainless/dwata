@@ -5,9 +5,7 @@ use std::sync::Arc;
 use crate::database::events as db;
 use crate::database::Database;
 
-pub async fn list_events(
-    database: web::Data<Arc<Database>>,
-) -> ActixResult<HttpResponse> {
+pub async fn list_events(database: web::Data<Arc<Database>>) -> ActixResult<HttpResponse> {
     let events = db::list_events(database.async_connection.clone(), 100)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;

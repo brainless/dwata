@@ -2,8 +2,8 @@ use anyhow::Context;
 use rusqlite::Connection;
 
 fn main() -> anyhow::Result<()> {
-    let db_path = dwata_api::helpers::database::get_db_path()
-        .context("Failed to determine database path")?;
+    let db_path =
+        dwata_api::helpers::database::get_db_path().context("Failed to determine database path")?;
 
     if !db_path.exists() {
         println!("Database not found at: {:?}", db_path);
@@ -29,13 +29,11 @@ fn main() -> anyhow::Result<()> {
         names
     };
 
-    let has_sequence_table: bool = conn
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'",
-            [],
-            |row| row.get::<_, i64>(0),
-        )?
-        > 0;
+    let has_sequence_table: bool = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? > 0;
 
     let tx = conn.transaction()?;
     for table in &table_names {

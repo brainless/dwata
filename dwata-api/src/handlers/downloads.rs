@@ -1,9 +1,9 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
-use std::sync::Arc;
 use shared_types::download::{
     CreateDownloadJobRequest, DownloadJobListResponse, DownloadJobStatus, JobType,
 };
+use std::sync::Arc;
 
 use crate::database::downloads as db;
 use crate::database::Database;
@@ -128,9 +128,7 @@ pub async fn delete_download_job(
     Ok(HttpResponse::NoContent().finish())
 }
 
-pub async fn trigger_sync(
-    manager: web::Data<Arc<DownloadManager>>,
-) -> ActixResult<HttpResponse> {
+pub async fn trigger_sync(manager: web::Data<Arc<DownloadManager>>) -> ActixResult<HttpResponse> {
     // Ensure jobs exist for all credentials
     manager
         .ensure_jobs_for_all_credentials()

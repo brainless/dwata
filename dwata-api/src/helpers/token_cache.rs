@@ -1,7 +1,7 @@
+use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use chrono::{DateTime, Utc, Duration};
 
 #[derive(Clone)]
 pub struct CachedToken {
@@ -20,7 +20,12 @@ impl TokenCache {
         }
     }
 
-    pub async fn store_token(&self, credential_id: i64, access_token: String, expires_in_seconds: i64) {
+    pub async fn store_token(
+        &self,
+        credential_id: i64,
+        access_token: String,
+        expires_in_seconds: i64,
+    ) {
         let expires_at = Utc::now() + Duration::seconds(expires_in_seconds);
         let cached = CachedToken {
             access_token,

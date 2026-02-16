@@ -1,13 +1,13 @@
 use actix_web::{web, HttpResponse, Result};
+use oauth2::TokenResponse;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use oauth2::TokenResponse;
 
-use crate::helpers::google_oauth::GoogleOAuthClient;
-use crate::helpers::oauth_state::OAuthStateManager;
-use crate::helpers::keyring_service::KeyringService;
 use crate::database::credentials as db;
-use shared_types::credential::{CredentialType, CreateCredentialRequest};
+use crate::helpers::google_oauth::GoogleOAuthClient;
+use crate::helpers::keyring_service::KeyringService;
+use crate::helpers::oauth_state::OAuthStateManager;
+use shared_types::credential::{CreateCredentialRequest, CredentialType};
 
 #[derive(Serialize)]
 pub struct InitiateOAuthResponse {
@@ -20,7 +20,9 @@ pub async fn initiate_gmail_oauth(
 ) -> Result<HttpResponse> {
     let (auth_url, csrf_token, pkce_verifier) = oauth_client.authorize_url();
 
-    state_manager.store_verifier(csrf_token.secret().to_string(), pkce_verifier).await;
+    state_manager
+        .store_verifier(csrf_token.secret().to_string(), pkce_verifier)
+        .await;
 
     Ok(HttpResponse::Ok().json(InitiateOAuthResponse {
         authorization_url: auth_url,
@@ -51,9 +53,7 @@ pub async fn google_oauth_callback(
     let pkce_verifier = state_manager
         .retrieve_verifier(&query.state)
         .await
-        .ok_or_else(|| {
-            actix_web::error::ErrorBadRequest("Invalid state parameter")
-        })?;
+        .ok_or_else(|| actix_web::error::ErrorBadRequest("Invalid state parameter"))?;
 
     let token_response = oauth_client
         .exchange_code(query.code.clone(), pkce_verifier)
@@ -73,8 +73,9 @@ pub async fn google_oauth_callback(
         .ok_or_else(|| actix_web::error::ErrorInternalServerError("No expiry information"))?
         .as_secs() as i64;
 
-    let email = get_user_email(access_token).await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to get user email: {}", e)))?;
+    let email = get_user_email(access_token).await.map_err(|e| {
+        actix_web::error::ErrorInternalServerError(format!("Failed to get user email: {}", e))
+    })?;
 
     let credential_request = CreateCredentialRequest {
         credential_type: CredentialType::OAuth,
@@ -85,39 +86,65 @@ pub async fn google_oauth_callback(
         port: Some(993),
         use_tls: Some(true),
         notes: Some("Gmail OAuth2 credential".to_string()),
-        extra_metadata: Some(serde_json::json!({
-            "provider": "google",
-            "scopes": ["https://mail.google.com/"]
-        }).to_string()),
+        extra_metadata: Some(
+            serde_json::json!({
+                "provider": "google",
+                "scopes": ["https://mail.google.com/"]
+            })
+            .to_string(),
+        ),
     };
 
-    let metadata = match db::insert_credential(db.async_connection.clone(), &credential_request).await {
-        Ok(cred) => cred,
-        Err(db::CredentialDbError::DuplicateIdentifier) => {
-            tracing::info!("Credential with identifier {} already exists, updating", credential_request.identifier);
-            
-            let credentials = db::list_credentials(db.async_connection.clone(), false).await
-                .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to list credentials: {}", e)))?;
-            
-            let existing = credentials.iter()
-                .find(|c| c.identifier == credential_request.identifier)
-                .ok_or_else(|| actix_web::error::ErrorInternalServerError("Credential not found"))?;
-            
-            db::update_credential(
-                db.async_connection.clone(),
-                existing.id,
-                None,
-                credential_request.service_name,
-                credential_request.port,
-                credential_request.use_tls,
-                credential_request.notes,
-                credential_request.extra_metadata,
-            )
-            .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to update credential: {}", e)))?
-        },
-        Err(e) => return Err(actix_web::error::ErrorInternalServerError(format!("Failed to store credential: {}", e))),
-    };
+    let metadata =
+        match db::insert_credential(db.async_connection.clone(), &credential_request).await {
+            Ok(cred) => cred,
+            Err(db::CredentialDbError::DuplicateIdentifier) => {
+                tracing::info!(
+                    "Credential with identifier {} already exists, updating",
+                    credential_request.identifier
+                );
+
+                let credentials = db::list_credentials(db.async_connection.clone(), false)
+                    .await
+                    .map_err(|e| {
+                        actix_web::error::ErrorInternalServerError(format!(
+                            "Failed to list credentials: {}",
+                            e
+                        ))
+                    })?;
+
+                let existing = credentials
+                    .iter()
+                    .find(|c| c.identifier == credential_request.identifier)
+                    .ok_or_else(|| {
+                        actix_web::error::ErrorInternalServerError("Credential not found")
+                    })?;
+
+                db::update_credential(
+                    db.async_connection.clone(),
+                    existing.id,
+                    None,
+                    credential_request.service_name,
+                    credential_request.port,
+                    credential_request.use_tls,
+                    credential_request.notes,
+                    credential_request.extra_metadata,
+                )
+                .await
+                .map_err(|e| {
+                    actix_web::error::ErrorInternalServerError(format!(
+                        "Failed to update credential: {}",
+                        e
+                    ))
+                })?
+            }
+            Err(e) => {
+                return Err(actix_web::error::ErrorInternalServerError(format!(
+                    "Failed to store credential: {}",
+                    e
+                )))
+            }
+        };
 
     keyring
         .update_password(
@@ -127,9 +154,16 @@ pub async fn google_oauth_callback(
             refresh_token,
         )
         .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to store refresh token: {}", e)))?;
+        .map_err(|e| {
+            actix_web::error::ErrorInternalServerError(format!(
+                "Failed to store refresh token: {}",
+                e
+            ))
+        })?;
 
-    token_cache.store_token(metadata.id, access_token.to_string(), expires_in).await;
+    token_cache
+        .store_token(metadata.id, access_token.to_string(), expires_in)
+        .await;
 
     Ok(HttpResponse::Ok().body(format!(
         r#"

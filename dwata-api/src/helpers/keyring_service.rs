@@ -113,7 +113,10 @@ impl KeyringService {
         }
 
         // Cache miss or expired - fetch from master keychain entry
-        tracing::debug!("Cache miss for credential: {}, fetching from master keychain", cache_key);
+        tracing::debug!(
+            "Cache miss for credential: {}, fetching from master keychain",
+            cache_key
+        );
 
         // Load all credentials from master entry (only 1 keychain prompt)
         let all_creds = self.get_master_credentials().await?;
@@ -192,7 +195,8 @@ impl KeyringService {
         new_password: &str,
     ) -> Result<(), KeyringError> {
         // Just call set_password, which handles updates in master mode
-        self.set_password(credential_type, identifier, username, new_password).await
+        self.set_password(credential_type, identifier, username, new_password)
+            .await
     }
 
     /// Delete password from keychain and remove from cache (uses master mode)
@@ -269,7 +273,12 @@ impl KeyringService {
     }
 
     /// Invalidate a specific credential in the cache
-    pub async fn invalidate(&self, credential_type: &CredentialType, identifier: &str, username: &str) {
+    pub async fn invalidate(
+        &self,
+        credential_type: &CredentialType,
+        identifier: &str,
+        username: &str,
+    ) {
         let cache_key = Self::cache_key(credential_type, identifier, username);
         let mut cache = self.cache.write().await;
         cache.remove(&cache_key);
@@ -327,8 +336,9 @@ impl KeyringService {
             "credentials": credentials_json,
         });
 
-        let json_string = serde_json::to_string(&master_data)
-            .map_err(|e| KeyringError::OperationFailed(format!("JSON serialization failed: {}", e)))?;
+        let json_string = serde_json::to_string(&master_data).map_err(|e| {
+            KeyringError::OperationFailed(format!("JSON serialization failed: {}", e))
+        })?;
 
         // Store in keychain under a single master entry
         let entry = Entry::new("dwata-master", "all-credentials").map_err(|e| {
@@ -339,7 +349,10 @@ impl KeyringService {
             KeyringError::OperationFailed(format!("Failed to store master credentials: {}", e))
         })?;
 
-        tracing::info!("Stored {} credentials in master keychain entry", credentials.len());
+        tracing::info!(
+            "Stored {} credentials in master keychain entry",
+            credentials.len()
+        );
 
         // Update cache with all credentials
         let mut cache = self.cache.write().await;
@@ -371,22 +384,25 @@ impl KeyringService {
             if e.to_string().contains("not found") || e.to_string().contains("NotFound") {
                 KeyringError::NotFound
             } else {
-                KeyringError::OperationFailed(format!("Failed to retrieve master credentials: {}", e))
+                KeyringError::OperationFailed(format!(
+                    "Failed to retrieve master credentials: {}",
+                    e
+                ))
             }
         })?;
 
         let master_data: Value = serde_json::from_str(&json_string)
             .map_err(|e| KeyringError::OperationFailed(format!("JSON parsing failed: {}", e)))?;
 
-        let credentials_array = master_data["credentials"]
-            .as_array()
-            .ok_or_else(|| KeyringError::OperationFailed("Invalid master credentials format".to_string()))?;
+        let credentials_array = master_data["credentials"].as_array().ok_or_else(|| {
+            KeyringError::OperationFailed("Invalid master credentials format".to_string())
+        })?;
 
         let mut credentials = Vec::new();
         for cred in credentials_array {
-            let cred_type_str = cred["type"]
-                .as_str()
-                .ok_or_else(|| KeyringError::OperationFailed("Missing credential type".to_string()))?;
+            let cred_type_str = cred["type"].as_str().ok_or_else(|| {
+                KeyringError::OperationFailed("Missing credential type".to_string())
+            })?;
             let identifier = cred["identifier"]
                 .as_str()
                 .ok_or_else(|| KeyringError::OperationFailed("Missing identifier".to_string()))?
@@ -404,7 +420,10 @@ impl KeyringService {
             credentials.push((cred_type, identifier, username, password));
         }
 
-        tracing::info!("Retrieved {} credentials from master keychain entry", credentials.len());
+        tracing::info!(
+            "Retrieved {} credentials from master keychain entry",
+            credentials.len()
+        );
 
         // Update cache
         let mut cache = self.cache.write().await;

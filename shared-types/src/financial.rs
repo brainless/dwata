@@ -34,7 +34,7 @@ pub struct FinancialTransaction {
 
     // Source tracking (agnostic to source type)
     pub data_source_type: DataSourceType,
-    pub data_source_id: String,   // ID in the source system
+    pub data_source_id: String, // ID in the source system
 
     // Transaction data
     pub document_type: FinancialDocumentType,

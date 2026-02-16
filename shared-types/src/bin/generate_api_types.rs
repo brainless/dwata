@@ -1,5 +1,5 @@
+use shared_types::credential::{CreateLocalFileCredentialRequest, LocalFileSettings};
 use shared_types::*;
-use shared_types::credential::{LocalFileSettings, CreateLocalFileCredentialRequest};
 use std::fs;
 use std::path::Path;
 use ts_rs::TS;
@@ -40,7 +40,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(AiProviderApiKeyConfig::export_to_string()?));
     types.push(clean_type(OAuthClientAppConfig::export_to_string()?));
     types.push(clean_type(SettingsResponse::export_to_string()?));
-    types.push(clean_type(UpdateAiProviderApiKeysRequest::export_to_string()?));
+    types.push(clean_type(
+        UpdateAiProviderApiKeysRequest::export_to_string()?,
+    ));
     types.push(clean_type(UpdateOAuthClientAppsRequest::export_to_string()?));
 
     // Credential types
@@ -65,7 +67,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Local File credential types
     types.push(clean_type(LocalFileSettings::export_to_string()?));
-    types.push(clean_type(CreateLocalFileCredentialRequest::export_to_string()?));
+    types.push(clean_type(
+        CreateLocalFileCredentialRequest::export_to_string()?,
+    ));
 
     // Download types
     types.push(clean_type(DownloadJob::export_to_string()?));
@@ -150,7 +154,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(FinancialDocumentType::export_to_string()?));
     types.push(clean_type(FinancialTransaction::export_to_string()?));
     types.push(clean_type(TransactionCategory::export_to_string()?));
-    types.push(clean_type(TransactionStatus::export_to_string()?));    types.push(clean_type(FinancialSummary::export_to_string()?));
+    types.push(clean_type(TransactionStatus::export_to_string()?));
+    types.push(clean_type(FinancialSummary::export_to_string()?));
     types.push(clean_type(FinancialHealth::export_to_string()?));
     types.push(clean_type(CategoryBreakdown::export_to_string()?));
 

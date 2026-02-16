@@ -24,7 +24,10 @@ pub async fn insert_contact_from_extraction(
         );
 
         if existing.is_ok() {
-            return Err(anyhow::anyhow!("Contact with email {} already exists", email_addr));
+            return Err(anyhow::anyhow!(
+                "Contact with email {} already exists",
+                email_addr
+            ));
         }
     }
 
@@ -87,9 +90,11 @@ pub async fn get_contact(conn: AsyncDbConnection, id: i64) -> Result<Contact> {
 pub async fn list_contacts(conn: AsyncDbConnection, limit: usize) -> Result<Vec<Contact>> {
     let conn_guard = conn.lock().await;
 
-    let mut stmt = conn_guard.prepare("SELECT id FROM contacts ORDER BY created_at DESC LIMIT ?")?;
+    let mut stmt =
+        conn_guard.prepare("SELECT id FROM contacts ORDER BY created_at DESC LIMIT ?")?;
 
-    let ids: Vec<i64> = stmt.query_map([limit], |row| row.get::<_, i64>(0))?
+    let ids: Vec<i64> = stmt
+        .query_map([limit], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
     drop(stmt);

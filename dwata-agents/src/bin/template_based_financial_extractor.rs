@@ -10,10 +10,10 @@ use dwata_agents::template_financial_extractor::TemplateFinancialExtractorAgent;
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::gemini::GeminiClient;
 use nocodo_llm_sdk::models::gemini::GEMINI_3_FLASH_ID;
-use nocodo_llm_sdk::ollama::OllamaClient;
-use nocodo_llm_sdk::openai::OpenAIClient;
 use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
 use nocodo_llm_sdk::models::openai::GPT_5_MINI_ID;
+use nocodo_llm_sdk::ollama::OllamaClient;
+use nocodo_llm_sdk::openai::OpenAIClient;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -129,15 +129,12 @@ async fn main() -> Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("Missing openai_api_key in dwata config"))?;
             Arc::new(OpenAIClient::new(api_key)?)
         }
-        "ollama" => {
-            Arc::new(OllamaClient::new()?)
-        }
+        "ollama" => Arc::new(OllamaClient::new()?),
         _ => {
             return Err(anyhow::anyhow!("Unsupported provider: {}", cli.provider));
         }
     };
-    let storage: Arc<dyn dwata_agents::AgentStorage> =
-        Arc::new(InMemoryAgentStorage::new());
+    let storage: Arc<dyn dwata_agents::AgentStorage> = Arc::new(InMemoryAgentStorage::new());
 
     let session_id = storage
         .create_session(Session {
@@ -286,8 +283,7 @@ fn build_subject_template(subjects: &[String]) -> String {
 // ---------------------------------------------------------------------------
 
 fn load_email(path: &PathBuf) -> Result<Email> {
-    let bytes =
-        std::fs::read(path).with_context(|| format!("Failed to read file {:?}", path))?;
+    let bytes = std::fs::read(path).with_context(|| format!("Failed to read file {:?}", path))?;
 
     // Try parsing as .eml first
     let parser = mail_parser::MessageParser::default();
@@ -457,14 +453,24 @@ fn collect_gap_slices<'a>(
         // Find position of the previous anchor in this email (the anchor
         // just before next_common_idx).
         let prev_anchor_pos = if next_common_idx > 0 {
-            find_anchor_pos_in_email(email_lines, alignment, next_common_idx - 1, all_lines[0].as_slice())
+            find_anchor_pos_in_email(
+                email_lines,
+                alignment,
+                next_common_idx - 1,
+                all_lines[0].as_slice(),
+            )
         } else {
             None
         };
 
         // Find position of the next anchor in this email.
         let next_anchor_pos = if next_common_idx < alignment.len() {
-            find_anchor_pos_in_email(email_lines, alignment, next_common_idx, all_lines[0].as_slice())
+            find_anchor_pos_in_email(
+                email_lines,
+                alignment,
+                next_common_idx,
+                all_lines[0].as_slice(),
+            )
         } else {
             None
         };
@@ -543,8 +549,7 @@ fn word_diff_template(line_versions: &[&str], counter: &mut usize) -> String {
             // Consume all non-common words as a single placeholder
             let mut gap = Vec::new();
             while ti < tokenized[0].len()
-                && (ci >= common_words.len()
-                    || tokenized[0][ti] != common_words[ci].as_str())
+                && (ci >= common_words.len() || tokenized[0][ti] != common_words[ci].as_str())
             {
                 gap.push(tokenized[0][ti]);
                 ti += 1;
@@ -571,10 +576,7 @@ fn word_diff_template(line_versions: &[&str], counter: &mut usize) -> String {
 // ---------------------------------------------------------------------------
 
 /// Build an alignment of common_lines indices → first-email line indices.
-fn align_multiple(
-    all_lines: &[Vec<&str>],
-    common_lines: &[String],
-) -> Vec<(usize, usize)> {
+fn align_multiple(all_lines: &[Vec<&str>], common_lines: &[String]) -> Vec<(usize, usize)> {
     let first = &all_lines[0];
     let mut result = Vec::new();
     let mut fi = 0usize;
@@ -659,8 +661,10 @@ mod tests {
 
     #[test]
     fn test_word_mode_template() {
-        let email1 = "Dear Customer,\nYour payment of $100.00 was received.\nThank you.".to_string();
-        let email2 = "Dear Customer,\nYour payment of $250.00 was received.\nThank you.".to_string();
+        let email1 =
+            "Dear Customer,\nYour payment of $100.00 was received.\nThank you.".to_string();
+        let email2 =
+            "Dear Customer,\nYour payment of $250.00 was received.\nThank you.".to_string();
 
         let template = build_template_word_mode(&[email1, email2]);
         assert!(template.contains("Dear Customer,"));
@@ -691,7 +695,10 @@ mod tests {
         let e2 = "Hello,\nAmount: $1.78\nBye.".to_string();
 
         let template = build_template_word_mode(&[e1, e2]);
-        assert!(template.contains("Amount:"), "template should keep 'Amount:'");
+        assert!(
+            template.contains("Amount:"),
+            "template should keep 'Amount:'"
+        );
         assert!(
             template.contains("Amount: {{ placeholder_"),
             "template should be 'Amount: {{{{ placeholder_N }}}}', got:\n{template}"

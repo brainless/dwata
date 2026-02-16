@@ -46,7 +46,9 @@ pub async fn get_access_token_for_imap(
     let access_token = token_response.access_token().secret().to_string();
     let expires_in = token_response.expires_in().unwrap_or_default().as_secs() as i64;
 
-    token_cache.store_token(credential_id, access_token.clone(), expires_in).await;
+    token_cache
+        .store_token(credential_id, access_token.clone(), expires_in)
+        .await;
 
     Ok(access_token)
 }

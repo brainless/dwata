@@ -44,7 +44,10 @@ pub async fn insert_contact_link(
     Ok(id)
 }
 
-pub async fn get_contact_links(conn: AsyncDbConnection, contact_id: i64) -> Result<Vec<ContactLink>> {
+pub async fn get_contact_links(
+    conn: AsyncDbConnection,
+    contact_id: i64,
+) -> Result<Vec<ContactLink>> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
@@ -53,30 +56,31 @@ pub async fn get_contact_links(conn: AsyncDbConnection, contact_id: i64) -> Resu
          WHERE contact_id = ?",
     )?;
 
-    let links = stmt.query_map([contact_id], |row| {
-        let link_type_str: String = row.get(2)?;
-        let link_type = match link_type_str.as_str() {
-            "linkedin" => ContactLinkType::Linkedin,
-            "github" => ContactLinkType::Github,
-            "twitter" => ContactLinkType::Twitter,
-            "personal" => ContactLinkType::Personal,
-            _ => ContactLinkType::Other,
-        };
+    let links = stmt
+        .query_map([contact_id], |row| {
+            let link_type_str: String = row.get(2)?;
+            let link_type = match link_type_str.as_str() {
+                "linkedin" => ContactLinkType::Linkedin,
+                "github" => ContactLinkType::Github,
+                "twitter" => ContactLinkType::Twitter,
+                "personal" => ContactLinkType::Personal,
+                _ => ContactLinkType::Other,
+            };
 
-        Ok(ContactLink {
-            id: row.get(0)?,
-            contact_id: row.get(1)?,
-            link_type,
-            url: row.get(3)?,
-            label: row.get(4)?,
-            is_primary: row.get(5)?,
-            is_verified: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
-        })
-    })?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| anyhow::anyhow!("Failed to get contact links: {}", e))?;
+            Ok(ContactLink {
+                id: row.get(0)?,
+                contact_id: row.get(1)?,
+                link_type,
+                url: row.get(3)?,
+                label: row.get(4)?,
+                is_primary: row.get(5)?,
+                is_verified: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| anyhow::anyhow!("Failed to get contact links: {}", e))?;
 
     Ok(links)
 }

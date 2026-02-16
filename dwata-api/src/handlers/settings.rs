@@ -1,8 +1,8 @@
 use crate::config::ApiConfig;
 use actix_web::{web, HttpResponse, Result};
 use shared_types::{
-    AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse,
-    UpdateAiProviderApiKeysRequest, UpdateOAuthClientAppsRequest,
+    AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse, UpdateAiProviderApiKeysRequest,
+    UpdateOAuthClientAppsRequest,
 };
 use std::sync::Arc;
 use tracing::info;
@@ -35,7 +35,7 @@ pub async fn get_settings(data: web::Data<SettingsAppState>) -> Result<HttpRespo
         ))
     })?;
 
-        let ai_provider_api_keys = if let Some(ref keys) = config.ai_provider_api_keys {
+    let ai_provider_api_keys = if let Some(ref keys) = config.ai_provider_api_keys {
         vec![AiProviderApiKeyConfig {
             name: "gemini".to_string(),
             key: mask_api_key(&keys.gemini_api_key),

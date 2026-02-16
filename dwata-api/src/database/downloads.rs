@@ -1,10 +1,9 @@
+use rusqlite::OptionalExtension;
 use shared_types::download::{
-    CreateDownloadJobRequest, DownloadJob, DownloadJobStatus, DownloadProgress,
-    SourceType, JobType,
+    CreateDownloadJobRequest, DownloadJob, DownloadJobStatus, DownloadProgress, JobType, SourceType,
 };
 use shared_types::email::EmailAddress;
 use std::fmt;
-use rusqlite::OptionalExtension;
 use tokio::task;
 
 pub use crate::database::AsyncDbConnection;
@@ -40,8 +39,9 @@ pub async fn insert_download_job(
         request.source_config.clone()
     };
 
-    let source_state_json = serde_json::to_string(&source_config)
-        .map_err(|e| DownloadDbError::DatabaseError(format!("Failed to serialize config: {}", e)))?;
+    let source_state_json = serde_json::to_string(&source_config).map_err(|e| {
+        DownloadDbError::DatabaseError(format!("Failed to serialize config: {}", e))
+    })?;
 
     let job_type_str = match job_type {
         JobType::RecentSync => "recent-sync",
@@ -350,18 +350,12 @@ pub async fn delete_download_job(
     let conn = conn.lock().await;
 
     // First delete all download_items for this job
-    conn.execute(
-        "DELETE FROM download_items WHERE job_id = ?",
-        [job_id],
-    )
-    .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+    conn.execute("DELETE FROM download_items WHERE job_id = ?", [job_id])
+        .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
     // Then delete the job itself
-    conn.execute(
-        "DELETE FROM download_jobs WHERE id = ?",
-        [job_id],
-    )
-    .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+    conn.execute("DELETE FROM download_jobs WHERE id = ?", [job_id])
+        .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
     Ok(())
 }
@@ -383,26 +377,28 @@ pub async fn insert_download_item(
 
     let metadata_json = metadata.map(|m| serde_json::to_string(&m).ok()).flatten();
 
-    let item_id: i64 = conn.query_row(
-        "INSERT INTO download_items
+    let item_id: i64 = conn
+        .query_row(
+            "INSERT INTO download_items
          (job_id, source_identifier, source_folder, item_type, status, size_bytes,
           mime_type, metadata, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
-        rusqlite::params![
-            job_id as i32,
-            source_identifier,
-            source_folder,
-            item_type,
-            status,
-            size_bytes.map(|s| s as i32),
-            mime_type,
-            metadata_json.as_deref(),
-            now,
-            now
-        ],
-        |row| row.get(0)
-    ).map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
+            rusqlite::params![
+                job_id as i32,
+                source_identifier,
+                source_folder,
+                item_type,
+                status,
+                size_bytes.map(|s| s as i32),
+                mime_type,
+                metadata_json.as_deref(),
+                now,
+                now
+            ],
+            |row| row.get(0),
+        )
+        .map_err(|e| DownloadDbError::DatabaseError(e.to_string()))?;
 
     Ok(item_id)
 }

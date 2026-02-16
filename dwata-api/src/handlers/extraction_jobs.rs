@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use shared_types::extraction_job::{
-    CreateExtractionJobRequest, ExtractionJobListResponse,
-};
+use shared_types::extraction_job::{CreateExtractionJobRequest, ExtractionJobListResponse};
 
 use crate::database::extraction_jobs as db;
-use crate::jobs::extraction_manager::ExtractionManager;
 use crate::database::Database;
+use crate::jobs::extraction_manager::ExtractionManager;
 
 pub async fn create_extraction_job(
     database: web::Data<Arc<Database>>,
@@ -20,9 +18,7 @@ pub async fn create_extraction_job(
     Ok(HttpResponse::Created().json(job))
 }
 
-pub async fn list_extraction_jobs(
-    database: web::Data<Arc<Database>>,
-) -> ActixResult<HttpResponse> {
+pub async fn list_extraction_jobs(database: web::Data<Arc<Database>>) -> ActixResult<HttpResponse> {
     let jobs = db::list_extraction_jobs(database.async_connection.clone(), 50)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;

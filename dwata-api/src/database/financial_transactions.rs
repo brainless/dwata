@@ -1,11 +1,11 @@
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
+use rusqlite::params;
 use shared_types::{
     DataSourceType, EnrichmentStatus, FinancialDocumentType, FinancialSummary,
     FinancialTransaction, PartyEvidence, PartyIdentity, PartyRole, TransactionCategory,
     TransactionParty, TransactionStatus, UnresolvedField,
 };
-use rusqlite::params;
 
 fn data_source_type_to_str(data_source_type: &DataSourceType) -> &'static str {
     match data_source_type {
@@ -333,16 +333,7 @@ pub async fn list_financial_transactions(
     limit: usize,
 ) -> Result<Vec<FinancialTransaction>> {
     let (transactions, _) = list_financial_transactions_filtered(
-        conn,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        limit,
-        0,
+        conn, None, None, None, None, None, None, None, limit, 0,
     )
     .await?;
     Ok(transactions)

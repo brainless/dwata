@@ -1,14 +1,12 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use shared_types::{ContactsResponse, ContactLinksResponse};
+use shared_types::{ContactLinksResponse, ContactsResponse};
 use std::sync::Arc;
 
-use crate::database::contacts as contacts_db;
 use crate::database::contact_links as links_db;
+use crate::database::contacts as contacts_db;
 use crate::database::Database;
 
-pub async fn list_contacts(
-    db: web::Data<Arc<Database>>,
-) -> ActixResult<HttpResponse> {
+pub async fn list_contacts(db: web::Data<Arc<Database>>) -> ActixResult<HttpResponse> {
     let contacts = contacts_db::list_contacts(db.async_connection.clone(), 100)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;

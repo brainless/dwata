@@ -106,12 +106,6 @@ Unit tests:
 - size/time limit enforcement.
 - extraction status transitions.
 
-Integration tests:
-- successful extraction updates DB + Tantivy.
-- unsupported MIME marked `Skipped`.
-- parser failure marked `Failed` with error message.
-- retry job resumes incomplete queue.
-
 ## Acceptance Criteria
 
 - Attachment search returns relevant hits with snippets.

@@ -5,7 +5,6 @@
 /// - GPT-5 nano: Ultra-concise, minimal instructions
 /// - GPT-5 mini: Concise with key details
 /// - Gemini/larger models: Detailed, structured prompts
-
 pub mod gemini;
 pub mod gpt5_mini;
 pub mod gpt5_nano;

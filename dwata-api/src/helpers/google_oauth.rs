@@ -1,10 +1,10 @@
-use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, Scope, TokenUrl,
-};
+use anyhow::Result;
 use oauth2::basic::BasicClient;
 use oauth2::RequestTokenError;
-use anyhow::Result;
+use oauth2::{
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, Scope, TokenUrl,
+};
 use std::time::Duration;
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -16,7 +16,12 @@ pub struct GoogleOAuthClient {
 }
 
 impl GoogleOAuthClient {
-    fn async_http_client(&self) -> impl Fn(oauth2::HttpRequest) -> futures::future::BoxFuture<'static, Result<oauth2::HttpResponse, reqwest::Error>> {
+    fn async_http_client(
+        &self,
+    ) -> impl Fn(
+        oauth2::HttpRequest,
+    )
+        -> futures::future::BoxFuture<'static, Result<oauth2::HttpResponse, reqwest::Error>> {
         let client = self.http_client.clone();
         move |request: oauth2::HttpRequest| {
             let client = client.clone();
@@ -44,7 +49,10 @@ impl GoogleOAuthClient {
 impl GoogleOAuthClient {
     fn format_token_error(
         &self,
-        error: &RequestTokenError<reqwest::Error, oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>>,
+        error: &RequestTokenError<
+            reqwest::Error,
+            oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>,
+        >,
     ) -> String {
         match error {
             RequestTokenError::ServerResponse(err) => format!(
@@ -77,7 +85,10 @@ impl GoogleOAuthClient {
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to build HTTP client: {}", e))?;
 
-        Ok(Self { client, http_client })
+        Ok(Self {
+            client,
+            http_client,
+        })
     }
 
     pub fn authorize_url(&self) -> (String, CsrfToken, PkceCodeVerifier) {
@@ -87,12 +98,15 @@ impl GoogleOAuthClient {
             .client
             .authorize_url(CsrfToken::new_random)
             .add_scope(Scope::new("https://mail.google.com/".to_string()))
-            .add_scope(Scope::new("https://www.googleapis.com/auth/userinfo.email".to_string()))
+            .add_scope(Scope::new(
+                "https://www.googleapis.com/auth/userinfo.email".to_string(),
+            ))
             .set_pkce_challenge(pkce_challenge)
             .url();
 
         // Add access_type=offline to get refresh token
-        auth_url.query_pairs_mut()
+        auth_url
+            .query_pairs_mut()
             .append_pair("access_type", "offline")
             .append_pair("prompt", "consent");
 
@@ -103,7 +117,9 @@ impl GoogleOAuthClient {
         &self,
         code: String,
         pkce_verifier: PkceCodeVerifier,
-    ) -> Result<oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>> {
+    ) -> Result<
+        oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>,
+    > {
         let token = self
             .client
             .exchange_code(AuthorizationCode::new(code))
@@ -122,7 +138,9 @@ impl GoogleOAuthClient {
     pub async fn refresh_token(
         &self,
         refresh_token: &str,
-    ) -> Result<oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>> {
+    ) -> Result<
+        oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>,
+    > {
         tracing::debug!("Attempting to refresh OAuth token");
         let token = self
             .client

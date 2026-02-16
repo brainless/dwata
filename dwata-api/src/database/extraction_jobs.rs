@@ -1,8 +1,8 @@
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use shared_types::extraction_job::{
-    CreateExtractionJobRequest, ExtractionJob, ExtractionJobStatus, ExtractionProgress,
-    ExtractionSourceType, ExtractorType, ArchiveType,
+    ArchiveType, CreateExtractionJobRequest, ExtractionJob, ExtractionJobStatus,
+    ExtractionProgress, ExtractionSourceType, ExtractorType,
 };
 
 pub async fn insert_extraction_job(
@@ -33,7 +33,13 @@ pub async fn insert_extraction_job(
          (source_type, extractor_type, status, source_config, created_at, updated_at)
           VALUES (?, ?, 'pending', ?, ?, ?)
           RETURNING id",
-        rusqlite::params![source_type_str, extractor_type_str, &source_config_json, now, now],
+        rusqlite::params![
+            source_type_str,
+            extractor_type_str,
+            &source_config_json,
+            now,
+            now
+        ],
         |row| row.get(0),
     )?;
 
@@ -152,11 +158,11 @@ pub async fn list_extraction_jobs(
 ) -> Result<Vec<ExtractionJob>> {
     let conn_guard = conn.lock().await;
 
-    let mut stmt = conn_guard.prepare(
-        "SELECT id FROM extraction_jobs ORDER BY created_at DESC LIMIT ?",
-    )?;
+    let mut stmt =
+        conn_guard.prepare("SELECT id FROM extraction_jobs ORDER BY created_at DESC LIMIT ?")?;
 
-    let ids: Vec<i64> = stmt.query_map([limit], |row| row.get::<_, i64>(0))?
+    let ids: Vec<i64> = stmt
+        .query_map([limit], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
     drop(stmt);
@@ -235,7 +241,10 @@ pub async fn update_job_progress(
         params.push(Box::new(contacts as i64));
     }
 
-    if companies_extracted.is_some() || positions_extracted.is_some() || contacts_extracted.is_some() {
+    if companies_extracted.is_some()
+        || positions_extracted.is_some()
+        || contacts_extracted.is_some()
+    {
         updates.push("extracted_entities = COALESCE(companies_extracted, 0) + COALESCE(positions_extracted, 0) + COALESCE(contacts_extracted, 0)");
     }
 

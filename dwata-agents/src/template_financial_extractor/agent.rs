@@ -1,8 +1,8 @@
 use crate::storage::{AgentStorage, Message};
 use crate::template_financial_extractor::types::TranslateVariablesParams;
-use nocodo_llm_sdk::Tool;
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::types::{CompletionRequest, ContentBlock, Message as LlmMessage};
+use nocodo_llm_sdk::Tool;
 use std::sync::Arc;
 
 pub struct TemplateFinancialExtractorAgent {
@@ -28,8 +28,7 @@ impl TemplateFinancialExtractorAgent {
     }
 
     pub async fn execute(&self, session_id: i64) -> anyhow::Result<TranslateVariablesParams> {
-        let system_prompt =
-            super::prompts::get_system_prompt(&self.model, &self.template);
+        let system_prompt = super::prompts::get_system_prompt(&self.model, &self.template);
 
         let translate_tool = Tool::from_type::<TranslateVariablesParams>()
             .name("translate_variables")
@@ -110,8 +109,7 @@ impl TemplateFinancialExtractorAgent {
             if let Some(tool_calls) = response.tool_calls {
                 for tool_call in tool_calls {
                     if tool_call.name() == "translate_variables" {
-                        let params: TranslateVariablesParams =
-                            tool_call.parse_arguments()?;
+                        let params: TranslateVariablesParams = tool_call.parse_arguments()?;
 
                         // Store the tool result
                         self.storage

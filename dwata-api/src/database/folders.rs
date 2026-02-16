@@ -1,6 +1,6 @@
+use crate::integrations::real_imap_client::FolderMetadata;
 use rusqlite::params;
 use shared_types::EmailFolder;
-use crate::integrations::real_imap_client::FolderMetadata;
 
 use crate::database::AsyncDbConnection;
 use anyhow::Result;

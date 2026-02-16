@@ -1,11 +1,10 @@
+use actix_web::http::header::HeaderName;
 use actix_web::{web, HttpResponse, Result};
 use serde::Deserialize;
 use shared_types::credential::{
-    CreateCredentialRequest, CredentialListResponse, PasswordResponse,
-    UpdateCredentialRequest,
+    CreateCredentialRequest, CredentialListResponse, PasswordResponse, UpdateCredentialRequest,
 };
 use std::sync::Arc;
-use actix_web::http::header::HeaderName;
 
 use crate::database::credentials as db;
 use crate::helpers::keyring_service::{KeyringError, KeyringService};
@@ -25,7 +24,9 @@ impl std::fmt::Display for CredentialError {
         match self {
             CredentialError::Validation(msg) => write!(f, "{}", msg),
             CredentialError::NotFound => write!(f, "Credential not found"),
-            CredentialError::Duplicate => write!(f, "A credential with this identifier already exists"),
+            CredentialError::Duplicate => {
+                write!(f, "A credential with this identifier already exists")
+            }
             CredentialError::KeychainUnavailable(msg) => write!(f, "{}", msg),
             CredentialError::InconsistentState(msg) => write!(f, "{}", msg),
             CredentialError::Internal(msg) => write!(f, "{}", msg),
@@ -39,14 +40,11 @@ impl actix_web::error::ResponseError for CredentialError {
             CredentialError::Validation(msg) => {
                 HttpResponse::BadRequest().json(serde_json::json!({ "error": msg }))
             }
-            CredentialError::NotFound => {
-                HttpResponse::NotFound().json(serde_json::json!({ "error": "Credential not found" }))
-            }
-            CredentialError::Duplicate => {
-                HttpResponse::BadRequest().json(serde_json::json!({
-                    "error": "A credential with this identifier already exists"
-                }))
-            }
+            CredentialError::NotFound => HttpResponse::NotFound()
+                .json(serde_json::json!({ "error": "Credential not found" })),
+            CredentialError::Duplicate => HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "A credential with this identifier already exists"
+            })),
             CredentialError::KeychainUnavailable(msg) => {
                 HttpResponse::ServiceUnavailable().json(serde_json::json!({ "error": msg }))
             }
@@ -79,34 +77,28 @@ pub async fn create_credential(
 
     // Validate identifier
     if req.identifier.trim().is_empty() {
-        return Err(CredentialError::Validation(
-            "Identifier cannot be empty".to_string(),
-        )
-        .into());
+        return Err(CredentialError::Validation("Identifier cannot be empty".to_string()).into());
     }
 
     // Validate username
     if req.username.trim().is_empty() {
-        return Err(CredentialError::Validation(
-            "Username cannot be empty".to_string(),
-        )
-        .into());
+        return Err(CredentialError::Validation("Username cannot be empty".to_string()).into());
     }
 
     // Validate password requirements based on credential type
     if req.credential_type.requires_keychain() {
         match &req.password {
             None => {
-                return Err(CredentialError::Validation(
-                    format!("Password is required for {} credentials", req.credential_type)
-                )
+                return Err(CredentialError::Validation(format!(
+                    "Password is required for {} credentials",
+                    req.credential_type
+                ))
                 .into());
             }
             Some(pwd) if pwd.trim().is_empty() => {
-                return Err(CredentialError::Validation(
-                    "Password cannot be empty".to_string(),
-                )
-                .into());
+                return Err(
+                    CredentialError::Validation("Password cannot be empty".to_string()).into(),
+                );
             }
             _ => {}
         }
@@ -124,7 +116,9 @@ pub async fn create_credential(
                 )
                 .await
                 .map_err(|e| match e {
-                    KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
+                    KeyringError::ServiceUnavailable(msg) => {
+                        CredentialError::KeychainUnavailable(msg)
+                    }
                     _ => CredentialError::Internal(format!("Failed to store password: {}", e)),
                 })?;
         }
@@ -140,7 +134,9 @@ pub async fn create_credential(
                 let identifier = req.identifier.clone();
                 let username = req.username.clone();
                 tokio::spawn(async move {
-                    let _ = keyring.delete_password(&credential_type, &identifier, &username).await;
+                    let _ = keyring
+                        .delete_password(&credential_type, &identifier, &username)
+                        .await;
                 });
             }
 
@@ -203,9 +199,10 @@ pub async fn get_password(
 
     // LocalFile credentials don't store passwords in keychain
     if !credential.credential_type.requires_keychain() {
-        return Err(CredentialError::Validation(
-            format!("Credential type {} does not have a password", credential.credential_type)
-        )
+        return Err(CredentialError::Validation(format!(
+            "Credential type {} does not have a password",
+            credential.credential_type
+        ))
         .into());
     }
 
@@ -259,13 +256,16 @@ pub async fn update_credential(
                 )
                 .await
                 .map_err(|e| match e {
-                    KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
+                    KeyringError::ServiceUnavailable(msg) => {
+                        CredentialError::KeychainUnavailable(msg)
+                    }
                     _ => CredentialError::Internal(format!("Failed to update password: {}", e)),
                 })?;
         } else {
-            return Err(CredentialError::Validation(
-                format!("Credential type {} does not support password updates", existing.credential_type)
-            )
+            return Err(CredentialError::Validation(format!(
+                "Credential type {} does not support password updates",
+                existing.credential_type
+            ))
             .into());
         }
     }
@@ -317,12 +317,12 @@ pub async fn delete_credential(
                 )
                 .await
                 .map_err(|e| match e {
-                    KeyringError::NotFound => {
-                        CredentialError::InconsistentState(
-                            "Keychain entry not found, deleting database record".to_string(),
-                        )
+                    KeyringError::NotFound => CredentialError::InconsistentState(
+                        "Keychain entry not found, deleting database record".to_string(),
+                    ),
+                    KeyringError::ServiceUnavailable(msg) => {
+                        CredentialError::KeychainUnavailable(msg)
                     }
-                    KeyringError::ServiceUnavailable(msg) => CredentialError::KeychainUnavailable(msg),
                     KeyringError::OperationFailed(msg) => CredentialError::Internal(msg),
                 })
                 .ok();
