@@ -2,6 +2,7 @@ use crate::database::{financial_transactions as db, Database};
 use crate::financial_keywords::{build_tantivy_query, DEFAULT_FINANCIAL_KEYWORDS};
 use crate::search::tantivy::TantivySearchIndex;
 use actix_web::{web, HttpResponse, Result as ActixResult};
+use rayon::prelude::*;
 use serde::Deserialize;
 use shared_types::{
     DocumentKind, FinancialEmailScanRequest, FinancialEmailScanResponse, FinancialEmailScanSender,
@@ -9,6 +10,8 @@ use shared_types::{
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Instant;
+use tracing::info;
 
 #[derive(Deserialize)]
 pub struct TransactionFilters {
@@ -102,18 +105,33 @@ pub async fn scan_financial_emails(
     search_index: web::Data<Arc<TantivySearchIndex>>,
     request: web::Json<FinancialEmailScanRequest>,
 ) -> ActixResult<HttpResponse> {
+    let scan_started = Instant::now();
+    info!(
+        credential_id = ?request.credential_id,
+        max_emails = ?request.max_emails,
+        max_senders = ?request.max_senders,
+        "scan_financial_emails started"
+    );
+
     let tantivy_query = build_tantivy_query(DEFAULT_FINANCIAL_KEYWORDS);
 
+    let step_started = Instant::now();
     let total_emails =
         crate::database::emails::count_emails(db.async_connection.clone(), request.credential_id)
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    info!(
+        duration_ms = step_started.elapsed().as_millis(),
+        total_emails, "scan_financial_emails count_emails completed"
+    );
 
     let max_results = request.max_emails.unwrap_or(usize::MAX);
     let mut matched_document_ids = Vec::new();
     let mut seen_document_ids = HashSet::new();
     let mut offset = 0usize;
 
+    let step_started = Instant::now();
+    let mut search_pages = 0usize;
     while matched_document_ids.len() < max_results {
         let remaining = max_results.saturating_sub(matched_document_ids.len());
         let page_limit = remaining.min(100);
@@ -147,12 +165,20 @@ pub async fn scan_financial_emails(
         }
 
         let fetched_count = search_result.hits.len();
+        search_pages += 1;
         if fetched_count < page_limit {
             break;
         }
         offset += fetched_count;
     }
+    info!(
+        duration_ms = step_started.elapsed().as_millis(),
+        pages = search_pages,
+        matched_document_ids = matched_document_ids.len(),
+        "scan_financial_emails tantivy matching completed"
+    );
 
+    let step_started = Instant::now();
     let rows = crate::database::emails::list_email_scan_rows_by_document_ids(
         db.async_connection.clone(),
         &matched_document_ids,
@@ -161,7 +187,13 @@ pub async fn scan_financial_emails(
     )
     .await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    info!(
+        duration_ms = step_started.elapsed().as_millis(),
+        rows = rows.len(),
+        "scan_financial_emails load_rows completed"
+    );
 
+    let step_started = Instant::now();
     let mut sender_counts: HashMap<String, i64> = HashMap::new();
     let mut sender_tokens: HashMap<String, Vec<Vec<String>>> = HashMap::new();
 
@@ -186,35 +218,50 @@ pub async fn scan_financial_emails(
             .or_insert_with(Vec::new)
             .push(tokenize_words(&content));
     }
+    info!(
+        duration_ms = step_started.elapsed().as_millis(),
+        unique_senders = sender_counts.len(),
+        "scan_financial_emails sender tokenization completed"
+    );
 
     // If a sender's matched emails differ too much at a word level, they are likely not
     // templated transaction emails. We drop them for now (may miss manual emails).
-    let mut total_matched = 0i64;
-    sender_counts.retain(|sender, count| {
-        let keep = sender_tokens
-            .get(sender)
-            .and_then(|tokens| {
-                if tokens.len() < 2 {
-                    return Some(true);
-                }
-                let avg = average_normalized_distance(tokens);
-                Some(avg <= TEMPLATE_SIMILARITY_THRESHOLD)
-            })
-            .unwrap_or(true);
-
-        if keep {
-            total_matched += *count;
-        }
-        keep
-    });
-
-    let mut senders: Vec<FinancialEmailScanSender> = sender_counts
+    let step_started = Instant::now();
+    let sender_entries: Vec<(String, i64, Vec<Vec<String>>)> = sender_counts
         .into_iter()
-        .map(|(sender_email, matched_count)| FinancialEmailScanSender {
-            sender_email,
-            matched_count,
+        .map(|(sender_email, matched_count)| {
+            let tokens = sender_tokens.remove(&sender_email).unwrap_or_default();
+            (sender_email, matched_count, tokens)
         })
         .collect();
+
+    let mut senders: Vec<FinancialEmailScanSender> = sender_entries
+        .into_par_iter()
+        .filter_map(|(sender_email, matched_count, tokens)| {
+            let keep = if tokens.len() < 2 {
+                true
+            } else {
+                average_normalized_distance(&tokens) <= TEMPLATE_SIMILARITY_THRESHOLD
+            };
+
+            if keep {
+                Some(FinancialEmailScanSender {
+                    sender_email,
+                    matched_count,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let total_matched: i64 = senders.iter().map(|s| s.matched_count).sum();
+    info!(
+        duration_ms = step_started.elapsed().as_millis(),
+        kept_senders = senders.len(),
+        total_matched,
+        "scan_financial_emails template similarity filter completed"
+    );
 
     senders.sort_by(|a, b| {
         b.matched_count
@@ -227,6 +274,14 @@ pub async fn scan_financial_emails(
             senders.truncate(max_senders);
         }
     }
+
+    info!(
+        duration_ms = scan_started.elapsed().as_millis(),
+        total_emails_scanned = rows.len(),
+        total_matched,
+        returned_senders = senders.len(),
+        "scan_financial_emails completed"
+    );
 
     Ok(HttpResponse::Ok().json(FinancialEmailScanResponse {
         total_emails,
