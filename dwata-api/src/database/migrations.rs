@@ -161,13 +161,12 @@ fn make_transaction_description_nullable(conn: &mut Connection) -> anyhow::Resul
                 data_source_type VARCHAR NOT NULL,
                 data_source_id VARCHAR NOT NULL,
                 extraction_job_id INTEGER,
-                document_type VARCHAR NOT NULL,
+                financial_document_id INTEGER,
                 description VARCHAR,
                 amount DOUBLE NOT NULL,
                 currency VARCHAR NOT NULL DEFAULT 'USD',
                 transaction_date VARCHAR NOT NULL,
                 category VARCHAR,
-                vendor VARCHAR,
                 source_vendor_id INTEGER,
                 destination_vendor_id INTEGER,
                 status VARCHAR NOT NULL,
@@ -180,7 +179,8 @@ fn make_transaction_description_nullable(conn: &mut Connection) -> anyhow::Resul
                 notes VARCHAR,
                 transaction_reference VARCHAR,
                 UNIQUE(data_source_type, data_source_id, transaction_reference),
-                UNIQUE(data_source_type, data_source_id, amount, vendor, transaction_date, document_type),
+                UNIQUE(data_source_type, data_source_id, amount, transaction_date, financial_document_id),
+                FOREIGN KEY (financial_document_id) REFERENCES financial_documents (id),
                 FOREIGN KEY (source_vendor_id) REFERENCES transaction_vendors (id),
                 FOREIGN KEY (destination_vendor_id) REFERENCES transaction_vendors (id)
             )",
@@ -197,7 +197,7 @@ fn make_transaction_description_nullable(conn: &mut Connection) -> anyhow::Resul
         // Recreate indexes
         tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_data_source ON financial_transactions(data_source_type, data_source_id)", [])?;
         tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_date ON financial_transactions(transaction_date DESC)", [])?;
-        tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_vendor ON financial_transactions(vendor)", [])?;
+        tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_doc_id ON financial_transactions(financial_document_id)", [])?;
         tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_source_vendor ON financial_transactions(source_vendor_id)", [])?;
         tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_destination_vendor ON financial_transactions(destination_vendor_id)", [])?;
         tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_reference ON financial_transactions(transaction_reference)", [])?;
@@ -205,6 +205,76 @@ fn make_transaction_description_nullable(conn: &mut Connection) -> anyhow::Resul
         tx.commit()?;
         tracing::info!("Successfully made description nullable");
     }
+    Ok(())
+}
+
+fn normalize_financial_transactions_table(conn: &mut Connection) -> anyhow::Result<()> {
+    let has_doc_id = table_has_column(conn, "financial_transactions", "financial_document_id")?;
+    let has_legacy_vendor = table_has_column(conn, "financial_transactions", "vendor")?;
+    let has_legacy_doc_type = table_has_column(conn, "financial_transactions", "document_type")?;
+
+    if has_doc_id && !has_legacy_vendor && !has_legacy_doc_type {
+        return Ok(());
+    }
+
+    tracing::info!("Normalizing financial_transactions schema");
+    let tx = conn.transaction()?;
+    tx.execute(
+        "ALTER TABLE financial_transactions RENAME TO financial_transactions_old",
+        [],
+    )?;
+    tx.execute(
+        "CREATE TABLE financial_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_source_type VARCHAR NOT NULL,
+            data_source_id VARCHAR NOT NULL,
+            extraction_job_id INTEGER,
+            financial_document_id INTEGER,
+            description VARCHAR,
+            amount DOUBLE NOT NULL,
+            currency VARCHAR NOT NULL DEFAULT 'USD',
+            transaction_date VARCHAR NOT NULL,
+            category VARCHAR,
+            source_vendor_id INTEGER,
+            destination_vendor_id INTEGER,
+            status VARCHAR NOT NULL,
+            source_file VARCHAR,
+            confidence DOUBLE,
+            requires_review BOOLEAN DEFAULT false,
+            extracted_at BIGINT NOT NULL,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            notes VARCHAR,
+            transaction_reference VARCHAR,
+            UNIQUE(data_source_type, data_source_id, transaction_reference),
+            UNIQUE(data_source_type, data_source_id, amount, transaction_date, financial_document_id),
+            FOREIGN KEY (financial_document_id) REFERENCES financial_documents (id),
+            FOREIGN KEY (source_vendor_id) REFERENCES transaction_vendors (id),
+            FOREIGN KEY (destination_vendor_id) REFERENCES transaction_vendors (id)
+        )",
+        [],
+    )?;
+
+    tx.execute(
+        "INSERT INTO financial_transactions
+            (id, data_source_type, data_source_id, extraction_job_id, financial_document_id, description, amount, currency, transaction_date,
+             category, source_vendor_id, destination_vendor_id, status, source_file, confidence, requires_review, extracted_at, created_at, updated_at,
+             notes, transaction_reference)
+         SELECT
+            id, data_source_type, data_source_id, extraction_job_id, NULL, description, amount, currency, transaction_date,
+            category, source_vendor_id, destination_vendor_id, status, source_file, confidence, requires_review, extracted_at, created_at, updated_at,
+            notes, transaction_reference
+         FROM financial_transactions_old",
+        [],
+    )?;
+    tx.execute("DROP TABLE financial_transactions_old", [])?;
+    tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_data_source ON financial_transactions(data_source_type, data_source_id)", [])?;
+    tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_date ON financial_transactions(transaction_date DESC)", [])?;
+    tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_doc_id ON financial_transactions(financial_document_id)", [])?;
+    tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_source_vendor ON financial_transactions(source_vendor_id)", [])?;
+    tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_destination_vendor ON financial_transactions(destination_vendor_id)", [])?;
+    tx.execute("CREATE INDEX IF NOT EXISTS idx_financial_transactions_reference ON financial_transactions(transaction_reference)", [])?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -881,6 +951,57 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
         [],
     )?;
 
+    // Create normalized financial_documents table (single source of truth for bill/invoice metadata)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS financial_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_source_type VARCHAR NOT NULL,
+            data_source_id VARCHAR NOT NULL,
+            document_type VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            issuer_vendor_id INTEGER,
+            document_reference VARCHAR,
+            due_date VARCHAR,
+            billing_period_start VARCHAR,
+            billing_period_end VARCHAR,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            UNIQUE(data_source_type, data_source_id),
+            FOREIGN KEY (issuer_vendor_id) REFERENCES transaction_vendors (id)
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_documents_type ON financial_documents(document_type)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_documents_due_date ON financial_documents(due_date)",
+        [],
+    )?;
+
+    // Create typed service/product subjects table for bill linkage
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS financial_document_subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            financial_document_id INTEGER NOT NULL,
+            subject_kind VARCHAR NOT NULL,
+            subject_value VARCHAR NOT NULL,
+            masked_value VARCHAR,
+            is_primary BOOLEAN DEFAULT false,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL,
+            UNIQUE(financial_document_id, subject_kind, subject_value),
+            FOREIGN KEY (financial_document_id) REFERENCES financial_documents (id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_document_subjects_doc_id
+         ON financial_document_subjects(financial_document_id)",
+        [],
+    )?;
+
     // Create financial_transactions table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS financial_transactions (
@@ -890,9 +1011,9 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
             data_source_type VARCHAR NOT NULL,
             data_source_id VARCHAR NOT NULL,
             extraction_job_id INTEGER,
+            financial_document_id INTEGER,
 
             -- Transaction data
-            document_type VARCHAR NOT NULL,
             description VARCHAR,
             amount DOUBLE NOT NULL,
             currency VARCHAR NOT NULL DEFAULT 'USD',
@@ -900,7 +1021,6 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
 
             -- Additional fields
             category VARCHAR,
-            vendor VARCHAR,
             source_vendor_id INTEGER,
             destination_vendor_id INTEGER,
             status VARCHAR NOT NULL,
@@ -918,7 +1038,8 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
             notes VARCHAR,
             transaction_reference VARCHAR,
             UNIQUE(data_source_type, data_source_id, transaction_reference),
-            UNIQUE(data_source_type, data_source_id, amount, vendor, transaction_date, document_type),
+            UNIQUE(data_source_type, data_source_id, amount, transaction_date, financial_document_id),
+            FOREIGN KEY (financial_document_id) REFERENCES financial_documents (id),
             FOREIGN KEY (source_vendor_id) REFERENCES transaction_vendors (id),
             FOREIGN KEY (destination_vendor_id) REFERENCES transaction_vendors (id)
         )",
@@ -934,7 +1055,7 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
         [],
     )?;
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_vendor ON financial_transactions(vendor)",
+        "CREATE INDEX IF NOT EXISTS idx_financial_transactions_doc_id ON financial_transactions(financial_document_id)",
         [],
     )?;
     conn.execute(
@@ -949,6 +1070,8 @@ pub fn run_migrations(conn: &mut Connection) -> anyhow::Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_financial_transactions_reference ON financial_transactions(transaction_reference)",
         [],
     )?;
+
+    normalize_financial_transactions_table(conn)?;
 
     // Track which sources have been processed for financial extraction
     conn.execute(

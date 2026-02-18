@@ -151,11 +151,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(ContactsResponse::export_to_string()?));
 
     // Financial types
+    types.push(clean_type(DataSourceType::export_to_string()?));
+    types.push(clean_type(EnrichmentStatus::export_to_string()?));
     types.push(clean_type(FinancialDocumentType::export_to_string()?));
+    types.push(clean_type(FinancialDocument::export_to_string()?));
+    types.push(clean_type(FinancialDocumentSubject::export_to_string()?));
+    types.push(clean_type(ServiceIdentifierKind::export_to_string()?));
     types.push(clean_type(FinancialTransaction::export_to_string()?));
+    types.push(clean_type(TransactionParty::export_to_string()?));
     types.push(clean_type(TransactionCategory::export_to_string()?));
     types.push(clean_type(TransactionStatus::export_to_string()?));
+    types.push(clean_type(TransactionVendor::export_to_string()?));
+    types.push(clean_type(TransactionVendorType::export_to_string()?));
+    types.push(clean_type(UnresolvedField::export_to_string()?));
     types.push(clean_type(FinancialSummary::export_to_string()?));
+    types.push(clean_type(FinancialExtractionSummary::export_to_string()?));
     types.push(clean_type(FinancialHealth::export_to_string()?));
     types.push(clean_type(CategoryBreakdown::export_to_string()?));
 

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+pub mod bill;
 pub mod company;
 pub mod contact;
 pub mod contact_link;
@@ -19,7 +20,10 @@ pub mod search;
 pub mod session;
 pub mod settings;
 pub mod task;
+pub mod transaction;
+pub mod vendor;
 
+pub use bill::{FinancialDocument, FinancialDocumentSubject, ServiceIdentifierKind};
 pub use company::{CompaniesResponse, Company, CreateCompanyRequest, UpdateCompanyRequest};
 pub use contact::{Contact, ContactsResponse, CreateContactRequest, UpdateContactRequest};
 pub use contact_link::{
@@ -50,10 +54,7 @@ pub use extraction_job::{
     ExtractionSourceType, ExtractorType,
 };
 pub use financial::{
-    CategoryBreakdown, DataSourceType, EnrichmentStatus, FinancialDocumentType,
-    FinancialExtractionSummary, FinancialHealth, FinancialSummary, FinancialTransaction,
-    PartyEvidence, PartyIdentity, PartyRole, TransactionCategory, TransactionParty,
-    TransactionStatus, TransactionVendor, TransactionVendorType, UnresolvedField,
+    CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialSummary,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
@@ -75,6 +76,11 @@ pub use settings::{
 pub use task::{
     CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
 };
+pub use transaction::{
+    DataSourceType, EnrichmentStatus, FinancialDocumentType, FinancialTransaction,
+    TransactionCategory, TransactionParty, TransactionStatus, UnresolvedField,
+};
+pub use vendor::{TransactionVendor, TransactionVendorType};
 
 // Re-export extraction types
 pub use extraction::*;

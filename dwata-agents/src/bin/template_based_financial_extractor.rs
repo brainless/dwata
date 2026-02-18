@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use config::{Config, File};
+use rusqlite::{params, Connection};
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,13 +21,21 @@ use nocodo_llm_sdk::openai::OpenAIClient;
     name = "template-based-financial-extractor",
     about = "Generate a Jinja2 template from multiple emails assumed to share the same template, \
              then use an LLM agent to translate placeholder variables to financial field names.\n\n\
-             Accepts two or more paths to .eml files, diffs them to find common text, and \
-             replaces variable segments with {{ placeholder_N }} Jinja2 variables."
+             Scans DB emails for a sender via --email-from, selects a cluster of similar \
+             emails, then builds a support-based template that drops low-frequency noise."
 )]
 struct Cli {
-    /// Paths to two or more .eml (or plain-text) email files
-    #[arg(required = true, num_args = 2..)]
-    email_files: Vec<PathBuf>,
+    /// Sender email address to scan in DB (required)
+    #[arg(long, required = true)]
+    email_from: String,
+
+    /// Max sender emails to scan from DB (most recent first)
+    #[arg(long, default_value_t = 200)]
+    max_db_emails: usize,
+
+    /// Normalized word-edit distance threshold used to include emails in sender cluster
+    #[arg(long, default_value_t = 0.35)]
+    word_distance_threshold: f64,
 
     /// Skip the LLM agent step and only output the raw template
     #[arg(long, default_value_t = false)]
@@ -58,6 +67,17 @@ struct Email {
     body: String,
 }
 
+struct DbEmail {
+    id: i64,
+    subject: String,
+    body: String,
+}
+
+struct TemplateDefaults {
+    line_support: f64,
+    word_support: f64,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let env_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
@@ -68,20 +88,39 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    // 1. Load subject + plain-text body from every email
-    let emails: Vec<Email> = cli
-        .email_files
-        .iter()
-        .map(|path| load_email(path))
-        .collect::<Result<Vec<_>>>()?;
+    // 1. Load sender email cluster from DB
+    let (sender_emails, defaults) = load_matching_emails_from_db(
+        &cli.email_from,
+        cli.max_db_emails,
+        cli.word_distance_threshold,
+    )?;
+    let emails: Vec<Email> = sender_emails
+        .into_iter()
+        .map(|e| Email {
+            subject: e.subject,
+            body: e.body,
+        })
+        .collect();
 
     // 2. Build subject template
     let subjects: Vec<String> = emails.iter().map(|e| e.subject.clone()).collect();
-    let subject_template = build_subject_template(&subjects);
+    let mut placeholder_counter = 1usize;
+    let subject_template = build_subject_template_with_support(
+        &subjects,
+        defaults.word_support,
+        emails.len(),
+        &mut placeholder_counter,
+    );
 
     // 3. Build body template
     let bodies: Vec<String> = emails.iter().map(|e| e.body.clone()).collect();
-    let body_template = build_template_word_mode(&bodies);
+    let body_template = build_template_word_mode_with_support(
+        &bodies,
+        defaults.line_support,
+        defaults.word_support,
+        emails.len(),
+        &mut placeholder_counter,
+    );
 
     let full_template = format!("Subject: {subject_template}\n---\n{body_template}");
 
@@ -231,6 +270,305 @@ fn load_api_config() -> Result<ApiConfig> {
     Ok(config)
 }
 
+fn load_matching_emails_from_db(
+    sender_email: &str,
+    max_db_emails: usize,
+    threshold: f64,
+) -> Result<(Vec<DbEmail>, TemplateDefaults)> {
+    if !(0.0..=1.0).contains(&threshold) {
+        return Err(anyhow::anyhow!(
+            "--word-distance-threshold must be between 0.0 and 1.0"
+        ));
+    }
+
+    let db_path = get_db_path()?;
+    if !db_path.exists() {
+        return Err(anyhow::anyhow!(
+            "Database not found at {:?}. Run dwata-api and sync emails first.",
+            db_path
+        ));
+    }
+
+    let conn = Connection::open(&db_path)
+        .with_context(|| format!("Failed to open SQLite database at {:?}", db_path))?;
+
+    let max_db_emails_i64: i64 = max_db_emails
+        .try_into()
+        .context("--max-db-emails is too large")?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, COALESCE(subject, ''), COALESCE(body_text, '')
+         FROM emails
+         WHERE LOWER(from_address) = LOWER(?1)
+         ORDER BY date_received DESC
+         LIMIT ?2",
+    )?;
+
+    let rows = stmt.query_map(params![sender_email, max_db_emails_i64], |row| {
+        Ok(DbEmail {
+            id: row.get(0)?,
+            subject: row.get(1)?,
+            body: row.get(2)?,
+        })
+    })?;
+
+    let mut candidates = Vec::new();
+    for row in rows {
+        let candidate = row?;
+        if !candidate.subject.trim().is_empty() || !candidate.body.trim().is_empty() {
+            candidates.push(candidate);
+        }
+    }
+
+    if candidates.len() < 2 {
+        return Err(anyhow::anyhow!(
+            "Need at least 2 non-empty emails for sender '{}', found {}.",
+            sender_email,
+            candidates.len()
+        ));
+    }
+
+    let seed = candidates
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("No sender emails found"))?;
+    let seed_text = comparable_text(seed);
+
+    let mut scored: Vec<(f64, DbEmail)> = candidates
+        .into_iter()
+        .map(|email| {
+            (
+                normalized_word_edit_distance(&seed_text, &comparable_text(&email)),
+                email,
+            )
+        })
+        .filter(|(dist, _)| *dist <= threshold)
+        .collect();
+
+    scored.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let matching_count = scored.len();
+    let max_template_emails = derive_max_template_emails(matching_count);
+    let selected_defaults = derive_template_defaults(matching_count);
+
+    let selected: Vec<DbEmail> = scored
+        .into_iter()
+        .take(max_template_emails)
+        .map(|(_, email)| email)
+        .collect();
+
+    if selected.len() < 2 {
+        return Err(anyhow::anyhow!(
+            "Could not find at least two matching emails for sender '{}': found {} (threshold {:.3}).",
+            sender_email,
+            selected.len(),
+            threshold
+        ));
+    }
+
+    let ids: Vec<String> = selected.iter().map(|e| e.id.to_string()).collect();
+    println!(
+        "Selected {} sender emails for template generation (ids: {}). line_support={:.2}, word_support={:.2}",
+        selected.len(),
+        ids.join(", "),
+        selected_defaults.line_support,
+        selected_defaults.word_support
+    );
+
+    Ok((selected, selected_defaults))
+}
+
+fn derive_max_template_emails(matching_count: usize) -> usize {
+    if matching_count >= 30 {
+        24
+    } else if matching_count >= 20 {
+        18
+    } else if matching_count >= 12 {
+        12
+    } else {
+        matching_count
+    }
+}
+
+fn derive_template_defaults(matching_count: usize) -> TemplateDefaults {
+    if matching_count >= 20 {
+        TemplateDefaults {
+            line_support: 0.8,
+            word_support: 0.8,
+        }
+    } else if matching_count >= 10 {
+        TemplateDefaults {
+            line_support: 0.75,
+            word_support: 0.75,
+        }
+    } else if matching_count >= 5 {
+        TemplateDefaults {
+            line_support: 0.67,
+            word_support: 0.67,
+        }
+    } else {
+        TemplateDefaults {
+            line_support: 0.5,
+            word_support: 0.5,
+        }
+    }
+}
+
+fn support_count(total_emails: usize, support_ratio: f64) -> usize {
+    ((total_emails as f64) * support_ratio).ceil().max(1.0) as usize
+}
+
+fn build_subject_template_with_support(
+    subjects: &[String],
+    word_support: f64,
+    total_emails: usize,
+    placeholder_counter: &mut usize,
+) -> String {
+    if subjects.is_empty() {
+        return String::new();
+    }
+    build_token_support_template(
+        &subjects.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        word_support,
+        total_emails,
+        "subject",
+        placeholder_counter,
+    )
+}
+
+fn build_template_word_mode_with_support(
+    bodies: &[String],
+    line_support: f64,
+    word_support: f64,
+    total_emails: usize,
+    placeholder_counter: &mut usize,
+) -> String {
+    let required_line_support = support_count(total_emails, line_support);
+    let all_lines: Vec<Vec<&str>> = bodies.iter().map(|b| b.lines().collect()).collect();
+    let max_lines = all_lines.iter().map(|lines| lines.len()).max().unwrap_or(0);
+    let mut template_lines = Vec::new();
+
+    for line_idx in 0..max_lines {
+        let versions: Vec<&str> = all_lines
+            .iter()
+            .filter_map(|lines| lines.get(line_idx).copied())
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+
+        if versions.len() < required_line_support {
+            continue;
+        }
+
+        let line_template = build_token_support_template(
+            &versions,
+            word_support,
+            total_emails,
+            "placeholder",
+            placeholder_counter,
+        );
+        if !line_template.trim().is_empty() {
+            template_lines.push(line_template);
+        }
+    }
+
+    template_lines.join("\n")
+}
+
+fn build_token_support_template(
+    versions: &[&str],
+    token_support: f64,
+    total_emails: usize,
+    placeholder_prefix: &str,
+    placeholder_counter: &mut usize,
+) -> String {
+    let required_token_support = support_count(total_emails, token_support);
+    let tokenized: Vec<Vec<&str>> = versions
+        .iter()
+        .map(|line| line.split_whitespace().collect())
+        .collect();
+
+    let max_tokens = tokenized.iter().map(|t| t.len()).max().unwrap_or(0);
+    let mut out_tokens: Vec<String> = Vec::new();
+    let mut in_placeholder_run = false;
+
+    for token_idx in 0..max_tokens {
+        let mut bucket: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for tokens in &tokenized {
+            if let Some(token) = tokens.get(token_idx) {
+                *bucket.entry(token).or_insert(0) += 1;
+            }
+        }
+
+        let best = bucket
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(token, count)| (token.to_string(), count));
+
+        if let Some((token, count)) = best {
+            if count >= required_token_support {
+                out_tokens.push(token);
+                in_placeholder_run = false;
+                continue;
+            }
+        }
+
+        if !in_placeholder_run {
+            out_tokens.push(format!(
+                "{{{{ {}_{} }}}}",
+                placeholder_prefix, placeholder_counter
+            ));
+            *placeholder_counter += 1;
+            in_placeholder_run = true;
+        }
+    }
+
+    out_tokens.join(" ")
+}
+
+fn get_db_path() -> Result<PathBuf> {
+    let data_dir = dirs::data_local_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?;
+    Ok(data_dir.join("dwata").join("db.sqlite"))
+}
+
+fn comparable_text(email: &DbEmail) -> String {
+    format!("{}\n{}", email.subject, email.body)
+}
+
+fn normalized_word_edit_distance(a: &str, b: &str) -> f64 {
+    let a_tokens: Vec<&str> = a.split_whitespace().collect();
+    let b_tokens: Vec<&str> = b.split_whitespace().collect();
+
+    if a_tokens.is_empty() && b_tokens.is_empty() {
+        return 0.0;
+    }
+
+    let dist = levenshtein_words(&a_tokens, &b_tokens) as f64;
+    let scale = a_tokens.len().max(b_tokens.len()) as f64;
+    dist / scale
+}
+
+fn levenshtein_words(a: &[&str], b: &[&str]) -> usize {
+    if a.is_empty() {
+        return b.len();
+    }
+    if b.is_empty() {
+        return a.len();
+    }
+
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut curr: Vec<usize> = vec![0; b.len() + 1];
+
+    for (i, a_tok) in a.iter().enumerate() {
+        curr[0] = i + 1;
+        for (j, b_tok) in b.iter().enumerate() {
+            let cost = if a_tok == b_tok { 0 } else { 1 };
+            curr[j + 1] = (curr[j] + 1).min(prev[j + 1] + 1).min(prev[j] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[b.len()]
+}
+
 /// Build a Jinja2 template for the subject line by word-diffing across all
 /// email subjects.
 fn build_subject_template(subjects: &[String]) -> String {
@@ -276,36 +614,6 @@ fn build_subject_template(subjects: &[String]) -> String {
     }
 
     parts.join(" ")
-}
-
-// ---------------------------------------------------------------------------
-// Email loading – extracts subject and plain-text body only
-// ---------------------------------------------------------------------------
-
-fn load_email(path: &PathBuf) -> Result<Email> {
-    let bytes = std::fs::read(path).with_context(|| format!("Failed to read file {:?}", path))?;
-
-    // Try parsing as .eml first
-    let parser = mail_parser::MessageParser::default();
-    if let Some(parsed) = parser.parse(&bytes) {
-        let subject = parsed.subject().unwrap_or("").to_string();
-        let body = parsed
-            .body_text(0)
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        if !body.is_empty() || !subject.is_empty() {
-            return Ok(Email { subject, body });
-        }
-    }
-
-    // Fallback: treat the whole file as plain text (no subject)
-    let text = String::from_utf8(bytes.clone())
-        .or_else(|_| Ok::<String, anyhow::Error>(String::from_utf8_lossy(&bytes).to_string()))
-        .context("Failed to decode file as UTF-8")?;
-    Ok(Email {
-        subject: String::new(),
-        body: text,
-    })
 }
 
 // ---------------------------------------------------------------------------

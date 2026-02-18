@@ -43,7 +43,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 clap.workspace = true
 config = { version = "0.14", default-features = false, features = ["toml"] }
 dirs = "5.0"
-mail-parser = "0.9"
 
 [[bin]]
 name = "template_based_financial_extractor"

@@ -628,7 +628,28 @@ import type { Contact } from "./Contact";
 export type ContactsResponse = { contacts: Array<Contact>, };
 
 
+export type DataSourceType = "email" | "imap" | "bank-statement" | "credit-card-statement" | "bank-feed" | "csv-upload" | "manual" | "unknown";
+
+
+export type EnrichmentStatus = "raw-extracted" | "partially-resolved" | "user-confirmed" | "fully-resolved";
+
+
 export type FinancialDocumentType = "invoice" | "bill" | "bank-statement" | "receipt" | "tax-document" | "payment-confirmation";
+
+
+import type { DataSourceType } from "./DataSourceType";
+import type { FinancialDocumentType } from "./FinancialDocumentType";
+import type { TransactionStatus } from "./TransactionStatus";
+
+export type FinancialDocument = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: TransactionStatus, issuer_vendor_id: bigint | null, document_reference: string | null, due_date: string | null, billing_period_start: string | null, billing_period_end: string | null, created_at: bigint, updated_at: bigint, };
+
+
+import type { ServiceIdentifierKind } from "./ServiceIdentifierKind";
+
+export type FinancialDocumentSubject = { id: bigint, financial_document_id: bigint, kind: ServiceIdentifierKind, value: string, masked_value: string | null, is_primary: boolean, created_at: bigint, updated_at: bigint, };
+
+
+export type ServiceIdentifierKind = "phone-number" | "account-number" | "policy-number" | "meter-number" | "subscription-id" | "contract-id" | "other";
 
 
 import type { DataSourceType } from "./DataSourceType";
@@ -642,7 +663,17 @@ import type { UnresolvedField } from "./UnresolvedField";
 /**
  * Financial transaction extracted from documents
  */
-export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, description: string | null, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, payer: TransactionParty, payee: TransactionParty, status: TransactionStatus, enrichment_status: EnrichmentStatus, unresolved_items: Array<UnresolvedField>, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
+export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, financial_document_id: bigint | null, document_type: FinancialDocumentType, description: string | null, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, payer: TransactionParty, payee: TransactionParty, status: TransactionStatus, enrichment_status: EnrichmentStatus, unresolved_items: Array<UnresolvedField>, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
+
+
+/**
+ * Strongly typed transaction endpoint. Always present for both payer and payee.
+ */
+export type TransactionParty = { 
+/**
+ * Canonical vendor reference. Null means unresolved.
+ */
+vendor_id: bigint | null, };
 
 
 export type TransactionCategory = "income" | "expense" | "investment" | "tax" | "utility" | "subscription" | "entertainment" | "travel" | "healthcare" | "education" | "other";
@@ -651,10 +682,30 @@ export type TransactionCategory = "income" | "expense" | "investment" | "tax" | 
 export type TransactionStatus = "pending" | "paid" | "overdue" | "cancelled" | "refunded";
 
 
+import type { TransactionVendorType } from "./TransactionVendorType";
+
+/**
+ * Transaction vendor entity
+ */
+export type TransactionVendor = { id: bigint, vendor_type: TransactionVendorType, vendor_name: string, vendor_external_id: string | null, created_at: bigint, updated_at: bigint, };
+
+
+export type TransactionVendorType = "self-user" | "self-business" | "financial-instrument" | "merchant" | "employer" | "bank" | "individual" | "platform" | "unknown";
+
+
+export type UnresolvedField = "payer-identity" | "payee-identity" | "category" | "transaction-reference" | "transaction-date" | "currency";
+
+
 /**
  * Financial summary/overview
  */
 export type FinancialSummary = { total_income: number, total_expenses: number, net_balance: number, pending_bills: number, overdue_payments: number, currency: string, period_start: string, period_end: string, };
+
+
+/**
+ * Financial extraction source summary
+ */
+export type FinancialExtractionSummary = { source_count: bigint, transaction_count: bigint, last_extracted_at: bigint | null, };
 
 
 import type { CategoryBreakdown } from "./CategoryBreakdown";
