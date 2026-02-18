@@ -18,6 +18,7 @@ dwata-agents = { path = "../dwata-agents" }
 shared-types = { path = "../shared-types" }
 extractors = { path = "../extractors" }
 rusqlite = { version = "0.32", features = ["bundled"] }
+refinery = { path = "../../refinery/refinery", features = ["rusqlite"] }
 chrono.workspace = true
 uuid.workspace = true
 anyhow.workspace = true

@@ -11,10 +11,13 @@ pub mod financial_transactions;
 pub mod folders;
 pub mod labels;
 pub mod linkedin_connections;
-pub mod migrations;
 pub mod models;
 pub mod positions;
 pub mod queries;
+
+mod embedded {
+    refinery::embed_migrations!("migrations");
+}
 
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
@@ -71,8 +74,8 @@ impl Database {
         // Run migrations on sync connection before opening async connection
         {
             let mut conn = sync_mutex.lock().unwrap();
-            migrations::run_migrations(&mut conn)?;
-            migrations::migrate_folders_and_labels(&mut *conn)?;
+            conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
+            embedded::migrations::runner().run(&mut *conn)?;
         }
 
         // Now open pooled connections - they will see the migrated schema
