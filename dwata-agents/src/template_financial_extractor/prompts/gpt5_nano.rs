@@ -1,22 +1,17 @@
-/// Ultra-concise prompt optimized for GPT-5 nano
-///
-/// GPT-5 nano is the smallest model, so we need:
-/// - Minimal instructions
-/// - Direct, imperative language
-/// - No verbose explanations
+/// Ultra-concise prompt optimized for GPT-5 nano.
 
 pub fn build_system_prompt(template: &str) -> String {
     format!(
-        r#"Translate placeholder variables in this email template to financial field names.
+        r#"Map placeholders in this payment email template to transaction fields.
 
-Fields: amount, currency, transaction_date, category, vendor
+Fields: amount, currency, transaction-date, vendor, transaction-reference
 
 Template:
 ```
 {template}
 ```
 
-Map each placeholder to a field or null. Call `translate_variables` with your mappings."#,
+Set field to null if not a transaction field. Call `translate_variables`."#,
         template = template
     )
 }

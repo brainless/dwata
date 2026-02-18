@@ -1,23 +1,17 @@
-/// Ultra-concise prompt optimized for Ministral 3 3B (Ollama)
-///
-/// Ministral is a very small local model, so we need:
-/// - Minimal instructions
-/// - Direct, imperative language
-/// - No verbose explanations
-/// - Explicit tool call instruction
+/// Ultra-concise prompt optimized for Ministral 3 3B (Ollama).
 
 pub fn build_system_prompt(template: &str) -> String {
     format!(
-        r#"Translate placeholder variables in this email template to financial field names.
+        r#"Map placeholders in this payment email template to transaction fields.
 
-Fields: amount, currency, transaction_date, category, vendor
+Fields: amount, currency, transaction-date, vendor, transaction-reference
 
 Template:
 ```
 {template}
 ```
 
-For each placeholder (placeholder_N, subject_N), decide which financial field it represents based on surrounding text. If it does not match any field, set it to null.
+For each placeholder (placeholder_N, subject_N), pick the matching field based on surrounding text. Set field to null if it does not match any field.
 
 You MUST call the `translate_variables` tool with your mappings."#,
         template = template

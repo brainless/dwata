@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use dwata_agents::storage::{InMemoryAgentStorage, Session};
+use dwata_agents::template_bill_extractor::TemplateBillExtractorAgent;
+use dwata_agents::template_document_labeler::TemplateDocumentLabelerAgent;
 use dwata_agents::template_financial_extractor::TemplateFinancialExtractorAgent;
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::gemini::GeminiClient;
@@ -132,10 +134,9 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // 4. Run the LLM agent to translate placeholders
+    // 4. Set up LLM client
     let config = load_api_config()?;
 
-    // Determine model based on provider
     let model = match cli.model {
         Some(ref m) => m.clone(),
         None => match cli.provider.as_str() {
@@ -175,34 +176,36 @@ async fn main() -> Result<()> {
     };
     let storage: Arc<dyn dwata_agents::AgentStorage> = Arc::new(InMemoryAgentStorage::new());
 
-    let session_id = storage
+    // 5. Label the template (bill / transaction / both)
+    println!("\n--- Step 1: Labeling document type ---");
+    let label_session_id = storage
         .create_session(Session {
             id: None,
-            agent_type: "template-financial-extractor".to_string(),
-            objective: "Translate template placeholders to financial fields".to_string(),
+            agent_type: "template-document-labeler".to_string(),
+            objective: "Classify financial document type".to_string(),
             context_data: None,
             status: "running".to_string(),
             result: None,
         })
         .await?;
 
-    let agent = TemplateFinancialExtractorAgent::new(
-        llm_client,
+    let labeler = TemplateDocumentLabelerAgent::new(
+        llm_client.clone(),
         storage.clone(),
-        model,
+        model.clone(),
         full_template.clone(),
     );
 
-    let result = match agent.execute(session_id).await {
+    let label = match labeler.execute(label_session_id).await {
         Ok(params) => {
             let _ = storage
                 .update_session(Session {
-                    id: Some(session_id),
-                    agent_type: "template-financial-extractor".to_string(),
+                    id: Some(label_session_id),
+                    agent_type: "template-document-labeler".to_string(),
                     objective: String::new(),
                     context_data: None,
                     status: "completed".to_string(),
-                    result: Some(serde_json::to_string(&params.to_map())?),
+                    result: Some(serde_json::to_string(&params)?),
                 })
                 .await;
             params
@@ -210,8 +213,8 @@ async fn main() -> Result<()> {
         Err(err) => {
             let _ = storage
                 .update_session(Session {
-                    id: Some(session_id),
-                    agent_type: "template-financial-extractor".to_string(),
+                    id: Some(label_session_id),
+                    agent_type: "template-document-labeler".to_string(),
                     objective: String::new(),
                     context_data: None,
                     status: "failed".to_string(),
@@ -222,29 +225,138 @@ async fn main() -> Result<()> {
         }
     };
 
-    // 5. Apply translations to produce the final template
-    let translations = result.to_map();
-    let mut final_template = full_template;
-    for (placeholder, value) in &translations {
-        if let Some(field_template) = value {
-            // Replace {{ placeholder_N }} with the field template
-            let search = format!("{{{{ {placeholder} }}}}");
-            final_template = final_template.replace(&search, field_template);
+    println!("  doc_type:        {:?}", label.doc_type);
+    println!("  has_bill:        {}", label.has_bill);
+    println!("  has_transaction: {}", label.has_transaction);
+
+    // 6. Run bill extractor if applicable
+    if label.has_bill {
+        println!("\n--- Step 2a: Extracting bill fields ---");
+        let bill_session_id = storage
+            .create_session(Session {
+                id: None,
+                agent_type: "template-bill-extractor".to_string(),
+                objective: "Map template placeholders to bill fields".to_string(),
+                context_data: None,
+                status: "running".to_string(),
+                result: None,
+            })
+            .await?;
+
+        let bill_agent = TemplateBillExtractorAgent::new(
+            llm_client.clone(),
+            storage.clone(),
+            model.clone(),
+            full_template.clone(),
+        );
+
+        match bill_agent.execute(bill_session_id).await {
+            Ok(params) => {
+                let _ = storage
+                    .update_session(Session {
+                        id: Some(bill_session_id),
+                        agent_type: "template-bill-extractor".to_string(),
+                        objective: String::new(),
+                        context_data: None,
+                        status: "completed".to_string(),
+                        result: Some(serde_json::to_string(&params)?),
+                    })
+                    .await;
+
+                println!("=== Bill Field Mappings ===");
+                for t in &params.translations {
+                    match &t.field {
+                        Some(field) => {
+                            let kind_str = t
+                                .service_identifier_kind
+                                .as_ref()
+                                .map(|k| format!(" ({k:?})"))
+                                .unwrap_or_default();
+                            println!("  {} → {:?}{}", t.placeholder, field, kind_str);
+                        }
+                        None => println!("  {} → (not a bill field)", t.placeholder),
+                    }
+                }
+                println!("==========================");
+            }
+            Err(err) => {
+                let _ = storage
+                    .update_session(Session {
+                        id: Some(bill_session_id),
+                        agent_type: "template-bill-extractor".to_string(),
+                        objective: String::new(),
+                        context_data: None,
+                        status: "failed".to_string(),
+                        result: Some(err.to_string()),
+                    })
+                    .await;
+                eprintln!("Bill extractor failed: {err}");
+            }
         }
     }
 
-    println!("=== Translated Template ===");
-    println!("{final_template}");
-    println!("===========================\n");
+    // 7. Run transaction extractor if applicable
+    if label.has_transaction {
+        println!("\n--- Step 2b: Extracting transaction fields ---");
+        let txn_session_id = storage
+            .create_session(Session {
+                id: None,
+                agent_type: "template-financial-extractor".to_string(),
+                objective: "Map template placeholders to transaction fields".to_string(),
+                context_data: None,
+                status: "running".to_string(),
+                result: None,
+            })
+            .await?;
 
-    println!("=== Variable Mappings ===");
-    for (placeholder, value) in &translations {
-        match value {
-            Some(field) => println!("  {placeholder} → {field}"),
-            None => println!("  {placeholder} → (not a financial field)"),
+        let txn_agent = TemplateFinancialExtractorAgent::new(
+            llm_client,
+            storage.clone(),
+            model,
+            full_template.clone(),
+        );
+
+        match txn_agent.execute(txn_session_id).await {
+            Ok(params) => {
+                let _ = storage
+                    .update_session(Session {
+                        id: Some(txn_session_id),
+                        agent_type: "template-financial-extractor".to_string(),
+                        objective: String::new(),
+                        context_data: None,
+                        status: "completed".to_string(),
+                        result: Some(serde_json::to_string(&params)?),
+                    })
+                    .await;
+
+                println!("=== Transaction Field Mappings ===");
+                for t in &params.translations {
+                    match &t.field {
+                        Some(field) => println!("  {} → {:?}", t.placeholder, field),
+                        None => println!("  {} → (not a transaction field)", t.placeholder),
+                    }
+                }
+                println!("==================================");
+            }
+            Err(err) => {
+                let _ = storage
+                    .update_session(Session {
+                        id: Some(txn_session_id),
+                        agent_type: "template-financial-extractor".to_string(),
+                        objective: String::new(),
+                        context_data: None,
+                        status: "failed".to_string(),
+                        result: Some(err.to_string()),
+                    })
+                    .await;
+                eprintln!("Transaction extractor failed: {err}");
+            }
         }
     }
-    println!("=========================");
+
+    if !label.has_bill && !label.has_transaction {
+        println!("\nNo bill or transaction fields detected. Nothing to extract.");
+    }
 
     Ok(())
 }

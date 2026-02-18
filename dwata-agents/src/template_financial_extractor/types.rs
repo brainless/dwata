@@ -2,7 +2,26 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// A single placeholder-to-field translation entry.
+/// Fields that can be extracted from a transaction confirmation document.
+///
+/// These are per-email variable fields — amounts, dates, references, vendor names.
+/// Category is a sender-level fixed attribute determined by the labeler, not extracted here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransactionField {
+    /// The transaction amount (numeric value only, no currency symbol)
+    Amount,
+    /// Currency code or symbol (e.g., "USD", "INR", "$", "₹")
+    Currency,
+    /// Date the transaction occurred or was processed
+    TransactionDate,
+    /// Merchant, company, or counterparty name
+    Vendor,
+    /// Transaction reference, confirmation number, or UTR
+    TransactionReference,
+}
+
+/// A single placeholder-to-transaction-field mapping.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct VariableTranslation {
     #[schemars(
@@ -10,36 +29,32 @@ pub struct VariableTranslation {
     )]
     pub placeholder: String,
 
+    /// The transaction field this placeholder maps to.
+    /// Use one of: amount, currency, transaction-date, vendor, transaction-reference.
+    /// Null if the placeholder does not map to any transaction field.
     #[schemars(
-        description = "The Jinja2 template string using financial field names, e.g. '{{ amount }}', '{{ currency }}{{ amount }}', '{{ vendor }}', '{{ transaction_date }}', '{{ category }}'. Leave empty string if this placeholder does not map to any financial field."
+        description = "The transaction field this placeholder maps to. One of: amount, currency, transaction-date, vendor, transaction-reference. Null if not a transaction field."
     )]
-    pub field_template: String,
+    pub field: Option<TransactionField>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(
-    description = "Translate generic template placeholder names to financial field template strings."
+    description = "Translate generic template placeholder names to transaction field names."
 )]
 pub struct TranslateVariablesParams {
     #[schemars(
-        description = "List of translations from generic placeholder names to financial field template strings."
+        description = "List of translations from generic placeholder names to transaction field names."
     )]
     pub translations: Vec<VariableTranslation>,
 }
 
 impl TranslateVariablesParams {
-    /// Convert the Vec-based translations into a HashMap for easy lookup.
-    pub fn to_map(&self) -> HashMap<String, Option<String>> {
+    /// Convert to a HashMap for easy lookup: placeholder → TransactionField.
+    pub fn to_map(&self) -> HashMap<String, Option<TransactionField>> {
         self.translations
             .iter()
-            .map(|t| {
-                let value = if t.field_template.is_empty() {
-                    None
-                } else {
-                    Some(t.field_template.clone())
-                };
-                (t.placeholder.clone(), value)
-            })
+            .map(|t| (t.placeholder.clone(), t.field.clone()))
             .collect()
     }
 }
