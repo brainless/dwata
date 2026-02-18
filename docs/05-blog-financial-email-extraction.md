@@ -1,5 +1,7 @@
 # Extracting Financial Data from Emails Without Reading Every Email with an LLM
 
+> **Project context note:** This product has been built almost entirely with coding agents (a mix of Codex, Claude Code, and opencode), and is regularly tested by Sumit Datta using real personal email data. Development and testing are done on a Mac Mini M4 with 16GB RAM. The work currently lives on a separate unmerged branch because the product has been submitted to Gemini 3 Hackathon (<https://gemini3.devpost.com>), so the `main` branch cannot be updated for some time.
+
 > **This is a work in progress.** The pipeline described here is functional and testable today, but several pieces — user review queues, vendor resolution, and full type-safe output — are still being built. We are publishing this early because the core architecture is settled and we think the approach is worth sharing.
 
 ---
@@ -209,7 +211,7 @@ The extractor runs as a command-line tool. You will need:
 - Dwata running with at least one email account synced (so emails are in the local SQLite database)
 - An LLM API key configured in `api.toml` (Gemini, OpenAI, or a local Ollama model)
 
-To run from source, follow [docs/08-run-from-source.md](./08-run-from-source.md) first to clone the repositories and start the API so emails are synced to the local database.
+To run from source, follow [docs/04-run-from-source.md](./04-run-from-source.md) first to clone the repositories and start the API so emails are synced to the local database.
 
 Then run the extractor:
 
@@ -258,6 +260,6 @@ The tool will print:
 ## Source and Further Reading
 
 - Source code: [`dwata-agents/src/bin/template_based_financial_extractor.rs`](../dwata-agents/src/bin/template_based_financial_extractor.rs)
-- Extraction design principles: [`docs/07-type-driven-financial-extraction.md`](./07-type-driven-financial-extraction.md)
-- Running from source: [`docs/08-run-from-source.md`](./08-run-from-source.md)
+- Extraction design principles: [`docs/03-type-driven-financial-extraction.md`](./03-type-driven-financial-extraction.md)
+- Running from source: [`docs/04-run-from-source.md`](./04-run-from-source.md)
 - Project repository: [github.com/brainless/dwata](https://github.com/brainless/dwata)

@@ -2,7 +2,7 @@
 
 ## Financial Extraction North Star
 
-- See `docs/07-type-driven-financial-extraction.md` for the canonical type-driven extraction approach and future user-in-the-loop direction.
+- See `docs/03-type-driven-financial-extraction.md` for the canonical type-driven extraction approach and future user-in-the-loop direction.
 
 ## Prerequisites
 
