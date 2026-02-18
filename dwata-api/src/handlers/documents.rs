@@ -10,7 +10,11 @@ use crate::database::documents as documents_db;
 use crate::database::Database;
 use crate::search::tantivy::TantivySearchIndex;
 
-fn parse_q_term(q: &str, explicit_field: Option<SearchField>, is_phrase: bool) -> Option<SearchTerm> {
+fn parse_q_term(
+    q: &str,
+    explicit_field: Option<SearchField>,
+    is_phrase: bool,
+) -> Option<SearchTerm> {
     let trimmed = q.trim();
     if trimmed.is_empty() {
         return None;

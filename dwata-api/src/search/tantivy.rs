@@ -216,7 +216,11 @@ impl TantivySearchIndex {
         if matches!(term.field, SearchField::Any) {
             let parser = QueryParser::for_index(
                 &self.index,
-                vec![self.fields.title, self.fields.body_text, self.fields.attachment_text],
+                vec![
+                    self.fields.title,
+                    self.fields.body_text,
+                    self.fields.attachment_text,
+                ],
             );
             let escaped = Self::escape_query_value(&term.value);
             let query_str = if term.is_phrase {

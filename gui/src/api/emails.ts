@@ -105,13 +105,19 @@ type SearchScope = {
   labelId?: bigint;
 };
 
-async function fetchEmail(emailId: bigint): Promise<Email> {
+type IdLike = number | bigint;
+
+function toNumericId(value: IdLike): number {
+  return typeof value === "bigint" ? Number(value) : value;
+}
+
+async function fetchEmail(emailId: IdLike): Promise<Email> {
   const response = await fetch(getApiUrl(`/api/emails/${emailId.toString()}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();
 }
 
-async function fetchEmailLabels(emailId: bigint): Promise<Array<{ id: bigint }>> {
+async function fetchEmailLabels(emailId: IdLike): Promise<Array<{ id: IdLike }>> {
   const response = await fetch(getApiUrl(`/api/emails/${emailId.toString()}/labels`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();
@@ -119,8 +125,18 @@ async function fetchEmailLabels(emailId: bigint): Promise<Array<{ id: bigint }>>
 
 function applyScopeFilter(emails: Email[], scope: SearchScope): Email[] {
   return emails.filter((email) => {
-    if (scope.credentialId && email.credential_id !== scope.credentialId) return false;
-    if (scope.folderId && email.folder_id !== scope.folderId) return false;
+    if (
+      scope.credentialId &&
+      toNumericId(email.credential_id as IdLike) !== toNumericId(scope.credentialId)
+    ) {
+      return false;
+    }
+    if (
+      scope.folderId &&
+      toNumericId(email.folder_id as IdLike) !== toNumericId(scope.folderId)
+    ) {
+      return false;
+    }
     return true;
   });
 }
@@ -142,9 +158,13 @@ async function searchEmails(
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
   const searchData: SearchDocumentsResponse = await response.json();
-  const emailIds = searchData.documents
-    .map((doc: Document) => doc.email_id)
-    .filter((emailId): emailId is bigint => emailId !== null);
+  const emailIds = Array.from(
+    new Set(
+      searchData.documents
+        .map((doc: Document) => doc.email_id)
+        .filter((emailId): emailId is IdLike => emailId !== null),
+    ),
+  );
 
   const hydratedEmails = await Promise.all(emailIds.map((emailId) => fetchEmail(emailId)));
   let scoped = applyScopeFilter(hydratedEmails, scope);
@@ -157,7 +177,12 @@ async function searchEmails(
       })),
     );
     scoped = byEmailLabels
-      .filter((row) => row.labels.some((label) => label.id === scope.labelId))
+      .filter((row) =>
+        row.labels.some(
+          (label) =>
+            toNumericId(label.id as IdLike) === toNumericId(scope.labelId as IdLike),
+        ),
+      )
       .map((row) => row.email);
   }
 
