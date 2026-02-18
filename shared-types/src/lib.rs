@@ -23,7 +23,7 @@ pub mod task;
 pub mod transaction;
 pub mod vendor;
 
-pub use bill::{FinancialDocument, FinancialDocumentSubject, ServiceIdentifierKind};
+pub use bill::{Bill, BillStatus, BillSubject, FinancialDocumentType, ServiceIdentifierKind};
 pub use company::{CompaniesResponse, Company, CreateCompanyRequest, UpdateCompanyRequest};
 pub use contact::{Contact, ContactsResponse, CreateContactRequest, UpdateContactRequest};
 pub use contact_link::{
@@ -77,8 +77,8 @@ pub use task::{
     CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
 };
 pub use transaction::{
-    DataSourceType, EnrichmentStatus, FinancialDocumentType, FinancialTransaction,
-    TransactionCategory, TransactionParty, TransactionStatus, UnresolvedField,
+    DataSourceType, EnrichmentStatus, FinancialTransaction, TransactionCategory, TransactionParty,
+    TransactionStatus, UnresolvedField,
 };
 pub use vendor::{TransactionVendor, TransactionVendorType};
 

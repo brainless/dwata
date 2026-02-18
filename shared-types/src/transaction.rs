@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::bill::FinancialDocumentType;
+
 /// Data source type for extracted transactions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
@@ -13,18 +15,6 @@ pub enum DataSourceType {
     CsvUpload,
     Manual,
     Unknown,
-}
-
-/// Financial document types that can be extracted
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
-#[serde(rename_all = "kebab-case")]
-pub enum FinancialDocumentType {
-    Invoice,
-    Bill,
-    BankStatement,
-    Receipt,
-    TaxDocument,
-    PaymentConfirmation,
 }
 
 /// Lifecycle status for user-in-the-loop transaction enrichment.
