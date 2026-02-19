@@ -11,7 +11,9 @@ Template:
 {template}
 ```
 
-Set field to null if not a transaction field. Call `translate_variables`."#,
+Set field to null if not a transaction field.
+Must map at least one placeholder to amount.
+Call `translate_variables`."#,
         template = template
     )
 }

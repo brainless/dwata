@@ -18,7 +18,9 @@ pub fn build_system_prompt(template: &str) -> String {
 {template}
 ```
 
-Map each placeholder to a field or null. Call `translate_variables`."#,
+Map each placeholder to a field or null.
+Transaction rule: at least one placeholder must map to amount; otherwise mapping is invalid.
+Call `translate_variables`."#,
         template = template
     )
 }

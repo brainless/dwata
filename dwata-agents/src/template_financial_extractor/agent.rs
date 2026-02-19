@@ -1,5 +1,5 @@
 use crate::storage::{AgentStorage, Message};
-use crate::template_financial_extractor::types::TranslateVariablesParams;
+use crate::template_financial_extractor::types::{TransactionField, TranslateVariablesParams};
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::types::{CompletionRequest, ContentBlock, Message as LlmMessage};
 use nocodo_llm_sdk::Tool;
@@ -35,7 +35,8 @@ impl TemplateFinancialExtractorAgent {
             .description(
                 "Map each template placeholder to a transaction field name. Use exact field \
                  names: amount, currency, transaction-date, vendor, transaction-reference. \
-                 Set field to null if the placeholder does not map to any transaction field.",
+                 Set field to null if the placeholder does not map to any transaction field. \
+                 For a transaction template, amount is mandatory and must be mapped at least once.",
             )
             .build();
 
@@ -108,6 +109,22 @@ impl TemplateFinancialExtractorAgent {
                 for tool_call in tool_calls {
                     if tool_call.name() == "translate_variables" {
                         let params: TranslateVariablesParams = tool_call.parse_arguments()?;
+                        let has_amount = params
+                            .translations
+                            .iter()
+                            .any(|t| t.field == Some(TransactionField::Amount));
+
+                        if !has_amount {
+                            self.storage
+                                .create_message(Message {
+                                    id: None,
+                                    session_id,
+                                    role: "user".to_string(),
+                                    content: "Invalid mapping: transaction templates must include at least one placeholder mapped to `amount`. Re-check placeholders and call `translate_variables` again.".to_string(),
+                                })
+                                .await?;
+                            continue;
+                        }
 
                         // Store the tool result
                         self.storage

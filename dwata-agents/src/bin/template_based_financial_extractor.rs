@@ -3,7 +3,7 @@ use clap::Parser;
 use config::{Config, File};
 use rusqlite::{params, Connection};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -36,8 +36,8 @@ struct Cli {
     #[arg(long, required = true)]
     email_from: String,
 
-    /// Max sender emails to scan from DB (most recent first)
-    #[arg(long, default_value_t = 200)]
+    /// Max sender emails to scan from DB (most recent first). Use 0 to read all.
+    #[arg(long, default_value_t = 0)]
     max_db_emails: usize,
 
     /// Normalized word-edit distance threshold used to include emails in sender cluster
@@ -85,6 +85,21 @@ struct TemplateDefaults {
     word_support: f64,
 }
 
+struct EmailCluster {
+    seed_text: String,
+    members: Vec<DbEmail>,
+}
+
+struct TemplateRuntime {
+    id: usize,
+    seed_text: String,
+    size: usize,
+    full_template: String,
+    translated_template: String,
+    bill_placeholder_to_field: HashMap<String, String>,
+    txn_placeholder_to_field: HashMap<String, String>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let env_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
@@ -95,52 +110,23 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    // 1. Load sender email cluster from DB
-    let (sender_emails, defaults) = load_matching_emails_from_db(
-        &cli.email_from,
-        cli.max_db_emails,
-        cli.word_distance_threshold,
-    )?;
-    let emails: Vec<Email> = sender_emails
-        .into_iter()
-        .map(|e| Email {
-            subject: e.subject,
-            body: e.body,
-        })
-        .collect();
-
-    // 2. Build subject template
-    let subjects: Vec<String> = emails.iter().map(|e| e.subject.clone()).collect();
-    let mut placeholder_counter = 1usize;
-    let subject_template = build_subject_template_with_support(
-        &subjects,
-        defaults.word_support,
-        emails.len(),
-        &mut placeholder_counter,
-    );
-
-    // 3. Build body template
-    let bodies: Vec<String> = emails.iter().map(|e| e.body.clone()).collect();
-    let body_template = build_template_word_mode_with_support(
-        &bodies,
-        defaults.line_support,
-        defaults.word_support,
-        emails.len(),
-        &mut placeholder_counter,
-    );
-
-    let full_template = format!("Subject: {subject_template}\n---\n{body_template}");
-
-    println!("=== Generated Template ===");
-    println!("{full_template}");
-    println!("==========================\n");
-
-    if cli.template_only {
-        return Ok(());
+    let sender_emails = load_sender_emails_from_db(&cli.email_from, cli.max_db_emails)?;
+    let mut clusters = cluster_emails(sender_emails, cli.word_distance_threshold)?;
+    clusters.retain(|c| c.members.len() >= 2);
+    if clusters.is_empty() {
+        return Err(anyhow::anyhow!(
+            "No reusable templates found for sender '{}' (need at least 2 emails per template).",
+            cli.email_from
+        ));
     }
+    clusters.sort_by(|a, b| b.members.len().cmp(&a.members.len()));
 
-    // 4. Set up LLM client
-    let config = load_api_config()?;
+    println!(
+        "Using {} reusable cluster(s) (minimum 2 emails each).",
+        clusters.len()
+    );
+
+    let mut template_runtimes: Vec<TemplateRuntime> = Vec::new();
 
     let model = match cli.model {
         Some(ref m) => m.clone(),
@@ -152,334 +138,456 @@ async fn main() -> Result<()> {
         },
     };
 
-    println!("Using provider: {}", cli.provider);
-    println!("Using model: {model}");
-
-    let llm_client: Arc<dyn LlmClient> = match cli.provider.as_str() {
-        "gemini" => {
-            let api_key = config
-                .ai_provider_api_keys
-                .as_ref()
-                .and_then(|keys| keys.gemini_api_key.as_ref())
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Missing gemini_api_key in dwata config"))?;
-            Arc::new(GeminiClient::new(api_key)?)
-        }
-        "openai" => {
-            let api_key = config
-                .ai_provider_api_keys
-                .as_ref()
-                .and_then(|keys| keys.openai_api_key.as_ref())
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Missing openai_api_key in dwata config"))?;
-            Arc::new(OpenAIClient::new(api_key)?)
-        }
-        "ollama" => Arc::new(OllamaClient::new()?),
-        _ => {
-            return Err(anyhow::anyhow!("Unsupported provider: {}", cli.provider));
-        }
-    };
-    let storage: Arc<dyn dwata_agents::AgentStorage> = Arc::new(InMemoryAgentStorage::new());
-    let mut bill_params_opt: Option<TranslateBillVariablesParams> = None;
-    let mut txn_params_opt: Option<TranslateVariablesParams> = None;
-
-    // 5. Label the template (bill / transaction / both)
-    println!("\n--- Step 1: Labeling document type ---");
-    let label_session_id = storage
-        .create_session(Session {
-            id: None,
-            agent_type: "template-document-labeler".to_string(),
-            objective: "Classify financial document type".to_string(),
-            context_data: None,
-            status: "running".to_string(),
-            result: None,
-        })
-        .await?;
-
-    let labeler = TemplateDocumentLabelerAgent::new(
-        llm_client.clone(),
-        storage.clone(),
-        model.clone(),
-        full_template.clone(),
-    );
-
-    let label = match labeler.execute(label_session_id).await {
-        Ok(params) => {
-            let _ = storage
-                .update_session(Session {
-                    id: Some(label_session_id),
-                    agent_type: "template-document-labeler".to_string(),
-                    objective: String::new(),
-                    context_data: None,
-                    status: "completed".to_string(),
-                    result: Some(serde_json::to_string(&params)?),
-                })
-                .await;
-            params
-        }
-        Err(err) => {
-            let _ = storage
-                .update_session(Session {
-                    id: Some(label_session_id),
-                    agent_type: "template-document-labeler".to_string(),
-                    objective: String::new(),
-                    context_data: None,
-                    status: "failed".to_string(),
-                    result: Some(err.to_string()),
-                })
-                .await;
-            return Err(err);
-        }
+    let (llm_client, storage): (
+        Option<Arc<dyn LlmClient>>,
+        Option<Arc<dyn dwata_agents::AgentStorage>>,
+    ) = if cli.template_only {
+        (None, None)
+    } else {
+        let config = load_api_config()?;
+        println!("Using provider: {}", cli.provider);
+        println!("Using model: {model}");
+        let client: Arc<dyn LlmClient> = match cli.provider.as_str() {
+            "gemini" => {
+                let api_key = config
+                    .ai_provider_api_keys
+                    .as_ref()
+                    .and_then(|keys| keys.gemini_api_key.as_ref())
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("Missing gemini_api_key in dwata config"))?;
+                Arc::new(GeminiClient::new(api_key)?)
+            }
+            "openai" => {
+                let api_key = config
+                    .ai_provider_api_keys
+                    .as_ref()
+                    .and_then(|keys| keys.openai_api_key.as_ref())
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("Missing openai_api_key in dwata config"))?;
+                Arc::new(OpenAIClient::new(api_key)?)
+            }
+            "ollama" => Arc::new(OllamaClient::new()?),
+            _ => return Err(anyhow::anyhow!("Unsupported provider: {}", cli.provider)),
+        };
+        (Some(client), Some(Arc::new(InMemoryAgentStorage::new())))
     };
 
-    println!("  doc_type:        {:?}", label.doc_type);
-    println!("  has_bill:        {}", label.has_bill);
-    println!("  has_transaction: {}", label.has_transaction);
+    for (idx, cluster) in clusters.iter().enumerate() {
+        let defaults = derive_template_defaults(cluster.members.len());
+        let max_template_emails = derive_max_template_emails(cluster.members.len());
 
-    // 6. Run bill extractor if applicable
-    if label.has_bill {
-        println!("\n--- Step 2a: Extracting bill fields ---");
-        let bill_session_id = storage
-            .create_session(Session {
-                id: None,
-                agent_type: "template-bill-extractor".to_string(),
-                objective: "Map template placeholders to bill fields".to_string(),
-                context_data: None,
-                status: "running".to_string(),
-                result: None,
+        let mut scored: Vec<(f64, &DbEmail)> = cluster
+            .members
+            .iter()
+            .map(|e| {
+                let dist = normalized_word_edit_distance(&cluster.seed_text, &comparable_text(e));
+                (dist, e)
             })
-            .await?;
+            .collect();
+        scored.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let selected: Vec<&DbEmail> = scored
+            .into_iter()
+            .take(max_template_emails)
+            .map(|(_, e)| e)
+            .collect();
 
-        let bill_agent = TemplateBillExtractorAgent::new(
-            llm_client.clone(),
-            storage.clone(),
-            model.clone(),
-            full_template.clone(),
+        let ids: Vec<String> = selected.iter().map(|e| e.id.to_string()).collect();
+        println!(
+            "\n=== Template {} (cluster size {}) ===",
+            idx + 1,
+            cluster.members.len()
+        );
+        println!(
+            "Selected {} emails for template generation (ids: {}). line_support={:.2}, word_support={:.2}",
+            selected.len(),
+            ids.join(", "),
+            defaults.line_support,
+            defaults.word_support
         );
 
-        match bill_agent.execute(bill_session_id).await {
-            Ok(params) => {
-                let _ = storage
-                    .update_session(Session {
-                        id: Some(bill_session_id),
-                        agent_type: "template-bill-extractor".to_string(),
-                        objective: String::new(),
-                        context_data: None,
-                        status: "completed".to_string(),
-                        result: Some(serde_json::to_string(&params)?),
-                    })
-                    .await;
+        let emails: Vec<Email> = selected
+            .iter()
+            .map(|e| Email {
+                subject: e.subject.clone(),
+                body: e.body.clone(),
+            })
+            .collect();
+        let subjects: Vec<String> = emails.iter().map(|e| e.subject.clone()).collect();
+        let bodies: Vec<String> = emails.iter().map(|e| e.body.clone()).collect();
+        let mut placeholder_counter = 1usize;
+        let subject_template = build_subject_template_with_support(
+            &subjects,
+            defaults.word_support,
+            emails.len(),
+            &mut placeholder_counter,
+        );
+        let body_template = build_template_word_mode_with_support(
+            &bodies,
+            defaults.line_support,
+            defaults.word_support,
+            emails.len(),
+            &mut placeholder_counter,
+        );
+        let full_template = format!("Subject: {subject_template}\n---\n{body_template}");
 
-                println!("=== Bill Field Mappings ===");
-                for t in &params.translations {
-                    match &t.field {
-                        Some(field) => {
-                            let kind_str = t
-                                .service_identifier_kind
-                                .as_ref()
-                                .map(|k| format!(" ({k:?})"))
-                                .unwrap_or_default();
-                            println!("  {} → {:?}{}", t.placeholder, field, kind_str);
+        println!("--- Generated Template ---");
+        println!("{full_template}");
+
+        let mut bill_placeholder_to_field: HashMap<String, String> = HashMap::new();
+        let mut txn_placeholder_to_field: HashMap<String, String> = HashMap::new();
+        let mut translated_template = full_template.clone();
+
+        if let (Some(client), Some(storage_ref)) = (llm_client.as_ref(), storage.as_ref()) {
+            println!("--- Label + field mapping ---");
+            let label_session_id = storage_ref
+                .create_session(Session {
+                    id: None,
+                    agent_type: "template-document-labeler".to_string(),
+                    objective: "Classify financial document type".to_string(),
+                    context_data: None,
+                    status: "running".to_string(),
+                    result: None,
+                })
+                .await?;
+
+            let labeler = TemplateDocumentLabelerAgent::new(
+                client.clone(),
+                storage_ref.clone(),
+                model.clone(),
+                full_template.clone(),
+            );
+
+            let label = match labeler.execute(label_session_id).await {
+                Ok(params) => {
+                    let _ = storage_ref
+                        .update_session(Session {
+                            id: Some(label_session_id),
+                            agent_type: "template-document-labeler".to_string(),
+                            objective: String::new(),
+                            context_data: None,
+                            status: "completed".to_string(),
+                            result: Some(serde_json::to_string(&params)?),
+                        })
+                        .await;
+                    Some(params)
+                }
+                Err(err) => {
+                    let _ = storage_ref
+                        .update_session(Session {
+                            id: Some(label_session_id),
+                            agent_type: "template-document-labeler".to_string(),
+                            objective: String::new(),
+                            context_data: None,
+                            status: "failed".to_string(),
+                            result: Some(err.to_string()),
+                        })
+                        .await;
+                    eprintln!(
+                        "Labeler failed for template {}. Continuing without mapped fields: {err}",
+                        idx + 1
+                    );
+                    None
+                }
+            };
+
+            if let Some(label) = label {
+                println!("  doc_type:        {:?}", label.doc_type);
+                println!("  has_bill:        {}", label.has_bill);
+                println!("  has_transaction: {}", label.has_transaction);
+
+                let mut bill_params_opt: Option<TranslateBillVariablesParams> = None;
+                let mut txn_params_opt: Option<TranslateVariablesParams> = None;
+
+                if label.has_bill {
+                    let bill_session_id = storage_ref
+                        .create_session(Session {
+                            id: None,
+                            agent_type: "template-bill-extractor".to_string(),
+                            objective: "Map template placeholders to bill fields".to_string(),
+                            context_data: None,
+                            status: "running".to_string(),
+                            result: None,
+                        })
+                        .await?;
+
+                    let bill_agent = TemplateBillExtractorAgent::new(
+                        client.clone(),
+                        storage_ref.clone(),
+                        model.clone(),
+                        full_template.clone(),
+                    );
+
+                    match bill_agent.execute(bill_session_id).await {
+                        Ok(params) => {
+                            let _ = storage_ref
+                                .update_session(Session {
+                                    id: Some(bill_session_id),
+                                    agent_type: "template-bill-extractor".to_string(),
+                                    objective: String::new(),
+                                    context_data: None,
+                                    status: "completed".to_string(),
+                                    result: Some(serde_json::to_string(&params)?),
+                                })
+                                .await;
+                            bill_params_opt = Some(params);
                         }
-                        None => println!("  {} → (not a bill field)", t.placeholder),
+                        Err(err) => {
+                            let _ = storage_ref
+                                .update_session(Session {
+                                    id: Some(bill_session_id),
+                                    agent_type: "template-bill-extractor".to_string(),
+                                    objective: String::new(),
+                                    context_data: None,
+                                    status: "failed".to_string(),
+                                    result: Some(err.to_string()),
+                                })
+                                .await;
+                            eprintln!("Bill extractor failed for template {}: {err}", idx + 1);
+                        }
                     }
                 }
-                println!("==========================");
-                bill_params_opt = Some(params);
-            }
-            Err(err) => {
-                let _ = storage
-                    .update_session(Session {
-                        id: Some(bill_session_id),
-                        agent_type: "template-bill-extractor".to_string(),
-                        objective: String::new(),
-                        context_data: None,
-                        status: "failed".to_string(),
-                        result: Some(err.to_string()),
-                    })
-                    .await;
-                eprintln!("Bill extractor failed: {err}");
-            }
-        }
-    }
 
-    // 7. Run transaction extractor if applicable
-    if label.has_transaction {
-        println!("\n--- Step 2b: Extracting transaction fields ---");
-        let txn_session_id = storage
-            .create_session(Session {
-                id: None,
-                agent_type: "template-financial-extractor".to_string(),
-                objective: "Map template placeholders to transaction fields".to_string(),
-                context_data: None,
-                status: "running".to_string(),
-                result: None,
-            })
-            .await?;
+                if label.has_transaction {
+                    let txn_session_id = storage_ref
+                        .create_session(Session {
+                            id: None,
+                            agent_type: "template-financial-extractor".to_string(),
+                            objective: "Map template placeholders to transaction fields"
+                                .to_string(),
+                            context_data: None,
+                            status: "running".to_string(),
+                            result: None,
+                        })
+                        .await?;
 
-        let txn_agent = TemplateFinancialExtractorAgent::new(
-            llm_client,
-            storage.clone(),
-            model,
-            full_template.clone(),
-        );
+                    let txn_agent = TemplateFinancialExtractorAgent::new(
+                        client.clone(),
+                        storage_ref.clone(),
+                        model.clone(),
+                        full_template.clone(),
+                    );
 
-        match txn_agent.execute(txn_session_id).await {
-            Ok(params) => {
-                let _ = storage
-                    .update_session(Session {
-                        id: Some(txn_session_id),
-                        agent_type: "template-financial-extractor".to_string(),
-                        objective: String::new(),
-                        context_data: None,
-                        status: "completed".to_string(),
-                        result: Some(serde_json::to_string(&params)?),
-                    })
-                    .await;
-
-                println!("=== Transaction Field Mappings ===");
-                for t in &params.translations {
-                    match &t.field {
-                        Some(field) => println!("  {} → {:?}", t.placeholder, field),
-                        None => println!("  {} → (not a transaction field)", t.placeholder),
+                    match txn_agent.execute(txn_session_id).await {
+                        Ok(params) => {
+                            let _ = storage_ref
+                                .update_session(Session {
+                                    id: Some(txn_session_id),
+                                    agent_type: "template-financial-extractor".to_string(),
+                                    objective: String::new(),
+                                    context_data: None,
+                                    status: "completed".to_string(),
+                                    result: Some(serde_json::to_string(&params)?),
+                                })
+                                .await;
+                            txn_params_opt = Some(params);
+                        }
+                        Err(err) => {
+                            let _ = storage_ref
+                                .update_session(Session {
+                                    id: Some(txn_session_id),
+                                    agent_type: "template-financial-extractor".to_string(),
+                                    objective: String::new(),
+                                    context_data: None,
+                                    status: "failed".to_string(),
+                                    result: Some(err.to_string()),
+                                })
+                                .await;
+                            eprintln!(
+                                "Transaction extractor failed for template {}: {err}",
+                                idx + 1
+                            );
+                        }
                     }
                 }
-                println!("==================================");
-                txn_params_opt = Some(params);
-            }
-            Err(err) => {
-                let _ = storage
-                    .update_session(Session {
-                        id: Some(txn_session_id),
-                        agent_type: "template-financial-extractor".to_string(),
-                        objective: String::new(),
-                        context_data: None,
-                        status: "failed".to_string(),
-                        result: Some(err.to_string()),
-                    })
-                    .await;
-                eprintln!("Transaction extractor failed: {err}");
-            }
-        }
-    }
 
-    if !label.has_bill && !label.has_transaction {
-        println!("\nNo bill or transaction fields detected. Nothing to extract.");
-    }
-
-    // --- Step 3: Translated template + tabular extraction (no LLM) ---
-    let mut bill_field_map: HashMap<String, String> = HashMap::new();
-    let mut txn_field_map: HashMap<String, String> = HashMap::new();
-
-    if let Some(ref params) = bill_params_opt {
-        for t in &params.translations {
-            if let Some(ref f) = t.field {
-                let s = serde_json::to_string(f)
-                    .unwrap_or_default()
-                    .trim_matches('"')
-                    .to_string();
-                bill_field_map.insert(t.placeholder.clone(), s);
-            }
-        }
-    }
-    if let Some(ref params) = txn_params_opt {
-        for t in &params.translations {
-            if let Some(ref f) = t.field {
-                let s = serde_json::to_string(f)
-                    .unwrap_or_default()
-                    .trim_matches('"')
-                    .to_string();
-                txn_field_map.insert(t.placeholder.clone(), s);
-            }
-        }
-    }
-
-    let mut all_field_map = bill_field_map.clone();
-    all_field_map.extend(txn_field_map.clone());
-
-    if !all_field_map.is_empty() {
-        let translated = translate_template(&full_template, &all_field_map);
-        println!("\n=== Translated Template ===");
-        println!("{translated}");
-        println!("===========================\n");
-
-        // Extract data from first 10 emails (pure string matching, no LLM)
-        println!("--- Extracting structured data from first 10 emails ---");
-        match load_first_n_emails_from_db(&cli.email_from, 10) {
-            Ok(sample_emails) if !sample_emails.is_empty() => {
-                println!("Loaded {} emails.\n", sample_emails.len());
-                let email_data: Vec<HashMap<String, String>> = sample_emails
-                    .iter()
-                    .map(|e| extract_values_from_email(&full_template, e))
-                    .collect();
-
-                // Bill table
+                let mut bill_field_map: HashMap<String, String> = HashMap::new();
+                let mut txn_field_map: HashMap<String, String> = HashMap::new();
                 if let Some(ref params) = bill_params_opt {
-                    let ordered: Vec<(&str, &str)> = params
-                        .translations
-                        .iter()
-                        .filter(|t| t.field.is_some())
-                        .filter_map(|t| {
-                            bill_field_map
-                                .get(&t.placeholder)
-                                .map(|f| (t.placeholder.as_str(), f.as_str()))
-                        })
-                        .collect();
-                    if !ordered.is_empty() {
-                        let mut headers: Vec<&str> = vec!["#"];
-                        headers.extend(ordered.iter().map(|(_, f)| *f));
-                        let rows: Vec<Vec<String>> = email_data
-                            .iter()
-                            .enumerate()
-                            .map(|(i, vals)| {
-                                let mut row = vec![(i + 1).to_string()];
-                                for (ph, _) in &ordered {
-                                    row.push(
-                                        vals.get(*ph).cloned().unwrap_or_else(|| "-".to_string()),
-                                    );
-                                }
-                                row
-                            })
-                            .collect();
-                        print_table("Bill Data", &headers, &rows);
+                    for t in &params.translations {
+                        if let Some(ref f) = t.field {
+                            let s = serde_json::to_string(f)
+                                .unwrap_or_default()
+                                .trim_matches('"')
+                                .to_string();
+                            bill_field_map.insert(t.placeholder.clone(), s);
+                        }
                     }
                 }
-
-                // Transaction table
                 if let Some(ref params) = txn_params_opt {
-                    let ordered: Vec<(&str, &str)> = params
-                        .translations
-                        .iter()
-                        .filter(|t| t.field.is_some())
-                        .filter_map(|t| {
-                            txn_field_map
-                                .get(&t.placeholder)
-                                .map(|f| (t.placeholder.as_str(), f.as_str()))
-                        })
-                        .collect();
-                    if !ordered.is_empty() {
-                        let mut headers: Vec<&str> = vec!["#"];
-                        headers.extend(ordered.iter().map(|(_, f)| *f));
-                        let rows: Vec<Vec<String>> = email_data
-                            .iter()
-                            .enumerate()
-                            .map(|(i, vals)| {
-                                let mut row = vec![(i + 1).to_string()];
-                                for (ph, _) in &ordered {
-                                    row.push(
-                                        vals.get(*ph).cloned().unwrap_or_else(|| "-".to_string()),
-                                    );
-                                }
-                                row
-                            })
-                            .collect();
-                        print_table("Transaction Data", &headers, &rows);
+                    for t in &params.translations {
+                        if let Some(ref f) = t.field {
+                            let s = serde_json::to_string(f)
+                                .unwrap_or_default()
+                                .trim_matches('"')
+                                .to_string();
+                            txn_field_map.insert(t.placeholder.clone(), s);
+                        }
                     }
+                }
+                bill_placeholder_to_field.extend(bill_field_map);
+                txn_placeholder_to_field.extend(txn_field_map);
+                let mut all_placeholder_to_field = bill_placeholder_to_field.clone();
+                all_placeholder_to_field.extend(txn_placeholder_to_field.clone());
+                if !all_placeholder_to_field.is_empty() {
+                    translated_template =
+                        translate_template(&full_template, &all_placeholder_to_field);
+                    println!("--- Translated Template ---");
+                    println!("{translated_template}");
                 }
             }
-            Ok(_) => println!("No emails found for extraction."),
-            Err(e) => eprintln!("Failed to load emails for extraction: {e}"),
         }
+
+        template_runtimes.push(TemplateRuntime {
+            id: idx + 1,
+            seed_text: cluster.seed_text.clone(),
+            size: cluster.members.len(),
+            full_template,
+            translated_template,
+            bill_placeholder_to_field,
+            txn_placeholder_to_field,
+        });
+    }
+
+    if cli.template_only {
+        return Ok(());
+    }
+
+    println!("\n--- Extracting structured data from all sender emails ---");
+    let sample_emails = load_all_emails_from_db(&cli.email_from)?;
+    println!("Loaded {} emails.\n", sample_emails.len());
+
+    let mut bill_rows_by_template: BTreeMap<usize, Vec<(usize, i64, HashMap<String, String>)>> =
+        BTreeMap::new();
+    let mut txn_rows_by_template: BTreeMap<usize, Vec<(usize, i64, HashMap<String, String>)>> =
+        BTreeMap::new();
+    let mut unmatched = 0usize;
+
+    for (i, email) in sample_emails.iter().enumerate() {
+        let email_text = comparable_text(email);
+        let best = template_runtimes
+            .iter()
+            .map(|t| (t, normalized_word_edit_distance(&t.seed_text, &email_text)))
+            .min_by(|a, b| a.1.total_cmp(&b.1));
+
+        if let Some((tmpl, dist)) = best {
+            if dist <= cli.word_distance_threshold {
+                let placeholder_vals = extract_values_from_email(&tmpl.full_template, email);
+                let mut bill_field_vals: HashMap<String, String> = HashMap::new();
+                let mut txn_field_vals: HashMap<String, String> = HashMap::new();
+                for (placeholder, value) in placeholder_vals {
+                    if let Some(field) = tmpl.bill_placeholder_to_field.get(&placeholder) {
+                        bill_field_vals.insert(field.clone(), value.clone());
+                    }
+                    if let Some(field) = tmpl.txn_placeholder_to_field.get(&placeholder) {
+                        txn_field_vals.insert(field.clone(), value);
+                    }
+                }
+                if !tmpl.bill_placeholder_to_field.is_empty() {
+                    bill_rows_by_template.entry(tmpl.id).or_default().push((
+                        i + 1,
+                        email.id,
+                        bill_field_vals,
+                    ));
+                }
+                if !tmpl.txn_placeholder_to_field.is_empty() {
+                    txn_rows_by_template.entry(tmpl.id).or_default().push((
+                        i + 1,
+                        email.id,
+                        txn_field_vals,
+                    ));
+                }
+            } else {
+                unmatched += 1;
+            }
+        } else {
+            unmatched += 1;
+        }
+    }
+
+    for runtime in &template_runtimes {
+        let mut bill_fields: BTreeSet<String> = BTreeSet::new();
+        for f in runtime.bill_placeholder_to_field.values() {
+            bill_fields.insert(f.clone());
+        }
+        if bill_fields.is_empty() {
+            continue;
+        }
+        let ordered_fields: Vec<String> = bill_fields.into_iter().collect();
+        let mut headers: Vec<String> = vec!["#".to_string(), "email_id".to_string()];
+        headers.extend(ordered_fields.clone());
+        let rows: Vec<Vec<String>> = bill_rows_by_template
+            .get(&runtime.id)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|(idx, email_id, vals)| {
+                        let mut row = vec![idx.to_string(), email_id.to_string()];
+                        for field in &ordered_fields {
+                            row.push(vals.get(field).cloned().unwrap_or_else(|| "-".to_string()));
+                        }
+                        row
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let header_refs: Vec<&str> = headers.iter().map(|s| s.as_str()).collect();
+        print_table(
+            &format!(
+                "Bill Extraction Data (T{} size {})",
+                runtime.id, runtime.size
+            ),
+            &header_refs,
+            &rows,
+        );
+    }
+
+    for runtime in &template_runtimes {
+        let mut txn_fields: BTreeSet<String> = BTreeSet::new();
+        for f in runtime.txn_placeholder_to_field.values() {
+            txn_fields.insert(f.clone());
+        }
+        if txn_fields.is_empty() {
+            continue;
+        }
+        let ordered_fields: Vec<String> = txn_fields.into_iter().collect();
+        let mut headers: Vec<String> = vec!["#".to_string(), "email_id".to_string()];
+        headers.extend(ordered_fields.clone());
+        let rows: Vec<Vec<String>> = txn_rows_by_template
+            .get(&runtime.id)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|(idx, email_id, vals)| {
+                        let mut row = vec![idx.to_string(), email_id.to_string()];
+                        for field in &ordered_fields {
+                            row.push(vals.get(field).cloned().unwrap_or_else(|| "-".to_string()));
+                        }
+                        row
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let header_refs: Vec<&str> = headers.iter().map(|s| s.as_str()).collect();
+        print_table(
+            &format!(
+                "Transaction Extraction Data (T{} size {})",
+                runtime.id, runtime.size
+            ),
+            &header_refs,
+            &rows,
+        );
+    }
+    println!("Unmatched emails in sample: {}", unmatched);
+
+    println!("\n--- In-memory templates ---");
+    for runtime in &template_runtimes {
+        println!(
+            "Template T{}: cluster_size={}, mapped_fields={}, body_lines={}",
+            runtime.id,
+            runtime.size,
+            runtime.bill_placeholder_to_field.len() + runtime.txn_placeholder_to_field.len(),
+            runtime.translated_template.lines().count()
+        );
     }
 
     Ok(())
@@ -595,19 +703,17 @@ fn extract_values_from_email(template: &str, email: &DbEmail) -> HashMap<String,
 }
 
 /// Load the most-recent N emails for a sender from the database (no clustering).
-fn load_first_n_emails_from_db(sender_email: &str, n: usize) -> Result<Vec<DbEmail>> {
+fn load_all_emails_from_db(sender_email: &str) -> Result<Vec<DbEmail>> {
     let db_path = get_db_path()?;
     let conn = Connection::open(&db_path)
         .with_context(|| format!("Failed to open database at {:?}", db_path))?;
-    let n_i64 = n as i64;
     let mut stmt = conn.prepare(
         "SELECT id, COALESCE(subject, ''), COALESCE(body_text, '')
          FROM emails
          WHERE LOWER(from_address) = LOWER(?1)
-         ORDER BY date_received DESC
-         LIMIT ?2",
+         ORDER BY date_received DESC",
     )?;
-    let rows = stmt.query_map(params![sender_email, n_i64], |row| {
+    let rows = stmt.query_map(params![sender_email], |row| {
         Ok(DbEmail {
             id: row.get(0)?,
             subject: row.get(1)?,
@@ -695,17 +801,7 @@ fn load_api_config() -> Result<ApiConfig> {
     Ok(config)
 }
 
-fn load_matching_emails_from_db(
-    sender_email: &str,
-    max_db_emails: usize,
-    threshold: f64,
-) -> Result<(Vec<DbEmail>, TemplateDefaults)> {
-    if !(0.0..=1.0).contains(&threshold) {
-        return Err(anyhow::anyhow!(
-            "--word-distance-threshold must be between 0.0 and 1.0"
-        ));
-    }
-
+fn load_sender_emails_from_db(sender_email: &str, max_db_emails: usize) -> Result<Vec<DbEmail>> {
     let db_path = get_db_path()?;
     if !db_path.exists() {
         return Err(anyhow::anyhow!(
@@ -717,31 +813,50 @@ fn load_matching_emails_from_db(
     let conn = Connection::open(&db_path)
         .with_context(|| format!("Failed to open SQLite database at {:?}", db_path))?;
 
-    let max_db_emails_i64: i64 = max_db_emails
-        .try_into()
-        .context("--max-db-emails is too large")?;
-
-    let mut stmt = conn.prepare(
-        "SELECT id, COALESCE(subject, ''), COALESCE(body_text, '')
-         FROM emails
-         WHERE LOWER(from_address) = LOWER(?1)
-         ORDER BY date_received DESC
-         LIMIT ?2",
-    )?;
-
-    let rows = stmt.query_map(params![sender_email, max_db_emails_i64], |row| {
-        Ok(DbEmail {
-            id: row.get(0)?,
-            subject: row.get(1)?,
-            body: row.get(2)?,
-        })
-    })?;
-
     let mut candidates = Vec::new();
-    for row in rows {
-        let candidate = row?;
-        if !candidate.subject.trim().is_empty() || !candidate.body.trim().is_empty() {
-            candidates.push(candidate);
+    if max_db_emails == 0 {
+        let mut stmt = conn.prepare(
+            "SELECT id, COALESCE(subject, ''), COALESCE(body_text, '')
+             FROM emails
+             WHERE LOWER(from_address) = LOWER(?1)
+             ORDER BY date_received DESC",
+        )?;
+        let rows = stmt.query_map(params![sender_email], |row| {
+            Ok(DbEmail {
+                id: row.get(0)?,
+                subject: row.get(1)?,
+                body: row.get(2)?,
+            })
+        })?;
+        for row in rows {
+            let candidate = row?;
+            if !candidate.subject.trim().is_empty() || !candidate.body.trim().is_empty() {
+                candidates.push(candidate);
+            }
+        }
+    } else {
+        let max_db_emails_i64: i64 = max_db_emails
+            .try_into()
+            .context("--max-db-emails is too large")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, COALESCE(subject, ''), COALESCE(body_text, '')
+             FROM emails
+             WHERE LOWER(from_address) = LOWER(?1)
+             ORDER BY date_received DESC
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![sender_email, max_db_emails_i64], |row| {
+            Ok(DbEmail {
+                id: row.get(0)?,
+                subject: row.get(1)?,
+                body: row.get(2)?,
+            })
+        })?;
+        for row in rows {
+            let candidate = row?;
+            if !candidate.subject.trim().is_empty() || !candidate.body.trim().is_empty() {
+                candidates.push(candidate);
+            }
         }
     }
 
@@ -759,11 +874,26 @@ fn load_matching_emails_from_db(
         ));
     }
 
-    // --- Greedy multi-cluster grouping ---
+    Ok(candidates)
+}
+
+fn cluster_emails(candidates: Vec<DbEmail>, threshold: f64) -> Result<Vec<EmailCluster>> {
+    if !(0.0..=1.0).contains(&threshold) {
+        return Err(anyhow::anyhow!(
+            "--word-distance-threshold must be between 0.0 and 1.0"
+        ));
+    }
+
+    let total_count = candidates.len();
+    if total_count < 2 {
+        return Err(anyhow::anyhow!(
+            "Need at least 2 non-empty emails, found {}.",
+            total_count
+        ));
+    }
+
     // clusters: (seed_text, members)
-    // Each new email is assigned to the closest cluster whose seed is within threshold,
-    // or starts a new cluster if none qualify.
-    let mut clusters: Vec<(String, Vec<DbEmail>)> = Vec::new();
+    let mut clusters: Vec<EmailCluster> = Vec::new();
 
     // Early-abort at 1/3 of total: if every email so far is its own singleton cluster,
     // there is no repeating template from this sender.
@@ -776,27 +906,29 @@ fn load_matching_emails_from_db(
         let best = clusters
             .iter()
             .enumerate()
-            .map(|(ci, (seed_text, _))| (ci, normalized_word_edit_distance(seed_text, &email_text)))
+            .map(|(ci, c)| (ci, normalized_word_edit_distance(&c.seed_text, &email_text)))
             .min_by(|a, b| a.1.total_cmp(&b.1));
 
         match best {
             Some((best_ci, best_dist)) if best_dist <= threshold => {
-                clusters[best_ci].1.push(email);
+                clusters[best_ci].members.push(email);
             }
             _ => {
-                clusters.push((email_text, vec![email]));
+                clusters.push(EmailCluster {
+                    seed_text: email_text,
+                    members: vec![email],
+                });
             }
         }
 
         // Early-abort check: at the 1/3 mark, if every cluster is still a singleton,
         // no repeating pattern exists — bail out rather than scanning all emails.
         if idx + 1 == early_abort_at {
-            let all_singletons = clusters.iter().all(|(_, m)| m.len() == 1);
+            let all_singletons = clusters.iter().all(|c| c.members.len() == 1);
             if all_singletons {
                 return Err(anyhow::anyhow!(
-                    "No similar emails found for sender '{}' after checking {}/{} — \
+                    "No similar emails found after checking {}/{} — \
                      all emails are unique so far. Try a higher --word-distance-threshold.",
-                    sender_email,
                     idx + 1,
                     total_count
                 ));
@@ -804,59 +936,8 @@ fn load_matching_emails_from_db(
         }
     }
 
-    let cluster_count = clusters.len();
-
-    // Pick the winning cluster — the one with the most members.
-    let (winning_seed_text, winning_members) = clusters
-        .into_iter()
-        .max_by_key(|(_, m)| m.len())
-        .ok_or_else(|| anyhow::anyhow!("No email clusters formed."))?;
-
-    let matching_count = winning_members.len();
-    println!(
-        "Formed {} cluster(s); winning cluster has {} emails.",
-        cluster_count, matching_count
-    );
-
-    if matching_count < 2 {
-        return Err(anyhow::anyhow!(
-            "No cluster with at least 2 similar emails for sender '{}' (threshold {:.3}). \
-             Try a higher --word-distance-threshold.",
-            sender_email,
-            threshold
-        ));
-    }
-
-    let max_template_emails = derive_max_template_emails(matching_count);
-    let selected_defaults = derive_template_defaults(matching_count);
-
-    // Sort winning cluster members by distance to the cluster seed (most similar first)
-    // so the template is built from the tightest core of the cluster.
-    let mut scored: Vec<(f64, DbEmail)> = winning_members
-        .into_iter()
-        .map(|e| {
-            let dist = normalized_word_edit_distance(&winning_seed_text, &comparable_text(&e));
-            (dist, e)
-        })
-        .collect();
-    scored.sort_by(|a, b| a.0.total_cmp(&b.0));
-
-    let selected: Vec<DbEmail> = scored
-        .into_iter()
-        .take(max_template_emails)
-        .map(|(_, e)| e)
-        .collect();
-
-    let ids: Vec<String> = selected.iter().map(|e| e.id.to_string()).collect();
-    println!(
-        "Selected {} emails for template generation (ids: {}). line_support={:.2}, word_support={:.2}",
-        selected.len(),
-        ids.join(", "),
-        selected_defaults.line_support,
-        selected_defaults.word_support
-    );
-
-    Ok((selected, selected_defaults))
+    println!("Formed {} cluster(s).", clusters.len());
+    Ok(clusters)
 }
 
 fn derive_max_template_emails(matching_count: usize) -> usize {
