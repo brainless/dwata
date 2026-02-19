@@ -22,7 +22,9 @@ mod embedded {
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection};
+use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -56,6 +58,7 @@ impl AsyncDbConnection {
 pub struct Database {
     pub connection: DbConnection,
     pub async_connection: AsyncDbConnection,
+    pub sqlx_pool: SqlitePool,
 }
 
 #[allow(dead_code)]
@@ -86,10 +89,16 @@ impl Database {
         });
 
         let pool = Pool::builder().max_size(8).build(manager)?;
+        let sqlx_pool = SqlitePool::connect_lazy_with(
+            SqliteConnectOptions::from_str(&format!("sqlite:{}", db_path.display()))?
+                .busy_timeout(Duration::from_secs(5))
+                .foreign_keys(true),
+        );
 
         let database = Database {
             connection: sync_mutex,
             async_connection: AsyncDbConnection::new(pool),
+            sqlx_pool,
         };
 
         Ok(database)

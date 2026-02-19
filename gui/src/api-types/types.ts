@@ -631,39 +631,65 @@ export type ContactsResponse = { contacts: Array<Contact>, };
 export type DataSourceType = "email" | "imap" | "bank-statement" | "credit-card-statement" | "bank-feed" | "csv-upload" | "manual" | "unknown";
 
 
-export type EnrichmentStatus = "raw-extracted" | "partially-resolved" | "user-confirmed" | "fully-resolved";
-
-
 export type FinancialDocumentType = "invoice" | "bill" | "bank-statement" | "receipt" | "tax-document" | "payment-confirmation";
 
 
+import type { BillStatus } from "./BillStatus";
 import type { DataSourceType } from "./DataSourceType";
 import type { FinancialDocumentType } from "./FinancialDocumentType";
-import type { TransactionStatus } from "./TransactionStatus";
 
-export type FinancialDocument = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: TransactionStatus, issuer_vendor_id: bigint | null, document_reference: string | null, due_date: string | null, billing_period_start: string | null, billing_period_end: string | null, created_at: bigint, updated_at: bigint, };
+/**
+ * A financial document (bill, invoice, receipt, statement) extracted from an email or file.
+ * One Bill may be the source for zero (unpaid) or more FinancialTransactions.
+ *
+ * ## Date Column Conventions
+ *
+ * Every date has two columns:
+ * - `{field}_raw`  — `TEXT` — the exact date string as it appeared in the source document
+ *                    (e.g., "15 Jan 2025", "January 15th, 2025", "15/01/25")
+ * - `{field}`      — `TEXT` — parsed and normalized to ISO 8601 `YYYY-MM-DD`
+ *                    (e.g., "2025-01-15"). Nullable when parsing fails.
+ *                    SQLite date/time functions understand this format natively.
+ */
+export type Bill = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: BillStatus, issuer_vendor_id: bigint | null, document_reference: string | null, total_amount: number | null, currency: string | null, 
+/**
+ * Date the bill or invoice was generated or issued by the vendor.
+ * Distinct from due_date (when payment is expected) and billing_period (service window).
+ * SQLite column type: TEXT (raw) / TEXT ISO 8601 (parsed)
+ */
+issued_date_raw: string | null, issued_date: string | null, 
+/**
+ * Date by which payment must be made.
+ * SQLite column type: TEXT (raw) / TEXT ISO 8601 (parsed)
+ */
+due_date_raw: string | null, due_date: string | null, 
+/**
+ * Start and end of the billing or service period this bill covers.
+ * SQLite column type: TEXT (raw) / TEXT ISO 8601 (parsed)
+ */
+billing_period_start_raw: string | null, billing_period_start: string | null, billing_period_end_raw: string | null, billing_period_end: string | null, created_at: bigint, updated_at: bigint, };
+
+
+export type BillStatus = "received" | "unpaid" | "paid" | "overdue" | "cancelled";
 
 
 import type { ServiceIdentifierKind } from "./ServiceIdentifierKind";
 
-export type FinancialDocumentSubject = { id: bigint, financial_document_id: bigint, kind: ServiceIdentifierKind, value: string, masked_value: string | null, is_primary: boolean, created_at: bigint, updated_at: bigint, };
+export type BillSubject = { id: bigint, bill_id: bigint, kind: ServiceIdentifierKind, value: string, masked_value: string | null, is_primary: boolean, created_at: bigint, updated_at: bigint, };
 
 
 export type ServiceIdentifierKind = "phone-number" | "account-number" | "policy-number" | "meter-number" | "subscription-id" | "contract-id" | "other";
 
 
 import type { DataSourceType } from "./DataSourceType";
-import type { EnrichmentStatus } from "./EnrichmentStatus";
-import type { FinancialDocumentType } from "./FinancialDocumentType";
 import type { TransactionCategory } from "./TransactionCategory";
 import type { TransactionParty } from "./TransactionParty";
 import type { TransactionStatus } from "./TransactionStatus";
-import type { UnresolvedField } from "./UnresolvedField";
 
 /**
  * Financial transaction extracted from documents
  */
-export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, financial_document_id: bigint | null, document_type: FinancialDocumentType, description: string | null, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, payer: TransactionParty, payee: TransactionParty, status: TransactionStatus, enrichment_status: EnrichmentStatus, unresolved_items: Array<UnresolvedField>, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
+export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, payer: TransactionParty, payee: TransactionParty, status: TransactionStatus, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
 
 
 /**
@@ -691,9 +717,6 @@ export type TransactionVendor = { id: bigint, vendor_type: TransactionVendorType
 
 
 export type TransactionVendorType = "self-user" | "self-business" | "financial-instrument" | "merchant" | "employer" | "bank" | "individual" | "platform" | "unknown";
-
-
-export type UnresolvedField = "payer-identity" | "payee-identity" | "category" | "transaction-reference" | "transaction-date" | "currency";
 
 
 /**

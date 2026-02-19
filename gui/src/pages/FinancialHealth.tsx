@@ -461,9 +461,6 @@ export default function FinancialHealth() {
                                         <div class="font-medium text-sm">
                                           {transaction.vendor || 'Unknown Vendor'}
                                         </div>
-                                        <div class="text-xs text-base-content/60 capitalize">
-                                          {transaction.document_type.replace(/-/g, ' ')}
-                                        </div>
                                       </div>
                                     </div>
                                   </td>
@@ -562,10 +559,6 @@ export default function FinancialHealth() {
                             <div class="flex-1 min-w-0">
                               <div class="font-medium text-sm">
                                 {bill.vendor || 'Unknown Vendor'}
-                                {bill.vendor && ' - '}
-                                <span class="text-xs text-base-content/60 capitalize">
-                                  {bill.document_type?.replace(/-/g, ' ')}
-                                </span>
                               </div>
                               <div class="text-xs text-base-content/60 flex items-center gap-1 mt-1">
                                 <HiOutlineCalendar class="w-3 h-3" />

@@ -20,8 +20,6 @@ pub struct TransactionFilters {
     #[serde(default)]
     pub destination_vendor_id: Option<i64>,
     #[serde(default)]
-    pub document_type: Option<String>,
-    #[serde(default)]
     pub start_date: Option<String>,
     #[serde(default)]
     pub end_date: Option<String>,
@@ -50,10 +48,9 @@ pub async fn list_transactions(
     let offset = (query.page.saturating_sub(1)) * query.limit;
 
     let (transactions, total_count) = db::list_financial_transactions_filtered(
-        db.async_connection.clone(),
+        &db.sqlx_pool,
         query.source_vendor_id,
         query.destination_vendor_id,
-        query.document_type.as_deref(),
         query.start_date.as_deref(),
         query.end_date.as_deref(),
         query.min_amount,
@@ -87,13 +84,9 @@ pub async fn get_summary(
     db: web::Data<Arc<Database>>,
     query: web::Query<SummaryQuery>,
 ) -> ActixResult<HttpResponse> {
-    let summary = db::get_financial_summary(
-        db.async_connection.clone(),
-        &query.start_date,
-        &query.end_date,
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let summary = db::get_financial_summary(&db.sqlx_pool, &query.start_date, &query.end_date)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(summary))
 }

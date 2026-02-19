@@ -77,8 +77,7 @@ pub use task::{
     CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
 };
 pub use transaction::{
-    DataSourceType, EnrichmentStatus, FinancialTransaction, TransactionCategory, TransactionParty,
-    TransactionStatus, UnresolvedField,
+    DataSourceType, FinancialTransaction, TransactionCategory, TransactionParty, TransactionStatus,
 };
 pub use vendor::{TransactionVendor, TransactionVendorType};
 
