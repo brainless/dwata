@@ -12,6 +12,7 @@ pub mod event;
 pub mod extraction;
 pub mod extraction_job;
 pub mod financial;
+pub mod financial_template;
 pub mod folder;
 pub mod label;
 pub mod position;
@@ -55,6 +56,10 @@ pub use extraction_job::{
 };
 pub use financial::{
     CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialSummary,
+};
+pub use financial_template::{
+    FinancialExtractionTemplate, FinancialTemplateApplicability, FinancialTemplateStatus,
+    FinancialTemplateType, FinancialTemplateVariable,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};

@@ -12,6 +12,7 @@ Template:
 ```
 
 Set field to null if not a transaction field.
+Type rules: amount numeric, currency code/symbol, transaction-date date-like, transaction-reference ID-like. If type mismatch, set null.
 Must map at least one placeholder to amount.
 Call `translate_variables`."#,
         template = template

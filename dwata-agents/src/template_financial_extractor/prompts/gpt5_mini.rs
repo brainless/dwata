@@ -19,6 +19,8 @@ pub fn build_system_prompt(template: &str) -> String {
 ```
 
 Map each placeholder to a field or null.
+Type rules: amount numeric, currency code/symbol, transaction-date date-like, transaction-reference ID-like.
+If type does not match, set field to null.
 Transaction rule: at least one placeholder must map to amount; otherwise mapping is invalid.
 Call `translate_variables`."#,
         template = template

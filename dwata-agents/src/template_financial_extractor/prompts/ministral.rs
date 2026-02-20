@@ -12,6 +12,7 @@ Template:
 ```
 
 For each placeholder (placeholder_N, subject_N), pick the matching field based on surrounding text. Set field to null if it does not match any field.
+Type rules: amount numeric, currency code/symbol, transaction-date date-like, transaction-reference ID-like. If type mismatch, set field to null.
 At least one placeholder MUST map to amount.
 
 You MUST call the `translate_variables` tool with your mappings."#,

@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
+use chrono::NaiveDate;
 use clap::Parser;
 use config::{Config, File};
+use dateparser::parse as parse_datetime;
+use regex::Regex;
 use rusqlite::{params, Connection};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -460,6 +463,8 @@ async fn main() -> Result<()> {
         BTreeMap::new();
     let mut txn_rows_by_template: BTreeMap<usize, Vec<(usize, i64, HashMap<String, String>)>> =
         BTreeMap::new();
+    let mut rejected_bill_rows = 0usize;
+    let mut rejected_txn_rows = 0usize;
     let mut unmatched = 0usize;
 
     for (i, email) in sample_emails.iter().enumerate() {
@@ -474,27 +479,53 @@ async fn main() -> Result<()> {
                 let placeholder_vals = extract_values_from_email(&tmpl.full_template, email);
                 let mut bill_field_vals: HashMap<String, String> = HashMap::new();
                 let mut txn_field_vals: HashMap<String, String> = HashMap::new();
+                let mut bill_row_valid = true;
+                let mut txn_row_valid = true;
                 for (placeholder, value) in placeholder_vals {
                     if let Some(field) = tmpl.bill_placeholder_to_field.get(&placeholder) {
-                        bill_field_vals.insert(field.clone(), value.clone());
+                        if is_valid_bill_value(field, &value) {
+                            bill_field_vals.insert(field.clone(), value.clone());
+                        } else {
+                            bill_row_valid = false;
+                            eprintln!(
+                                "Rejected bill row for email {}: value {:?} does not match field {:?}",
+                                email.id, value, field
+                            );
+                        }
                     }
                     if let Some(field) = tmpl.txn_placeholder_to_field.get(&placeholder) {
-                        txn_field_vals.insert(field.clone(), value);
+                        if is_valid_txn_value(field, &value) {
+                            txn_field_vals.insert(field.clone(), value);
+                        } else {
+                            txn_row_valid = false;
+                            eprintln!(
+                                "Rejected transaction row for email {}: value {:?} does not match field {:?}",
+                                email.id, value, field
+                            );
+                        }
                     }
                 }
                 if !tmpl.bill_placeholder_to_field.is_empty() {
-                    bill_rows_by_template.entry(tmpl.id).or_default().push((
-                        i + 1,
-                        email.id,
-                        bill_field_vals,
-                    ));
+                    if bill_row_valid {
+                        bill_rows_by_template.entry(tmpl.id).or_default().push((
+                            i + 1,
+                            email.id,
+                            bill_field_vals,
+                        ));
+                    } else {
+                        rejected_bill_rows += 1;
+                    }
                 }
                 if !tmpl.txn_placeholder_to_field.is_empty() {
-                    txn_rows_by_template.entry(tmpl.id).or_default().push((
-                        i + 1,
-                        email.id,
-                        txn_field_vals,
-                    ));
+                    if txn_row_valid {
+                        txn_rows_by_template.entry(tmpl.id).or_default().push((
+                            i + 1,
+                            email.id,
+                            txn_field_vals,
+                        ));
+                    } else {
+                        rejected_txn_rows += 1;
+                    }
                 }
             } else {
                 unmatched += 1;
@@ -578,6 +609,10 @@ async fn main() -> Result<()> {
         );
     }
     println!("Unmatched emails in sample: {}", unmatched);
+    println!(
+        "Rejected rows due to type mismatch: bills={}, transactions={}",
+        rejected_bill_rows, rejected_txn_rows
+    );
 
     println!("\n--- In-memory templates ---");
     for runtime in &template_runtimes {
@@ -700,6 +735,74 @@ fn extract_values_from_email(template: &str, email: &DbEmail) -> HashMap<String,
     }
 
     all_values
+}
+
+fn is_valid_bill_value(field: &str, value: &str) -> bool {
+    match field {
+        "total-amount" => parse_amount(value).is_some(),
+        "currency" => is_currency_like(value),
+        "issued-date" | "due-date" | "billing-period-start" | "billing-period-end" => {
+            parse_date(value).is_some()
+        }
+        "document-reference" => is_reference_like(value),
+        "service-identifier" => is_identifier_like(value),
+        _ => false,
+    }
+}
+
+fn is_valid_txn_value(field: &str, value: &str) -> bool {
+    match field {
+        "amount" => parse_amount(value).is_some(),
+        "currency" => is_currency_like(value),
+        "transaction-date" => parse_date(value).is_some(),
+        "vendor" => !value.trim().is_empty(),
+        "transaction-reference" => is_reference_like(value),
+        _ => false,
+    }
+}
+
+fn parse_amount(raw: &str) -> Option<f64> {
+    let re = Regex::new(r"[^\d,\.\-]").ok()?;
+    let cleaned = re.replace_all(raw, "").replace(',', "");
+    if cleaned.is_empty() || cleaned == "-" || cleaned == "." || cleaned == "-." {
+        return None;
+    }
+    cleaned.parse::<f64>().ok()
+}
+
+fn parse_date(raw: &str) -> Option<NaiveDate> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > 60 {
+        return None;
+    }
+    parse_datetime(trimmed).ok().map(|dt| dt.date_naive())
+}
+
+fn is_currency_like(raw: &str) -> bool {
+    let s = raw.trim();
+    if s.is_empty() || s.len() > 8 {
+        return false;
+    }
+    let upper = s.to_ascii_uppercase();
+    let is_iso_code = upper.len() == 3 && upper.chars().all(|c| c.is_ascii_alphabetic());
+    let is_symbol = matches!(s, "$" | "€" | "£" | "¥" | "₹" | "₩" | "₽" | "₺" | "₫");
+    is_iso_code || is_symbol
+}
+
+fn is_reference_like(raw: &str) -> bool {
+    let s = raw.trim();
+    if s.len() < 3 || s.len() > 80 {
+        return false;
+    }
+    s.chars().any(|c| c.is_ascii_alphanumeric())
+}
+
+fn is_identifier_like(raw: &str) -> bool {
+    let s = raw.trim();
+    if s.len() < 3 || s.len() > 120 {
+        return false;
+    }
+    s.chars().any(|c| c.is_ascii_alphanumeric())
 }
 
 /// Load the most-recent N emails for a sender from the database (no clustering).

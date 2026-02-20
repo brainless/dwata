@@ -24,9 +24,14 @@ Use exactly these values for the `field` key:
 
 1. Read the template carefully
 2. For each placeholder (placeholder_N, subject_N), look at surrounding text to determine the field
-3. For transaction templates, `amount` is mandatory. At least one placeholder must map to `amount`
-4. Set `field` to null for placeholders that are not transaction fields (e.g., account holder name, greeting)
-5. Call `translate_variables` with all mappings"#,
+3. Type rules:
+   - amount must be numeric
+   - currency must be ISO code or currency symbol
+   - transaction-date must be an actual date
+   - transaction-reference should look like an ID, not a sentence
+4. For transaction templates, `amount` is mandatory. At least one placeholder must map to `amount`
+5. Set `field` to null for placeholders with type mismatch or for non-transaction fields
+6. Call `translate_variables` with all mappings"#,
         template = template
     )
 }

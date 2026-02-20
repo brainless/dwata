@@ -23,7 +23,8 @@ Template:
 
 For service-identifier, also set service_identifier_kind to one of: phone-number, account-number, policy-number, meter-number, subscription-id, contract-id, other.
 
-Set field to null if the placeholder is not a bill field. Call `translate_bill_variables`."#,
+Type rules: total-amount numeric, currency code/symbol, issued/due/billing-period dates, document-reference and service-identifier should look like IDs (not long sentences).
+Set field to null if type does not match or if the placeholder is not a bill field. Call `translate_bill_variables`."#,
         template = template
     )
 }
@@ -58,8 +59,14 @@ phone-number, account-number, policy-number, meter-number, subscription-id, cont
 
 1. Read the template carefully
 2. For each placeholder (placeholder_N, subject_N), look at surrounding text to determine the bill field
-3. Set `field` to null for placeholders that are not bill fields (e.g., customer name, greeting)
-4. Call `translate_bill_variables` with all mappings"#,
+3. Type rules:
+   - total-amount must be numeric
+   - currency must be ISO code or currency symbol
+   - issued-date/due-date/billing-period-start/billing-period-end must be actual dates
+   - document-reference/service-identifier should look like IDs, not full sentences
+4. If a placeholder value shape does not match the field type, set `field` to null
+5. Set `field` to null for placeholders that are not bill fields (e.g., customer name, greeting)
+6. Call `translate_bill_variables` with all mappings"#,
         template = template
     )
 }
