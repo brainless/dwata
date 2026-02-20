@@ -7,13 +7,14 @@ use dwata_agents::{detect_templates_for_sender, TemplateDetectionOptions, Templa
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::gemini::GeminiClient;
 use nocodo_llm_sdk::models::gemini::GEMINI_3_FLASH_ID;
+use regex::Regex;
 use shared_types::{
     DataSourceType, DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse,
     DetectedFinancialTemplate, DetectedFinancialTemplateVariable, DocumentKind,
     FinancialTemplateType, SearchDocumentsRequest, SearchField, SearchTerm,
 };
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 const DEFAULT_FINANCIAL_KEYWORDS: &[&str] = &[
     "payment",
@@ -30,10 +31,89 @@ const DEFAULT_FINANCIAL_KEYWORDS: &[&str] = &[
     "statement",
 ];
 
+const DEFAULT_TEMPLATE_MATCH_THRESHOLD: f64 = 0.55;
+
+#[derive(Debug, Clone)]
+struct TemplateMatchResult {
+    template_id: i64,
+    score: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct TemplateDetectionProgress {
+    pub candidate_sender_count: usize,
+    pub candidate_email_count: usize,
+    pub total_senders: usize,
+    pub processed_senders: usize,
+    pub current_sender: Option<String>,
+}
+
+fn placeholder_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\{\{\s*placeholder_[^}]+\}\}").expect("valid regex"))
+}
+
+fn split_fixed_segments(template_body: &str) -> Vec<&str> {
+    placeholder_regex()
+        .split(template_body)
+        .filter(|segment| !segment.is_empty())
+        .collect()
+}
+
+fn match_template_score(template_body: &str, email_text: &str) -> f64 {
+    let segments = split_fixed_segments(template_body);
+    if segments.is_empty() {
+        return 0.0;
+    }
+    let total_fixed_chars: usize = segments.iter().map(|s| s.len()).sum();
+    if total_fixed_chars == 0 {
+        return 0.0;
+    }
+
+    let mut cursor = 0usize;
+    let mut matched_chars = 0usize;
+    for segment in &segments {
+        if let Some(rel_pos) = email_text[cursor..].find(segment) {
+            matched_chars += segment.len();
+            cursor += rel_pos + segment.len();
+        } else {
+            return 0.0;
+        }
+    }
+
+    let coverage = matched_chars as f64 / total_fixed_chars as f64;
+    let order_bonus = matched_chars as f64 / email_text.len().max(1) as f64;
+    (coverage * 0.85 + order_bonus * 0.15).clamp(0.0, 1.0)
+}
+
+fn match_email_to_sender_templates(
+    email_text: &str,
+    templates: &[templates_db::SenderFinancialTemplateRow],
+    score_threshold: f64,
+) -> Option<TemplateMatchResult> {
+    let mut best: Option<TemplateMatchResult> = None;
+    for template in templates {
+        let score = match_template_score(&template.template_body, email_text);
+        if score >= score_threshold {
+            match &best {
+                Some(current) if score <= current.score => {}
+                _ => {
+                    best = Some(TemplateMatchResult {
+                        template_id: template.template_id,
+                        score,
+                    })
+                }
+            }
+        }
+    }
+    best
+}
+
 fn build_tantivy_query(keywords: &[&str]) -> String {
     keywords
         .iter()
-        .map(|keyword| format!("\"{}\"", keyword.replace('"', "\\\"")))
+        .map(|keyword| keyword.trim())
+        .filter(|keyword| !keyword.is_empty())
         .collect::<Vec<_>>()
         .join(" OR ")
 }
@@ -58,12 +138,76 @@ fn build_llm_client(config: &ApiConfig) -> Result<Arc<dyn LlmClient>> {
     Ok(Arc::new(GeminiClient::new(api_key)?))
 }
 
+fn to_input_email(row: &emails_db::TemplateCandidateEmailRow) -> TemplateInputEmail {
+    TemplateInputEmail {
+        id: row.email_id,
+        subject: row.subject.clone().unwrap_or_default(),
+        body: row
+            .body_text
+            .clone()
+            .or_else(|| row.body_html.clone())
+            .unwrap_or_default(),
+    }
+}
+
+fn to_matchable_email_text(row: &emails_db::TemplateCandidateEmailRow) -> String {
+    format!(
+        "Subject: {}\n---\n{}",
+        row.subject.clone().unwrap_or_default(),
+        row.body_text
+            .clone()
+            .or_else(|| row.body_html.clone())
+            .unwrap_or_default()
+    )
+}
+
+async fn link_matching_emails_for_sender(
+    db: web::Data<Arc<Database>>,
+    sender_templates: &[templates_db::SenderFinancialTemplateRow],
+    sender_candidate_rows: &[emails_db::TemplateCandidateEmailRow],
+) -> Result<HashSet<i64>> {
+    let mut matched_email_ids = HashSet::new();
+
+    for row in sender_candidate_rows {
+        let email_text = to_matchable_email_text(row);
+        if let Some(best) = match_email_to_sender_templates(
+            &email_text,
+            sender_templates,
+            DEFAULT_TEMPLATE_MATCH_THRESHOLD,
+        ) {
+            templates_db::insert_template_email_link(
+                db.async_connection.clone(),
+                best.template_id,
+                row.email_id,
+                Some(best.score),
+            )
+            .await?;
+            matched_email_ids.insert(row.email_id);
+        }
+    }
+
+    Ok(matched_email_ids)
+}
+
 pub async fn detect_and_store_templates(
     db: web::Data<Arc<Database>>,
     search_index: web::Data<Arc<TantivySearchIndex>>,
     config: web::Data<Arc<ApiConfig>>,
     request: DetectFinancialTemplatesRequest,
 ) -> Result<DetectFinancialTemplatesResponse> {
+    detect_and_store_templates_with_progress(db, search_index, config, request, |_| {}).await
+}
+
+pub async fn detect_and_store_templates_with_progress<F>(
+    db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
+    config: web::Data<Arc<ApiConfig>>,
+    request: DetectFinancialTemplatesRequest,
+    mut on_progress: F,
+) -> Result<DetectFinancialTemplatesResponse>
+where
+    F: FnMut(TemplateDetectionProgress),
+{
     let query = build_tantivy_query(DEFAULT_FINANCIAL_KEYWORDS);
     let max_candidate_emails = request.max_candidate_emails.unwrap_or(2000);
 
@@ -124,11 +268,28 @@ pub async fn detect_and_store_templates(
             senders.truncate(max_senders);
         }
     }
+    let total_senders = senders.len();
+    on_progress(TemplateDetectionProgress {
+        candidate_sender_count: total_senders,
+        candidate_email_count: scan_rows.len(),
+        total_senders,
+        processed_senders: 0,
+        current_sender: None,
+    });
 
     let llm_client = build_llm_client(&config)?;
     let model = GEMINI_3_FLASH_ID.to_string();
     let mut templates = Vec::new();
-    for (sender_email, _) in &senders {
+
+    for (sender_idx, (sender_email, _)) in senders.iter().enumerate() {
+        on_progress(TemplateDetectionProgress {
+            candidate_sender_count: total_senders,
+            candidate_email_count: scan_rows.len(),
+            total_senders,
+            processed_senders: sender_idx,
+            current_sender: Some(sender_email.clone()),
+        });
+
         let sender_rows = emails_db::list_template_candidate_emails_by_sender_and_document_ids(
             db.async_connection.clone(),
             sender_email,
@@ -137,24 +298,68 @@ pub async fn detect_and_store_templates(
             request.max_candidate_emails,
         )
         .await?;
-
-        if sender_rows.len() < 2 {
+        if sender_rows.is_empty() {
             continue;
         }
 
-        let input_emails = sender_rows
-            .iter()
-            .map(|row| TemplateInputEmail {
-                id: row.email_id,
-                subject: row.subject.clone().unwrap_or_default(),
-                body: row
-                    .body_text
-                    .clone()
-                    .or_else(|| row.body_html.clone())
-                    .unwrap_or_default(),
-            })
-            .collect::<Vec<_>>();
+        let existing_templates = templates_db::list_templates_with_variables_by_sender(
+            db.async_connection.clone(),
+            sender_email,
+        )
+        .await?;
 
+        let _ =
+            link_matching_emails_for_sender(db.clone(), &existing_templates, &sender_rows).await?;
+
+        let fresh_unmatched_rows =
+            emails_db::list_unmatched_template_candidate_emails_by_sender_and_document_ids(
+                db.async_connection.clone(),
+                sender_email,
+                &matched_document_ids,
+                request.credential_id,
+                request.max_candidate_emails,
+            )
+            .await?;
+
+        if fresh_unmatched_rows.is_empty() {
+            continue;
+        }
+
+        let template_ids = existing_templates
+            .iter()
+            .map(|t| t.template_id)
+            .collect::<Vec<_>>();
+        let anchor_email_ids = templates_db::list_anchor_email_ids_by_template_ids(
+            db.async_connection.clone(),
+            &template_ids,
+            request.credential_id,
+        )
+        .await?;
+
+        let sender_rows_by_id = sender_rows
+            .iter()
+            .map(|r| (r.email_id, r.clone()))
+            .collect::<HashMap<_, _>>();
+
+        let mut pool_rows = fresh_unmatched_rows.clone();
+        let mut seen_pool_email_ids = pool_rows.iter().map(|r| r.email_id).collect::<HashSet<_>>();
+        for template_id in template_ids {
+            if let Some(anchor_email_id) = anchor_email_ids.get(&template_id) {
+                if seen_pool_email_ids.contains(anchor_email_id) {
+                    continue;
+                }
+                if let Some(anchor_row) = sender_rows_by_id.get(anchor_email_id) {
+                    seen_pool_email_ids.insert(*anchor_email_id);
+                    pool_rows.push(anchor_row.clone());
+                }
+            }
+        }
+
+        if pool_rows.len() < 2 {
+            continue;
+        }
+
+        let input_emails = pool_rows.iter().map(to_input_email).collect::<Vec<_>>();
         let clusters = detect_templates_for_sender(
             llm_client.clone(),
             model.clone(),
@@ -222,6 +427,22 @@ pub async fn detect_and_store_templates(
                     .collect(),
             });
         }
+
+        let refreshed_templates = templates_db::list_templates_with_variables_by_sender(
+            db.async_connection.clone(),
+            sender_email,
+        )
+        .await?;
+        let _ =
+            link_matching_emails_for_sender(db.clone(), &refreshed_templates, &sender_rows).await?;
+
+        on_progress(TemplateDetectionProgress {
+            candidate_sender_count: total_senders,
+            candidate_email_count: scan_rows.len(),
+            total_senders,
+            processed_senders: sender_idx + 1,
+            current_sender: None,
+        });
     }
 
     Ok(DetectFinancialTemplatesResponse {
@@ -229,4 +450,50 @@ pub async fn detect_and_store_templates(
         candidate_email_count: scan_rows.len(),
         templates,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{match_email_to_sender_templates, match_template_score};
+    use crate::database::financial_templates::SenderFinancialTemplateRow;
+    use shared_types::FinancialTemplateType;
+
+    #[test]
+    fn template_score_matches_placeholder_wildcards() {
+        let template = "Subject: Payment received {{ placeholder_amount }}\n---\nRef {{ placeholder_ref }} from {{ placeholder_sender }}";
+        let email = "Subject: Payment received $49.99\n---\nRef TX-123 from ACME Corp";
+        let score = match_template_score(template, email);
+        assert!(score > 0.55);
+    }
+
+    #[test]
+    fn template_score_requires_all_fixed_segments_in_order() {
+        let template =
+            "Subject: Invoice {{ placeholder_id }}\n---\nTotal {{ placeholder_total }} due";
+        let wrong_order = "Subject: Invoice 100\n---\ndue and then Total $12";
+        let score = match_template_score(template, wrong_order);
+        assert_eq!(score, 0.0);
+    }
+
+    #[test]
+    fn best_template_is_selected_by_score() {
+        let email = "Subject: Payment received $49.99\n---\nRef TX-123 from ACME Corp";
+        let templates = vec![
+            SenderFinancialTemplateRow {
+                template_id: 1,
+                template_type: FinancialTemplateType::Transaction,
+                template_body: "Subject: Invoice {{ placeholder_id }}".to_string(),
+                variables: Vec::new(),
+            },
+            SenderFinancialTemplateRow {
+                template_id: 2,
+                template_type: FinancialTemplateType::Transaction,
+                template_body: "Subject: Payment received {{ placeholder_amount }}\n---\nRef {{ placeholder_ref }} from {{ placeholder_sender }}".to_string(),
+                variables: Vec::new(),
+            },
+        ];
+
+        let matched = match_email_to_sender_templates(email, &templates, 0.2).expect("match");
+        assert_eq!(matched.template_id, 2);
+    }
 }

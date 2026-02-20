@@ -81,3 +81,54 @@ pub struct DetectFinancialTemplatesResponse {
     pub candidate_email_count: usize,
     pub templates: Vec<DetectedFinancialTemplate>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum FinancialTemplateDetectionJobStatus {
+    Idle,
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct FinancialTemplateDetectionJobState {
+    pub run_id: i64,
+    pub status: FinancialTemplateDetectionJobStatus,
+    pub started_at: Option<i64>,
+    pub finished_at: Option<i64>,
+    pub total_senders: usize,
+    pub processed_senders: usize,
+    pub current_sender: Option<String>,
+    pub candidate_sender_count: usize,
+    pub candidate_email_count: usize,
+    pub new_templates_count: usize,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct FinancialTemplateFieldMapping {
+    pub placeholder_name: String,
+    pub target_field: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct FinancialTemplateWithVariables {
+    pub template: FinancialExtractionTemplate,
+    pub variables: Vec<FinancialTemplateFieldMapping>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct ListFinancialTemplatesResponse {
+    pub templates: Vec<FinancialTemplateWithVariables>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DeleteFinancialTemplatesRequest {
+    pub template_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DeleteFinancialTemplatesResponse {
+    pub deleted_count: usize,
+}

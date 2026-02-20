@@ -627,27 +627,27 @@ import type { FinancialDocumentType } from "./FinancialDocumentType";
  * Every date has two columns:
  * - `{field}_raw`  — `TEXT` — the exact date string as it appeared in the source document
  *                    (e.g., "15 Jan 2025", "January 15th, 2025", "15/01/25")
- * - `{field}`      — `TEXT` — parsed and normalized to ISO 8601 `YYYY-MM-DD`
- *                    (e.g., "2025-01-15"). Nullable when parsing fails.
- *                    SQLite date/time functions understand this format natively.
+ * - `{field}`      — `BIGINT` — parsed UTC timestamp in milliseconds since Unix epoch.
+ *                    For date-only values, use 00:00:00 UTC for that calendar day.
+ *                    Nullable when parsing fails.
  */
 export type Bill = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: BillStatus, issuer_vendor_id: bigint | null, document_reference: string | null, total_amount: number | null, currency: string | null, 
 /**
  * Date the bill or invoice was generated or issued by the vendor.
  * Distinct from due_date (when payment is expected) and billing_period (service window).
- * SQLite column type: TEXT (raw) / TEXT ISO 8601 (parsed)
+ * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
  */
-issued_date_raw: string | null, issued_date: string | null, 
+issued_date_raw: string | null, issued_date: bigint | null, 
 /**
  * Date by which payment must be made.
- * SQLite column type: TEXT (raw) / TEXT ISO 8601 (parsed)
+ * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
  */
-due_date_raw: string | null, due_date: string | null, 
+due_date_raw: string | null, due_date: bigint | null, 
 /**
  * Start and end of the billing or service period this bill covers.
- * SQLite column type: TEXT (raw) / TEXT ISO 8601 (parsed)
+ * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
  */
-billing_period_start_raw: string | null, billing_period_start: string | null, billing_period_end_raw: string | null, billing_period_end: string | null, created_at: bigint, updated_at: bigint, };
+billing_period_start_raw: string | null, billing_period_start: bigint | null, billing_period_end_raw: string | null, billing_period_end: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
 export type BillStatus = "received" | "unpaid" | "paid" | "overdue" | "cancelled";
@@ -727,3 +727,63 @@ import type { TransactionCategory } from "./TransactionCategory";
  * Breakdown by category
  */
 export type CategoryBreakdown = { category: TransactionCategory, amount: number, percentage: number, transaction_count: number, };
+
+
+export type FinancialTemplateType = "bill" | "transaction";
+
+
+export type FinancialTemplateStatus = "active" | "superseded" | "disabled";
+
+
+import type { DataSourceType } from "./DataSourceType";
+import type { FinancialTemplateStatus } from "./FinancialTemplateStatus";
+import type { FinancialTemplateType } from "./FinancialTemplateType";
+
+export type FinancialExtractionTemplate = { id: bigint, data_source_type: DataSourceType, data_source_id: string, template_type: FinancialTemplateType, template_body: string, status: FinancialTemplateStatus, version: number, created_at: bigint, updated_at: bigint, };
+
+
+export type FinancialTemplateVariable = { id: bigint, template_id: bigint, placeholder_name: string, target_field: string, created_at: bigint, };
+
+
+import type { DataSourceType } from "./DataSourceType";
+
+export type FinancialTemplateApplicability = { id: bigint, template_id: bigint, data_source_type: DataSourceType, data_source_id: string, match_score: number | null, created_at: bigint, };
+
+
+export type DetectFinancialTemplatesRequest = { credential_id: bigint | null, max_candidate_emails: number | null, max_senders: number | null, max_templates_per_sender: number | null, };
+
+
+export type DetectedFinancialTemplateVariable = { placeholder_name: string, target_field: string, };
+
+
+import type { DetectedFinancialTemplateVariable } from "./DetectedFinancialTemplateVariable";
+import type { FinancialTemplateType } from "./FinancialTemplateType";
+
+export type DetectedFinancialTemplate = { template_id: bigint, sender_email: string, template_type: FinancialTemplateType, template_body: string, translated_template_body: string, source_email_ids: Array<bigint>, variables: Array<DetectedFinancialTemplateVariable>, };
+
+
+import type { DetectedFinancialTemplate } from "./DetectedFinancialTemplate";
+
+export type DetectFinancialTemplatesResponse = { candidate_sender_count: number, candidate_email_count: number, templates: Array<DetectedFinancialTemplate>, };
+
+
+export type FinancialTemplateDetectionJobStatus = "idle" | "running" | "completed" | "failed";
+
+
+import type { FinancialTemplateDetectionJobStatus } from "./FinancialTemplateDetectionJobStatus";
+
+export type FinancialTemplateDetectionJobState = { run_id: bigint, status: FinancialTemplateDetectionJobStatus, started_at: bigint | null, finished_at: bigint | null, total_senders: number, processed_senders: number, current_sender: string | null, candidate_sender_count: number, candidate_email_count: number, new_templates_count: number, error: string | null, };
+
+
+export type FinancialTemplateFieldMapping = { placeholder_name: string, target_field: string, };
+
+
+import type { FinancialExtractionTemplate } from "./FinancialExtractionTemplate";
+import type { FinancialTemplateFieldMapping } from "./FinancialTemplateFieldMapping";
+
+export type FinancialTemplateWithVariables = { template: FinancialExtractionTemplate, variables: Array<FinancialTemplateFieldMapping>, };
+
+
+import type { FinancialTemplateWithVariables } from "./FinancialTemplateWithVariables";
+
+export type ListFinancialTemplatesResponse = { templates: Array<FinancialTemplateWithVariables>, };

@@ -58,9 +58,12 @@ pub use financial::{
     CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialSummary,
 };
 pub use financial_template::{
+    DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,
     DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse, DetectedFinancialTemplate,
     DetectedFinancialTemplateVariable, FinancialExtractionTemplate, FinancialTemplateApplicability,
-    FinancialTemplateStatus, FinancialTemplateType, FinancialTemplateVariable,
+    FinancialTemplateDetectionJobState, FinancialTemplateDetectionJobStatus,
+    FinancialTemplateFieldMapping, FinancialTemplateStatus, FinancialTemplateType,
+    FinancialTemplateVariable, FinancialTemplateWithVariables, ListFinancialTemplatesResponse,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};

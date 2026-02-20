@@ -446,6 +446,8 @@ async fn main() -> std::io::Result<()> {
     println!("Starting server on {}:{}", host, port);
 
     let download_manager_for_server = download_manager.clone();
+    let template_detection_job_state =
+        helpers::template_detection_job::TemplateDetectionJobState::new();
     let server = HttpServer::new(move || {
         // Configure CORS
         let cors = if let Some(cors_config) = &config.cors {
@@ -477,6 +479,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(keyring_service.clone()))
             .app_data(web::Data::new(config.clone()))
             .app_data(web::Data::new(search_index.clone()))
+            .app_data(web::Data::new(template_detection_job_state.clone()))
             .service(hello)
             .service(health)
             .service(get_settings)
@@ -649,8 +652,20 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::financial::get_summary),
             )
             .route(
+                "/api/financial/templates",
+                web::get().to(handlers::financial::list_templates),
+            )
+            .route(
+                "/api/financial/templates",
+                web::delete().to(handlers::financial::delete_templates),
+            )
+            .route(
                 "/api/financial/templates/detect",
                 web::post().to(handlers::financial::detect_templates),
+            )
+            .route(
+                "/api/financial/templates/detect",
+                web::get().to(handlers::financial::get_detect_templates_status),
             )
             .default_service(web::route().to(gui_embed::serve_gui))
     })

@@ -181,6 +181,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(
         DetectFinancialTemplatesResponse::export_to_string()?,
     ));
+    types.push(clean_type(
+        FinancialTemplateDetectionJobStatus::export_to_string()?,
+    ));
+    types.push(clean_type(
+        FinancialTemplateDetectionJobState::export_to_string()?,
+    ));
+    types.push(clean_type(
+        FinancialTemplateFieldMapping::export_to_string()?
+    ));
+    types.push(clean_type(
+        FinancialTemplateWithVariables::export_to_string()?,
+    ));
+    types.push(clean_type(
+        ListFinancialTemplatesResponse::export_to_string()?,
+    ));
+    types.push(clean_type(
+        DeleteFinancialTemplatesRequest::export_to_string()?,
+    ));
+    types.push(clean_type(
+        DeleteFinancialTemplatesResponse::export_to_string()?,
+    ));
 
     let output_dir = Path::new("../gui/src/api-types");
     fs::create_dir_all(output_dir)?;

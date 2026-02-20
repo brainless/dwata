@@ -1,9 +1,17 @@
 use crate::config::ApiConfig;
-use crate::database::{financial_transactions as db, Database};
+use crate::database::{
+    financial_templates as templates_db, financial_transactions as db, Database,
+};
+use crate::helpers::template_detection_job::TemplateDetectionJobState;
 use crate::search::tantivy::TantivySearchIndex;
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
-use shared_types::{DetectFinancialTemplatesRequest, FinancialSummary};
+use shared_types::{
+    DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,
+    DetectFinancialTemplatesRequest, FinancialExtractionTemplate, FinancialSummary,
+    FinancialTemplateDetectionJobStatus, FinancialTemplateFieldMapping,
+    FinancialTemplateWithVariables, ListFinancialTemplatesResponse,
+};
 use std::sync::Arc;
 
 #[derive(Deserialize)]
@@ -32,6 +40,16 @@ fn default_page() -> usize {
 
 fn default_limit() -> usize {
     500
+}
+
+#[derive(Deserialize)]
+pub struct TemplatesQuery {
+    #[serde(default = "default_templates_limit")]
+    pub limit: usize,
+}
+
+fn default_templates_limit() -> usize {
+    200
 }
 
 pub async fn list_transactions(
@@ -67,6 +85,56 @@ pub async fn list_transactions(
     })))
 }
 
+pub async fn list_templates(
+    db: web::Data<Arc<Database>>,
+    query: web::Query<TemplatesQuery>,
+) -> ActixResult<HttpResponse> {
+    let limit = query.limit.clamp(1, 500);
+    let rows =
+        templates_db::list_active_templates_with_variables(db.async_connection.clone(), limit)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    let templates = rows
+        .into_iter()
+        .map(|row| FinancialTemplateWithVariables {
+            template: FinancialExtractionTemplate {
+                id: row.id,
+                data_source_type: row.data_source_type,
+                data_source_id: row.data_source_id,
+                template_type: row.template_type,
+                template_body: row.template_body,
+                status: row.status,
+                version: row.version,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            },
+            variables: row
+                .variables
+                .into_iter()
+                .map(|v| FinancialTemplateFieldMapping {
+                    placeholder_name: v.placeholder_name,
+                    target_field: v.target_field,
+                })
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(ListFinancialTemplatesResponse { templates }))
+}
+
+pub async fn delete_templates(
+    db: web::Data<Arc<Database>>,
+    request: web::Json<DeleteFinancialTemplatesRequest>,
+) -> ActixResult<HttpResponse> {
+    let deleted_count =
+        templates_db::delete_templates_by_ids(db.async_connection.clone(), &request.template_ids)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(DeleteFinancialTemplatesResponse { deleted_count }))
+}
+
 #[derive(Deserialize)]
 pub struct SummaryQuery {
     start_date: String,
@@ -86,19 +154,86 @@ pub async fn get_summary(
 }
 
 pub async fn detect_templates(
+    detection_job: web::Data<TemplateDetectionJobState>,
     db: web::Data<Arc<Database>>,
     search_index: web::Data<Arc<TantivySearchIndex>>,
     config: web::Data<Arc<ApiConfig>>,
     request: web::Json<DetectFinancialTemplatesRequest>,
 ) -> ActixResult<HttpResponse> {
-    let response = crate::helpers::template_detection::detect_and_store_templates(
-        db,
-        search_index,
-        config,
-        request.into_inner(),
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let snapshot = detection_job.snapshot();
+    if snapshot.status == FinancialTemplateDetectionJobStatus::Running {
+        return Ok(HttpResponse::Ok().json(snapshot));
+    }
 
-    Ok(HttpResponse::Ok().json(response))
+    let request_payload = request.into_inner();
+    let now = chrono::Utc::now().timestamp_millis();
+    let run_state = detection_job.with_mut(|state| {
+        state.run_id += 1;
+        state.status = FinancialTemplateDetectionJobStatus::Running;
+        state.started_at = Some(now);
+        state.finished_at = None;
+        state.total_senders = 0;
+        state.processed_senders = 0;
+        state.current_sender = None;
+        state.candidate_sender_count = 0;
+        state.candidate_email_count = 0;
+        state.new_templates_count = 0;
+        state.error = None;
+    });
+
+    let job_state = detection_job.get_ref().clone();
+    let db_clone = db.clone();
+    let search_index_clone = search_index.clone();
+    let config_clone = config.clone();
+    tokio::spawn(async move {
+        let result = crate::helpers::template_detection::detect_and_store_templates_with_progress(
+            db_clone,
+            search_index_clone,
+            config_clone,
+            request_payload,
+            |progress| {
+                job_state.with_mut(|state| {
+                    state.total_senders = progress.total_senders;
+                    state.processed_senders = progress.processed_senders;
+                    state.current_sender = progress.current_sender;
+                    state.candidate_sender_count = progress.candidate_sender_count;
+                    state.candidate_email_count = progress.candidate_email_count;
+                });
+            },
+        )
+        .await;
+
+        match result {
+            Ok(response) => {
+                let finished_at = chrono::Utc::now().timestamp_millis();
+                job_state.with_mut(|state| {
+                    state.status = FinancialTemplateDetectionJobStatus::Completed;
+                    state.finished_at = Some(finished_at);
+                    state.current_sender = None;
+                    state.total_senders = response.candidate_sender_count;
+                    state.processed_senders = response.candidate_sender_count;
+                    state.candidate_sender_count = response.candidate_sender_count;
+                    state.candidate_email_count = response.candidate_email_count;
+                    state.new_templates_count = response.templates.len();
+                });
+            }
+            Err(err) => {
+                let finished_at = chrono::Utc::now().timestamp_millis();
+                job_state.with_mut(|state| {
+                    state.status = FinancialTemplateDetectionJobStatus::Failed;
+                    state.finished_at = Some(finished_at);
+                    state.current_sender = None;
+                    state.error = Some(err.to_string());
+                });
+            }
+        }
+    });
+
+    Ok(HttpResponse::Ok().json(run_state))
+}
+
+pub async fn get_detect_templates_status(
+    detection_job: web::Data<TemplateDetectionJobState>,
+) -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(detection_job.snapshot()))
 }
