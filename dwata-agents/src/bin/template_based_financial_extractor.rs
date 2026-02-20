@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use clap::Parser;
 use config::{Config, File};
 use dateparser::parse as parse_datetime;
@@ -188,10 +188,11 @@ async fn main() -> Result<()> {
             })
             .collect();
         scored.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let selected: Vec<&DbEmail> = scored
-            .into_iter()
+        let sorted_emails: Vec<&DbEmail> = scored.into_iter().map(|(_, e)| e).collect();
+        let selected: Vec<&DbEmail> = sorted_emails
+            .iter()
             .take(max_template_emails)
-            .map(|(_, e)| e)
+            .copied()
             .collect();
 
         let ids: Vec<String> = selected.iter().map(|e| e.id.to_string()).collect();
@@ -208,29 +209,8 @@ async fn main() -> Result<()> {
             defaults.word_support
         );
 
-        let emails: Vec<Email> = selected
-            .iter()
-            .map(|e| Email {
-                subject: e.subject.clone(),
-                body: e.body.clone(),
-            })
-            .collect();
-        let subjects: Vec<String> = emails.iter().map(|e| e.subject.clone()).collect();
-        let bodies: Vec<String> = emails.iter().map(|e| e.body.clone()).collect();
-        let mut placeholder_counter = 1usize;
-        let subject_template = build_subject_template_with_support(
-            &subjects,
-            defaults.word_support,
-            emails.len(),
-            &mut placeholder_counter,
-        );
-        let body_template = build_template_word_mode_with_support(
-            &bodies,
-            defaults.line_support,
-            defaults.word_support,
-            emails.len(),
-            &mut placeholder_counter,
-        );
+        let (subject_template, body_template) =
+            build_adaptive_template_from_candidates(&sorted_emails, max_template_emails, &defaults);
         let full_template = format!("Subject: {subject_template}\n---\n{body_template}");
 
         println!("--- Generated Template ---");
@@ -554,7 +534,8 @@ async fn main() -> Result<()> {
                     .map(|(idx, email_id, vals)| {
                         let mut row = vec![idx.to_string(), email_id.to_string()];
                         for field in &ordered_fields {
-                            row.push(vals.get(field).cloned().unwrap_or_else(|| "-".to_string()));
+                            let value = vals.get(field).cloned().unwrap_or_else(|| "-".to_string());
+                            row.push(format_table_value(field, &value));
                         }
                         row
                     })
@@ -591,7 +572,8 @@ async fn main() -> Result<()> {
                     .map(|(idx, email_id, vals)| {
                         let mut row = vec![idx.to_string(), email_id.to_string()];
                         for field in &ordered_fields {
-                            row.push(vals.get(field).cloned().unwrap_or_else(|| "-".to_string()));
+                            let value = vals.get(field).cloned().unwrap_or_else(|| "-".to_string());
+                            row.push(format_table_value(field, &value));
                         }
                         row
                     })
@@ -761,6 +743,29 @@ fn is_valid_txn_value(field: &str, value: &str) -> bool {
     }
 }
 
+fn format_table_value(field: &str, value: &str) -> String {
+    if value == "-" {
+        return value.to_string();
+    }
+    if is_date_field(field) {
+        if let Some(date) = parse_date(value) {
+            return date.format("%d-%b-%Y").to_string().to_ascii_uppercase();
+        }
+    }
+    value.to_string()
+}
+
+fn is_date_field(field: &str) -> bool {
+    matches!(
+        field,
+        "issued-date"
+            | "due-date"
+            | "billing-period-start"
+            | "billing-period-end"
+            | "transaction-date"
+    )
+}
+
 fn parse_amount(raw: &str) -> Option<f64> {
     let re = Regex::new(r"[^\d,\.\-]").ok()?;
     let cleaned = re.replace_all(raw, "").replace(',', "");
@@ -771,11 +776,39 @@ fn parse_amount(raw: &str) -> Option<f64> {
 }
 
 fn parse_date(raw: &str) -> Option<NaiveDate> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() || trimmed.len() > 60 {
+    let mut normalized = raw.trim().trim_end_matches(['.', ',', ';', ':']).trim();
+    if normalized.is_empty() || normalized.len() > 60 {
         return None;
     }
-    parse_datetime(trimmed).ok().map(|dt| dt.date_naive())
+    if let Some(parsed) = parse_datetime(normalized).ok().map(|dt| dt.date_naive()) {
+        return Some(parsed);
+    }
+
+    let upper = normalized.to_ascii_uppercase();
+    let upper = upper.as_str();
+    let explicit_formats = [
+        "%d-%b-%Y", "%d-%B-%Y", "%d/%b/%Y", "%d/%B/%Y", "%d %b %Y", "%d %B %Y",
+    ];
+    for fmt in explicit_formats {
+        if let Ok(date) = NaiveDate::parse_from_str(upper, fmt) {
+            if (1900..=2100).contains(&date.year()) {
+                return Some(date);
+            }
+        }
+    }
+
+    // Retry with no internal spaces to handle values like "09- NOV -2021".
+    let collapsed = upper.replace(' ', "");
+    for fmt in ["%d-%b-%Y", "%d-%B-%Y", "%d/%b/%Y", "%d/%B/%Y"] {
+        if let Ok(date) = NaiveDate::parse_from_str(&collapsed, fmt) {
+            if (1900..=2100).contains(&date.year()) {
+                return Some(date);
+            }
+        }
+    }
+
+    normalized = upper;
+    parse_datetime(normalized).ok().map(|dt| dt.date_naive())
 }
 
 fn is_currency_like(raw: &str) -> bool {
@@ -811,16 +844,18 @@ fn load_all_emails_from_db(sender_email: &str) -> Result<Vec<DbEmail>> {
     let conn = Connection::open(&db_path)
         .with_context(|| format!("Failed to open database at {:?}", db_path))?;
     let mut stmt = conn.prepare(
-        "SELECT id, COALESCE(subject, ''), COALESCE(body_text, '')
+        "SELECT id, COALESCE(subject, ''), COALESCE(body_text, ''), COALESCE(body_html, '')
          FROM emails
          WHERE LOWER(from_address) = LOWER(?1)
          ORDER BY date_received DESC",
     )?;
     let rows = stmt.query_map(params![sender_email], |row| {
+        let body_text: String = row.get(2)?;
+        let body_html: String = row.get(3)?;
         Ok(DbEmail {
             id: row.get(0)?,
             subject: row.get(1)?,
-            body: row.get(2)?,
+            body: preferred_body_text(&body_text, &body_html),
         })
     })?;
     let mut emails = Vec::new();
@@ -919,16 +954,18 @@ fn load_sender_emails_from_db(sender_email: &str, max_db_emails: usize) -> Resul
     let mut candidates = Vec::new();
     if max_db_emails == 0 {
         let mut stmt = conn.prepare(
-            "SELECT id, COALESCE(subject, ''), COALESCE(body_text, '')
+            "SELECT id, COALESCE(subject, ''), COALESCE(body_text, ''), COALESCE(body_html, '')
              FROM emails
              WHERE LOWER(from_address) = LOWER(?1)
              ORDER BY date_received DESC",
         )?;
         let rows = stmt.query_map(params![sender_email], |row| {
+            let body_text: String = row.get(2)?;
+            let body_html: String = row.get(3)?;
             Ok(DbEmail {
                 id: row.get(0)?,
                 subject: row.get(1)?,
-                body: row.get(2)?,
+                body: preferred_body_text(&body_text, &body_html),
             })
         })?;
         for row in rows {
@@ -942,17 +979,19 @@ fn load_sender_emails_from_db(sender_email: &str, max_db_emails: usize) -> Resul
             .try_into()
             .context("--max-db-emails is too large")?;
         let mut stmt = conn.prepare(
-            "SELECT id, COALESCE(subject, ''), COALESCE(body_text, '')
+            "SELECT id, COALESCE(subject, ''), COALESCE(body_text, ''), COALESCE(body_html, '')
              FROM emails
              WHERE LOWER(from_address) = LOWER(?1)
              ORDER BY date_received DESC
              LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![sender_email, max_db_emails_i64], |row| {
+            let body_text: String = row.get(2)?;
+            let body_html: String = row.get(3)?;
             Ok(DbEmail {
                 id: row.get(0)?,
                 subject: row.get(1)?,
-                body: row.get(2)?,
+                body: preferred_body_text(&body_text, &body_html),
             })
         })?;
         for row in rows {
@@ -978,6 +1017,62 @@ fn load_sender_emails_from_db(sender_email: &str, max_db_emails: usize) -> Resul
     }
 
     Ok(candidates)
+}
+
+fn preferred_body_text(body_text: &str, body_html: &str) -> String {
+    let text = body_text.trim();
+    if !text.is_empty() {
+        return body_text.to_string();
+    }
+    let html = body_html.trim();
+    if html.is_empty() {
+        return String::new();
+    }
+    html_to_text(html)
+}
+
+fn html_to_text(html: &str) -> String {
+    let script_re = Regex::new(r"(?is)<script[^>]*>.*?</script>").ok();
+    let style_re = Regex::new(r"(?is)<style[^>]*>.*?</style>").ok();
+    let br_re = Regex::new(r"(?i)<br\s*/?>").ok();
+    let block_close_re = Regex::new(r"(?i)</(p|div|li|tr|h[1-6]|table)>").ok();
+    let tag_re = Regex::new(r"(?is)<[^>]+>").ok();
+    let multi_nl_re = Regex::new(r"\n{3,}").ok();
+    let multi_space_re = Regex::new(r"[ \t]{2,}").ok();
+
+    let mut s = html.to_string();
+    if let Some(re) = script_re {
+        s = re.replace_all(&s, " ").to_string();
+    }
+    if let Some(re) = style_re {
+        s = re.replace_all(&s, " ").to_string();
+    }
+    if let Some(re) = br_re {
+        s = re.replace_all(&s, "\n").to_string();
+    }
+    if let Some(re) = block_close_re {
+        s = re.replace_all(&s, "\n").to_string();
+    }
+    if let Some(re) = tag_re {
+        s = re.replace_all(&s, " ").to_string();
+    }
+
+    s = s
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'");
+    s = s.replace('\r', "");
+    if let Some(re) = multi_space_re {
+        s = re.replace_all(&s, " ").to_string();
+    }
+    if let Some(re) = multi_nl_re {
+        s = re.replace_all(&s, "\n\n").to_string();
+    }
+    s.trim().to_string()
 }
 
 fn cluster_emails(candidates: Vec<DbEmail>, threshold: f64) -> Result<Vec<EmailCluster>> {
@@ -1077,6 +1172,241 @@ fn derive_template_defaults(matching_count: usize) -> TemplateDefaults {
             word_support: 0.5,
         }
     }
+}
+
+fn build_adaptive_template_from_candidates(
+    sorted_emails: &[&DbEmail],
+    max_template_emails: usize,
+    defaults: &TemplateDefaults,
+) -> (String, String) {
+    let working_emails = choose_dense_financial_subgroup(sorted_emails);
+    let max_n = max_template_emails.min(working_emails.len());
+    let profiles = [
+        (max_n, defaults.line_support, defaults.word_support, false),
+        (max_n.min(12), 0.67, 0.67, false),
+        (max_n.min(8), 0.60, 0.60, false),
+        (max_n.min(5), 0.50, 0.50, false),
+        (max_n.min(5), 0.50, 0.50, true),
+        (max_n.min(3), 0.50, 0.50, true),
+    ];
+
+    let mut fallback_subject = String::new();
+    let mut fallback_body = String::new();
+
+    for (n, line_support, word_support, focused_mode) in profiles {
+        if n == 0 {
+            continue;
+        }
+        let emails: Vec<Email> = working_emails
+            .iter()
+            .take(n)
+            .map(|e| Email {
+                subject: e.subject.clone(),
+                body: if focused_mode {
+                    preprocess_body_for_template(&e.body, true)
+                } else {
+                    preprocess_body_for_template(&e.body, false)
+                },
+            })
+            .collect();
+        let subjects: Vec<String> = emails.iter().map(|e| e.subject.clone()).collect();
+        let bodies: Vec<String> = emails.iter().map(|e| e.body.clone()).collect();
+
+        let mut placeholder_counter = 1usize;
+        let subject_template = build_subject_template_with_support(
+            &subjects,
+            word_support,
+            emails.len(),
+            &mut placeholder_counter,
+        );
+        let body_template = build_template_word_mode_with_support(
+            &bodies,
+            line_support,
+            word_support,
+            emails.len(),
+            &mut placeholder_counter,
+        );
+
+        fallback_subject = subject_template.clone();
+        fallback_body = body_template.clone();
+
+        if !is_placeholder_only_template(&body_template) {
+            return (subject_template, body_template);
+        }
+    }
+
+    (fallback_subject, fallback_body)
+}
+
+fn choose_dense_financial_subgroup<'a>(sorted_emails: &'a [&'a DbEmail]) -> Vec<&'a DbEmail> {
+    let mut by_sig: HashMap<String, Vec<&DbEmail>> = HashMap::new();
+    for e in sorted_emails {
+        if let Some(sig) = financial_signature(&e.body) {
+            by_sig.entry(sig).or_default().push(*e);
+        }
+    }
+    let mut best: Option<Vec<&DbEmail>> = None;
+    for group in by_sig.into_values() {
+        if best.as_ref().is_none_or(|b| group.len() > b.len()) {
+            best = Some(group);
+        }
+    }
+    match best {
+        Some(group) if group.len() >= 3 => group,
+        _ => sorted_emails.to_vec(),
+    }
+}
+
+fn financial_signature(body: &str) -> Option<String> {
+    let maybe_line = body
+        .lines()
+        .map(|l| l.trim())
+        .find(|l| {
+            let s = l.to_ascii_lowercase();
+            s.contains("bill dated") && (s.contains("amount") || s.contains("due"))
+        })
+        .or_else(|| {
+            body.lines().map(|l| l.trim()).find(|l| {
+                let s = l.to_ascii_lowercase();
+                s.contains("due date") && s.contains("payment")
+            })
+        })?;
+    let mut sig = maybe_line.to_ascii_lowercase();
+    if let Ok(re_num) = Regex::new(r"\d+") {
+        sig = re_num.replace_all(&sig, "#").to_string();
+    }
+    if let Ok(re_month) = Regex::new(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b")
+    {
+        sig = re_month.replace_all(&sig, "mon").to_string();
+    }
+    if let Ok(re_ws) = Regex::new(r"\s+") {
+        sig = re_ws.replace_all(&sig, " ").to_string();
+    }
+    Some(sig.trim().to_string())
+}
+
+fn is_placeholder_only_template(template: &str) -> bool {
+    let re = match Regex::new(r"^\{\{\s*placeholder_\d+\s*\}\}$") {
+        Ok(re) => re,
+        Err(_) => return false,
+    };
+    let lines: Vec<&str> = template.lines().filter(|l| !l.trim().is_empty()).collect();
+    !lines.is_empty() && lines.iter().all(|line| re.is_match(line.trim()))
+}
+
+fn preprocess_body_for_template(raw: &str, focused_mode: bool) -> String {
+    let mut lines: Vec<String> = raw
+        .replace('\r', "")
+        .lines()
+        .map(normalize_line)
+        .filter(|l| !l.is_empty())
+        .filter(|l| !is_noise_line(l))
+        .collect();
+
+    // Normalize layout/wrapping differences by working at sentence granularity.
+    let merged = lines.join(" ");
+    lines = split_into_sentences(&merged)
+        .into_iter()
+        .map(|s| normalize_line(&s))
+        .filter(|s| !s.is_empty())
+        .filter(|s| !is_noise_line(s))
+        .collect();
+
+    if focused_mode {
+        let focused: Vec<String> = lines
+            .iter()
+            .filter(|l| is_financial_signal_line(l))
+            .cloned()
+            .collect();
+        if !focused.is_empty() {
+            lines = focused;
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn split_into_sentences(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut buf = String::new();
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let ch = chars[i];
+        buf.push(ch);
+        let prev = if i > 0 { Some(chars[i - 1]) } else { None };
+        let next = if i + 1 < chars.len() {
+            Some(chars[i + 1])
+        } else {
+            None
+        };
+        let is_sentence_punct = matches!(ch, '.' | '!' | '?');
+        let punct_followed_by_space_or_end = next.is_none_or(|c| c.is_whitespace());
+        let is_domain_or_decimal = ch == '.'
+            && prev.is_some_and(|c| c.is_ascii_alphanumeric())
+            && next.is_some_and(|c| c.is_ascii_alphanumeric());
+        let boundary = is_sentence_punct && punct_followed_by_space_or_end && !is_domain_or_decimal;
+        if boundary {
+            let s = buf.trim();
+            if !s.is_empty() {
+                out.push(s.to_string());
+            }
+            buf.clear();
+            while i + 1 < chars.len() && chars[i + 1].is_whitespace() {
+                i += 1;
+            }
+        }
+        i += 1;
+    }
+    let tail = buf.trim();
+    if !tail.is_empty() {
+        out.push(tail.to_string());
+    }
+    out
+}
+
+fn normalize_line(line: &str) -> String {
+    let mut s = line
+        .replace('\u{00A0}', " ")
+        .replace('\u{FFFD}', " ")
+        .trim()
+        .to_string();
+    if let Ok(re) = Regex::new(r"\s+") {
+        s = re.replace_all(&s, " ").to_string();
+    }
+    s
+}
+
+fn is_noise_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    if lower.len() > 260 {
+        return true;
+    }
+    if lower.chars().all(|c| !c.is_ascii_alphanumeric()) {
+        return true;
+    }
+    if lower.contains("confidentiality notice")
+        || lower.contains("intended recipient")
+        || lower.contains("unauthorized")
+        || lower.contains("privileged information")
+        || lower.contains("this is an auto generated email")
+    {
+        return true;
+    }
+    false
+}
+
+fn is_financial_signal_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower.contains("bill dated")
+        || lower.contains("amount")
+        || lower.contains("due date")
+        || lower.contains("due for payment")
+        || lower.contains("payment")
+        || lower.contains("rs ")
+        || lower.contains("rs,")
+        || lower.contains("airtel mobile")
+        || lower.contains("fixedline")
 }
 
 fn support_count(total_emails: usize, support_ratio: f64) -> usize {

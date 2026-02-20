@@ -39,6 +39,16 @@ pub fn parse_to_iso(raw: &str) -> Option<String> {
         .filter(|iso| iso.starts_with("19") || iso.starts_with("20"))
 }
 
+/// Parse a raw date string into UTC epoch milliseconds.
+///
+/// For date-only values, timestamp is normalized to 00:00:00 UTC on that date.
+pub fn parse_to_utc_timestamp_ms(raw: &str) -> Option<i64> {
+    let iso = parse_to_iso(raw)?;
+    let d = chrono::NaiveDate::parse_from_str(&iso, "%Y-%m-%d").ok()?;
+    let dt = d.and_hms_opt(0, 0, 0)?.and_utc();
+    Some(dt.timestamp_millis())
+}
+
 /// Parse a raw date string, returning both the raw value and the ISO 8601 result.
 ///
 /// Designed for use when building `Bill` or `FinancialTransaction` structs:
@@ -90,5 +100,12 @@ mod tests {
     #[test]
     fn test_unparseable_returns_none() {
         assert_eq!(parse_to_iso("not a date"), None);
+    }
+
+    #[test]
+    fn test_parse_to_utc_timestamp_ms() {
+        let ts = parse_to_utc_timestamp_ms("15 Jan 2025").unwrap();
+        let dt = chrono::DateTime::from_timestamp_millis(ts).unwrap();
+        assert_eq!(dt.format("%Y-%m-%d").to_string(), "2025-01-15");
     }
 }

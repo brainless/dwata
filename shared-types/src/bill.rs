@@ -47,9 +47,9 @@ pub enum ServiceIdentifierKind {
 /// Every date has two columns:
 /// - `{field}_raw`  — `TEXT` — the exact date string as it appeared in the source document
 ///                    (e.g., "15 Jan 2025", "January 15th, 2025", "15/01/25")
-/// - `{field}`      — `TEXT` — parsed and normalized to ISO 8601 `YYYY-MM-DD`
-///                    (e.g., "2025-01-15"). Nullable when parsing fails.
-///                    SQLite date/time functions understand this format natively.
+/// - `{field}`      — `BIGINT` — parsed UTC timestamp in milliseconds since Unix epoch.
+///                    For date-only values, use 00:00:00 UTC for that calendar day.
+///                    Nullable when parsing fails.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct Bill {
     pub id: i64,
@@ -64,21 +64,21 @@ pub struct Bill {
 
     /// Date the bill or invoice was generated or issued by the vendor.
     /// Distinct from due_date (when payment is expected) and billing_period (service window).
-    /// SQLite column type: TEXT (raw) / TEXT ISO 8601 (parsed)
+    /// SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
     pub issued_date_raw: Option<String>,
-    pub issued_date: Option<String>,
+    pub issued_date: Option<i64>,
 
     /// Date by which payment must be made.
-    /// SQLite column type: TEXT (raw) / TEXT ISO 8601 (parsed)
+    /// SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
     pub due_date_raw: Option<String>,
-    pub due_date: Option<String>,
+    pub due_date: Option<i64>,
 
     /// Start and end of the billing or service period this bill covers.
-    /// SQLite column type: TEXT (raw) / TEXT ISO 8601 (parsed)
+    /// SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
     pub billing_period_start_raw: Option<String>,
-    pub billing_period_start: Option<String>,
+    pub billing_period_start: Option<i64>,
     pub billing_period_end_raw: Option<String>,
-    pub billing_period_end: Option<String>,
+    pub billing_period_end: Option<i64>,
 
     pub created_at: i64,
     pub updated_at: i64,
