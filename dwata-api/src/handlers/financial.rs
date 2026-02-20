@@ -1,7 +1,9 @@
+use crate::config::ApiConfig;
 use crate::database::{financial_transactions as db, Database};
+use crate::search::tantivy::TantivySearchIndex;
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
-use shared_types::FinancialSummary;
+use shared_types::{DetectFinancialTemplatesRequest, FinancialSummary};
 use std::sync::Arc;
 
 #[derive(Deserialize)]
@@ -81,4 +83,22 @@ pub async fn get_summary(
             .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(summary))
+}
+
+pub async fn detect_templates(
+    db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
+    config: web::Data<Arc<ApiConfig>>,
+    request: web::Json<DetectFinancialTemplatesRequest>,
+) -> ActixResult<HttpResponse> {
+    let response = crate::helpers::template_detection::detect_and_store_templates(
+        db,
+        search_index,
+        config,
+        request.into_inner(),
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(response))
 }

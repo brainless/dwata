@@ -49,3 +49,35 @@ pub struct FinancialTemplateApplicability {
     pub match_score: Option<f64>,
     pub created_at: i64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DetectFinancialTemplatesRequest {
+    pub credential_id: Option<i64>,
+    pub max_candidate_emails: Option<usize>,
+    pub max_senders: Option<usize>,
+    pub max_templates_per_sender: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DetectedFinancialTemplateVariable {
+    pub placeholder_name: String,
+    pub target_field: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DetectedFinancialTemplate {
+    pub template_id: i64,
+    pub sender_email: String,
+    pub template_type: FinancialTemplateType,
+    pub template_body: String,
+    pub translated_template_body: String,
+    pub source_email_ids: Vec<i64>,
+    pub variables: Vec<DetectedFinancialTemplateVariable>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DetectFinancialTemplatesResponse {
+    pub candidate_sender_count: usize,
+    pub candidate_email_count: usize,
+    pub templates: Vec<DetectedFinancialTemplate>,
+}

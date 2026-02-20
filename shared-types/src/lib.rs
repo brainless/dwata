@@ -58,8 +58,9 @@ pub use financial::{
     CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialSummary,
 };
 pub use financial_template::{
-    FinancialExtractionTemplate, FinancialTemplateApplicability, FinancialTemplateStatus,
-    FinancialTemplateType, FinancialTemplateVariable,
+    DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse, DetectedFinancialTemplate,
+    DetectedFinancialTemplateVariable, FinancialExtractionTemplate, FinancialTemplateApplicability,
+    FinancialTemplateStatus, FinancialTemplateType, FinancialTemplateVariable,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};

@@ -14,6 +14,15 @@ pub struct EmailScanRow {
     pub body_html: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TemplateCandidateEmailRow {
+    pub email_id: i64,
+    pub from_address: String,
+    pub subject: Option<String>,
+    pub body_text: Option<String>,
+    pub body_html: Option<String>,
+}
+
 /// Insert email into database
 pub async fn insert_email(
     conn: AsyncDbConnection,
@@ -411,6 +420,77 @@ pub async fn list_email_scan_rows_by_document_ids(
             rows.truncate(limit);
         }
 
+        Ok(rows.into_iter().map(|(_, row)| row).collect())
+    })
+    .await?
+}
+
+pub async fn list_template_candidate_emails_by_sender_and_document_ids(
+    conn: AsyncDbConnection,
+    sender_email: &str,
+    document_ids: &[i64],
+    credential_id: Option<i64>,
+    max_emails: Option<usize>,
+) -> Result<Vec<TemplateCandidateEmailRow>> {
+    if document_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let sender_email = sender_email.to_string();
+    let document_ids = document_ids.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut seen_email_ids = HashSet::new();
+        let mut rows: Vec<(i64, TemplateCandidateEmailRow)> = Vec::new();
+
+        for chunk in document_ids.chunks(900) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut query = format!(
+                "SELECT e.id, e.date_received, e.from_address, e.subject, e.body_text, e.body_html
+                 FROM documents d
+                 JOIN emails e ON e.id = d.email_id
+                 WHERE d.id IN ({})
+                   AND d.kind = 'email'
+                   AND e.from_address = ?",
+                placeholders
+            );
+            let mut params: Vec<Value> = chunk.iter().copied().map(Value::from).collect();
+            params.push(Value::from(sender_email.clone()));
+
+            if let Some(cred) = credential_id {
+                query.push_str(" AND e.credential_id = ?");
+                params.push(Value::from(cred));
+            }
+
+            let mut stmt = conn.prepare(&query)?;
+            let mapped = stmt.query_map(params_from_iter(params), |row| {
+                Ok((
+                    row.get::<_, i64>(1)?,
+                    TemplateCandidateEmailRow {
+                        email_id: row.get(0)?,
+                        from_address: row.get(2)?,
+                        subject: row.get(3)?,
+                        body_text: row.get(4)?,
+                        body_html: row.get(5)?,
+                    },
+                ))
+            })?;
+
+            for item in mapped {
+                let (date_received, candidate_row) = item?;
+                if seen_email_ids.insert(candidate_row.email_id) {
+                    rows.push((date_received, candidate_row));
+                }
+            }
+        }
+
+        rows.sort_by(|a, b| b.0.cmp(&a.0));
+        if let Some(limit) = max_emails {
+            rows.truncate(limit);
+        }
         Ok(rows.into_iter().map(|(_, row)| row).collect())
     })
     .await?
