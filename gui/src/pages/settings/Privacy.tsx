@@ -22,7 +22,7 @@ export default function SettingsPrivacy() {
             <div>
               <span class="label-text font-medium">Enable privacy blur</span>
               <span class="label-text-alt block text-xs">
-                Applies to email subjects, previews, and financial patterns
+                Applies to email subjects, previews, and financial templates
               </span>
             </div>
           </label>

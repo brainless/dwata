@@ -412,26 +412,6 @@ import type { Email } from "./Email";
 export type ListEmailsResponse = { emails: Array<Email>, total_count: bigint, has_more: boolean, };
 
 
-/**
- * Request to scan emails for financial transaction signals
- */
-export type FinancialEmailScanRequest = { credential_id: bigint | null, max_emails: number | null, max_senders: number | null, };
-
-
-import type { FinancialEmailScanSender } from "./FinancialEmailScanSender";
-
-/**
- * Response for financial email scan
- */
-export type FinancialEmailScanResponse = { total_emails: bigint, total_emails_scanned: bigint, total_matched_emails: bigint, senders: Array<FinancialEmailScanSender>, };
-
-
-/**
- * Sender summary for financial email scan
- */
-export type FinancialEmailScanSender = { sender_email: string, matched_count: bigint, };
-
-
 export type DocumentSourceType = "imap-account" | "local-folder" | "cloud-drive" | "cloud-mailbox" | "manual-import";
 
 

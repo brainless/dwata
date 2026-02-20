@@ -6,7 +6,6 @@ use tracing_subscriber::prelude::*;
 
 mod config;
 mod database;
-mod financial_keywords;
 mod handlers;
 mod helpers;
 mod integrations;
@@ -648,10 +647,6 @@ async fn main() -> std::io::Result<()> {
             .route(
                 "/api/financial/summary",
                 web::get().to(handlers::financial::get_summary),
-            )
-            .route(
-                "/api/financial/email-scan",
-                web::post().to(handlers::financial::scan_financial_emails),
             )
             .default_service(web::route().to(gui_embed::serve_gui))
     })

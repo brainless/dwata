@@ -8,8 +8,8 @@ import Calendar from "./pages/Calendar";
 import Emails from "./pages/Emails";
 import FinancialExtractions from "./pages/FinancialExtractions";
 import FinancialHealth from "./pages/FinancialHealth";
-import FinancialPatternDetection from "./pages/FinancialPatternDetection";
-import FinancialPatterns from "./pages/FinancialPatterns";
+import FinancialTemplateDetection from "./pages/FinancialTemplateDetection";
+import FinancialTemplates from "./pages/FinancialTemplates";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Tasks from "./pages/Tasks";
@@ -34,8 +34,8 @@ render(
       <Route path="/calendar" component={Calendar} />
       <Route path="/financial" component={FinancialHealth} />
       <Route path="/financial/extractions" component={FinancialExtractions} />
-      <Route path="/financial/patterns" component={FinancialPatterns} />
-      <Route path="/financial/patterns/detect" component={FinancialPatternDetection} />
+      <Route path="/financial/templates" component={FinancialTemplates} />
+      <Route path="/financial/templates/detect" component={FinancialTemplateDetection} />
       <Route path="/jobs" component={BackgroundJobs} />
       <Route path="/settings" component={Settings} />
       <Route path="/settings/:tab" component={Settings} />

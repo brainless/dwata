@@ -94,9 +94,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(AttachmentExtractionStatus::export_to_string()?));
     types.push(clean_type(ListEmailsRequest::export_to_string()?));
     types.push(clean_type(ListEmailsResponse::export_to_string()?));
-    types.push(clean_type(FinancialEmailScanRequest::export_to_string()?));
-    types.push(clean_type(FinancialEmailScanResponse::export_to_string()?));
-    types.push(clean_type(FinancialEmailScanSender::export_to_string()?));
 
     // Document types
     types.push(clean_type(DocumentSourceType::export_to_string()?));

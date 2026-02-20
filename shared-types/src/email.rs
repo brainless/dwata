@@ -103,30 +103,3 @@ pub struct ListEmailsResponse {
     pub total_count: i64,
     pub has_more: bool,
 }
-
-/// Request to scan emails for financial transaction signals
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct FinancialEmailScanRequest {
-    pub credential_id: Option<i64>,
-    pub max_emails: Option<usize>,
-    pub max_senders: Option<usize>,
-}
-
-/// Sender summary for financial email scan
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
-pub struct FinancialEmailScanSender {
-    pub sender_email: String,
-    pub matched_count: i64,
-}
-
-/// Response for financial email scan
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
-pub struct FinancialEmailScanResponse {
-    pub total_emails: i64,
-    pub total_emails_scanned: i64,
-    pub total_matched_emails: i64,
-    pub senders: Vec<FinancialEmailScanSender>,
-}
