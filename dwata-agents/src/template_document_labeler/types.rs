@@ -19,6 +19,14 @@ pub enum DocumentType {
     BankStatement,
     /// Tax-related document
     TaxDocument,
+    /// No applicable financial document type from the supported set.
+    #[serde(
+        alias = "none",
+        alias = "none_applicable",
+        alias = "none-applicable",
+        alias = "none applicable"
+    )]
+    Unknown,
 }
 
 /// Result of the document labeler agent.

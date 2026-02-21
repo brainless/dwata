@@ -8,6 +8,7 @@ use tokio::task;
 
 #[derive(Debug, Clone)]
 pub struct EmailScanRow {
+    pub date_received: i64,
     pub from_address: String,
     pub subject: Option<String>,
     pub body_text: Option<String>,
@@ -320,8 +321,9 @@ pub async fn list_email_scan_rows(
 ) -> Result<Vec<EmailScanRow>> {
     task::spawn_blocking(move || {
         let conn = conn.get_blocking();
-        let mut query =
-            String::from("SELECT from_address, subject, body_text, body_html FROM emails");
+        let mut query = String::from(
+            "SELECT date_received, from_address, subject, body_text, body_html FROM emails",
+        );
         let mut params: Vec<Value> = Vec::new();
 
         if let Some(cred) = credential_id {
@@ -339,10 +341,11 @@ pub async fn list_email_scan_rows(
         let mut stmt = conn.prepare(&query)?;
         let rows = stmt.query_map(params_from_iter(params), |row| {
             Ok(EmailScanRow {
-                from_address: row.get(0)?,
-                subject: row.get(1)?,
-                body_text: row.get(2)?,
-                body_html: row.get(3)?,
+                date_received: row.get(0)?,
+                from_address: row.get(1)?,
+                subject: row.get(2)?,
+                body_text: row.get(3)?,
+                body_html: row.get(4)?,
             })
         })?;
 
@@ -399,6 +402,7 @@ pub async fn list_email_scan_rows_by_document_ids(
                     row.get::<_, i64>(0)?,
                     row.get::<_, i64>(1)?,
                     EmailScanRow {
+                        date_received: row.get(1)?,
                         from_address: row.get(2)?,
                         subject: row.get(3)?,
                         body_text: row.get(4)?,
@@ -454,7 +458,7 @@ pub async fn list_template_candidate_emails_by_sender_and_document_ids(
                  JOIN emails e ON e.id = d.email_id
                  WHERE d.id IN ({})
                    AND d.kind = 'email'
-                   AND e.from_address = ?",
+                   AND LOWER(e.from_address) = LOWER(?)",
                 placeholders
             );
             let mut params: Vec<Value> = chunk.iter().copied().map(Value::from).collect();
@@ -525,14 +529,14 @@ pub async fn list_unmatched_template_candidate_emails_by_sender_and_document_ids
                  JOIN emails e ON e.id = d.email_id
                  WHERE d.id IN ({})
                    AND d.kind = 'email'
-                   AND e.from_address = ?
+                   AND LOWER(e.from_address) = LOWER(?)
                    AND NOT EXISTS (
                        SELECT 1
                        FROM financial_template_email_links l
                        JOIN financial_extraction_templates t ON t.id = l.template_id
                        WHERE l.email_id = e.id
                          AND t.data_source_type = 'email'
-                         AND t.data_source_id = e.from_address
+                         AND LOWER(t.data_source_id) = LOWER(e.from_address)
                          AND t.status = 'active'
                    )",
                 placeholders

@@ -5,8 +5,8 @@ use actix_web::web;
 use anyhow::Result;
 use dwata_agents::{detect_templates_for_sender, TemplateDetectionOptions, TemplateInputEmail};
 use nocodo_llm_sdk::client::LlmClient;
-use nocodo_llm_sdk::gemini::GeminiClient;
-use nocodo_llm_sdk::models::gemini::GEMINI_3_FLASH_ID;
+use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
+use nocodo_llm_sdk::ollama::OllamaClient;
 use regex::Regex;
 use shared_types::{
     DataSourceType, DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse,
@@ -126,16 +126,8 @@ fn to_template_type(has_bill: bool) -> FinancialTemplateType {
     }
 }
 
-fn build_llm_client(config: &ApiConfig) -> Result<Arc<dyn LlmClient>> {
-    let api_key = config
-        .ai_provider_api_keys
-        .as_ref()
-        .and_then(|keys| keys.gemini_api_key.as_ref())
-        .cloned()
-        .ok_or_else(|| {
-            anyhow::anyhow!("Missing ai_provider_api_keys.gemini_api_key in api config")
-        })?;
-    Ok(Arc::new(GeminiClient::new(api_key)?))
+fn build_llm_client(_config: &ApiConfig) -> Result<Arc<dyn LlmClient>> {
+    Ok(Arc::new(OllamaClient::new()?))
 }
 
 fn to_input_email(row: &emails_db::TemplateCandidateEmailRow) -> TemplateInputEmail {
@@ -257,12 +249,38 @@ where
     )
     .await?;
 
-    let mut sender_counts: HashMap<String, usize> = HashMap::new();
+    let mut sender_stats: HashMap<String, (usize, i64)> = HashMap::new();
     for row in &scan_rows {
-        *sender_counts.entry(row.from_address.clone()).or_insert(0) += 1;
+        let sender_key = row.from_address.trim().to_ascii_lowercase();
+        if sender_key.is_empty() {
+            continue;
+        }
+        let entry = sender_stats
+            .entry(sender_key)
+            .or_insert((0usize, row.date_received));
+        entry.0 += 1;
+        if row.date_received > entry.1 {
+            entry.1 = row.date_received;
+        }
     }
-    let mut senders = sender_counts.into_iter().collect::<Vec<_>>();
-    senders.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let sender_emails = sender_stats.keys().cloned().collect::<Vec<_>>();
+    let sender_cluster_sizes = templates_db::list_sender_max_cluster_sizes(
+        db.async_connection.clone(),
+        &sender_emails,
+        request.credential_id,
+    )
+    .await?;
+
+    let mut senders = sender_stats.into_iter().collect::<Vec<_>>();
+    senders.sort_by(|a, b| {
+        let a_cluster = sender_cluster_sizes.get(&a.0).copied().unwrap_or(0);
+        let b_cluster = sender_cluster_sizes.get(&b.0).copied().unwrap_or(0);
+        b.1 .1
+            .cmp(&a.1 .1)
+            .then_with(|| b_cluster.cmp(&a_cluster))
+            .then_with(|| b.1 .0.cmp(&a.1 .0))
+            .then_with(|| a.0.cmp(&b.0))
+    });
     if let Some(max_senders) = request.max_senders {
         if senders.len() > max_senders {
             senders.truncate(max_senders);
@@ -278,8 +296,9 @@ where
     });
 
     let llm_client = build_llm_client(&config)?;
-    let model = GEMINI_3_FLASH_ID.to_string();
+    let model = MINISTRAL_3_3B_ID.to_string();
     let mut templates = Vec::new();
+    let mut sender_errors: Vec<String> = Vec::new();
 
     for (sender_idx, (sender_email, _)) in senders.iter().enumerate() {
         on_progress(TemplateDetectionProgress {
@@ -290,29 +309,8 @@ where
             current_sender: Some(sender_email.clone()),
         });
 
-        let sender_rows = emails_db::list_template_candidate_emails_by_sender_and_document_ids(
-            db.async_connection.clone(),
-            sender_email,
-            &matched_document_ids,
-            request.credential_id,
-            request.max_candidate_emails,
-        )
-        .await?;
-        if sender_rows.is_empty() {
-            continue;
-        }
-
-        let existing_templates = templates_db::list_templates_with_variables_by_sender(
-            db.async_connection.clone(),
-            sender_email,
-        )
-        .await?;
-
-        let _ =
-            link_matching_emails_for_sender(db.clone(), &existing_templates, &sender_rows).await?;
-
-        let fresh_unmatched_rows =
-            emails_db::list_unmatched_template_candidate_emails_by_sender_and_document_ids(
+        let sender_result: Result<()> = async {
+            let sender_rows = emails_db::list_template_candidate_emails_by_sender_and_document_ids(
                 db.async_connection.clone(),
                 sender_email,
                 &matched_document_ids,
@@ -320,121 +318,164 @@ where
                 request.max_candidate_emails,
             )
             .await?;
-
-        if fresh_unmatched_rows.is_empty() {
-            continue;
-        }
-
-        let template_ids = existing_templates
-            .iter()
-            .map(|t| t.template_id)
-            .collect::<Vec<_>>();
-        let anchor_email_ids = templates_db::list_anchor_email_ids_by_template_ids(
-            db.async_connection.clone(),
-            &template_ids,
-            request.credential_id,
-        )
-        .await?;
-
-        let sender_rows_by_id = sender_rows
-            .iter()
-            .map(|r| (r.email_id, r.clone()))
-            .collect::<HashMap<_, _>>();
-
-        let mut pool_rows = fresh_unmatched_rows.clone();
-        let mut seen_pool_email_ids = pool_rows.iter().map(|r| r.email_id).collect::<HashSet<_>>();
-        for template_id in template_ids {
-            if let Some(anchor_email_id) = anchor_email_ids.get(&template_id) {
-                if seen_pool_email_ids.contains(anchor_email_id) {
-                    continue;
-                }
-                if let Some(anchor_row) = sender_rows_by_id.get(anchor_email_id) {
-                    seen_pool_email_ids.insert(*anchor_email_id);
-                    pool_rows.push(anchor_row.clone());
-                }
+            if sender_rows.is_empty() {
+                return Ok(());
             }
-        }
 
-        if pool_rows.len() < 2 {
-            continue;
-        }
-
-        let input_emails = pool_rows.iter().map(to_input_email).collect::<Vec<_>>();
-        let clusters = detect_templates_for_sender(
-            llm_client.clone(),
-            model.clone(),
-            input_emails,
-            TemplateDetectionOptions {
-                word_distance_threshold: 0.35,
-                max_clusters: request.max_templates_per_sender.unwrap_or(3),
-            },
-        )
-        .await?;
-
-        for cluster in clusters {
-            let template_type = to_template_type(cluster.has_bill);
-            let template_id = templates_db::insert_template(
+            let existing_templates = templates_db::list_templates_with_variables_by_sender(
                 db.async_connection.clone(),
-                DataSourceType::Email,
                 sender_email,
-                template_type,
-                &cluster.template_body,
             )
             .await?;
 
-            templates_db::insert_template_applicability(
-                db.async_connection.clone(),
-                template_id,
-                DataSourceType::Email,
-                sender_email,
-                None,
-            )
-            .await?;
+            let _ = link_matching_emails_for_sender(db.clone(), &existing_templates, &sender_rows)
+                .await?;
 
-            for variable in &cluster.variables {
-                templates_db::insert_template_variable(
+            let fresh_unmatched_rows =
+                emails_db::list_unmatched_template_candidate_emails_by_sender_and_document_ids(
                     db.async_connection.clone(),
-                    template_id,
-                    &variable.placeholder_name,
-                    &variable.target_field,
+                    sender_email,
+                    &matched_document_ids,
+                    request.credential_id,
+                    request.max_candidate_emails,
                 )
                 .await?;
+
+            if fresh_unmatched_rows.is_empty() {
+                return Ok(());
             }
-            for email_id in &cluster.email_ids {
-                templates_db::insert_template_email_link(
+
+            let template_ids = existing_templates
+                .iter()
+                .map(|t| t.template_id)
+                .collect::<Vec<_>>();
+            let anchor_email_ids = templates_db::list_anchor_email_ids_by_template_ids(
+                db.async_connection.clone(),
+                &template_ids,
+                request.credential_id,
+            )
+            .await?;
+
+            let sender_rows_by_id = sender_rows
+                .iter()
+                .map(|r| (r.email_id, r.clone()))
+                .collect::<HashMap<_, _>>();
+
+            let mut pool_rows = fresh_unmatched_rows.clone();
+            let mut seen_pool_email_ids =
+                pool_rows.iter().map(|r| r.email_id).collect::<HashSet<_>>();
+            for template_id in template_ids {
+                if let Some(anchor_email_id) = anchor_email_ids.get(&template_id) {
+                    if seen_pool_email_ids.contains(anchor_email_id) {
+                        continue;
+                    }
+                    if let Some(anchor_row) = sender_rows_by_id.get(anchor_email_id) {
+                        seen_pool_email_ids.insert(*anchor_email_id);
+                        pool_rows.push(anchor_row.clone());
+                    }
+                }
+            }
+
+            if pool_rows.len() < 2 {
+                return Ok(());
+            }
+
+            let input_emails = pool_rows.iter().map(to_input_email).collect::<Vec<_>>();
+            let clusters = detect_templates_for_sender(
+                llm_client.clone(),
+                model.clone(),
+                input_emails,
+                TemplateDetectionOptions {
+                    word_distance_threshold: 0.35,
+                    max_clusters: request.max_templates_per_sender.unwrap_or(3),
+                },
+            )
+            .await?;
+
+            let mut discarded_empty_mappings = 0usize;
+            for cluster in clusters {
+                if cluster.variables.is_empty() {
+                    discarded_empty_mappings += 1;
+                    continue;
+                }
+
+                let template_type = to_template_type(cluster.has_bill);
+                let template_id = templates_db::insert_template(
+                    db.async_connection.clone(),
+                    DataSourceType::Email,
+                    sender_email,
+                    template_type,
+                    &cluster.template_body,
+                )
+                .await?;
+
+                templates_db::insert_template_applicability(
                     db.async_connection.clone(),
                     template_id,
-                    *email_id,
+                    DataSourceType::Email,
+                    sender_email,
                     None,
                 )
                 .await?;
+
+                for variable in &cluster.variables {
+                    templates_db::insert_template_variable(
+                        db.async_connection.clone(),
+                        template_id,
+                        &variable.placeholder_name,
+                        &variable.target_field,
+                    )
+                    .await?;
+                }
+                for email_id in &cluster.email_ids {
+                    templates_db::insert_template_email_link(
+                        db.async_connection.clone(),
+                        template_id,
+                        *email_id,
+                        None,
+                    )
+                    .await?;
+                }
+
+                templates.push(DetectedFinancialTemplate {
+                    template_id,
+                    sender_email: sender_email.clone(),
+                    template_type,
+                    template_body: cluster.template_body,
+                    translated_template_body: cluster.translated_template_body,
+                    source_email_ids: cluster.email_ids,
+                    variables: cluster
+                        .variables
+                        .into_iter()
+                        .map(|v| DetectedFinancialTemplateVariable {
+                            placeholder_name: v.placeholder_name,
+                            target_field: v.target_field,
+                        })
+                        .collect(),
+                });
+            }
+            if discarded_empty_mappings > 0 {
+                tracing::warn!(
+                    sender = %sender_email,
+                    discarded = discarded_empty_mappings,
+                    "Discarded generated templates with no variable mappings"
+                );
             }
 
-            templates.push(DetectedFinancialTemplate {
-                template_id,
-                sender_email: sender_email.clone(),
-                template_type,
-                template_body: cluster.template_body,
-                translated_template_body: cluster.translated_template_body,
-                source_email_ids: cluster.email_ids,
-                variables: cluster
-                    .variables
-                    .into_iter()
-                    .map(|v| DetectedFinancialTemplateVariable {
-                        placeholder_name: v.placeholder_name,
-                        target_field: v.target_field,
-                    })
-                    .collect(),
-            });
+            let refreshed_templates = templates_db::list_templates_with_variables_by_sender(
+                db.async_connection.clone(),
+                sender_email,
+            )
+            .await?;
+            let _ = link_matching_emails_for_sender(db.clone(), &refreshed_templates, &sender_rows)
+                .await?;
+            Ok(())
         }
+        .await;
 
-        let refreshed_templates = templates_db::list_templates_with_variables_by_sender(
-            db.async_connection.clone(),
-            sender_email,
-        )
-        .await?;
-        let _ =
-            link_matching_emails_for_sender(db.clone(), &refreshed_templates, &sender_rows).await?;
+        if let Err(err) = sender_result {
+            sender_errors.push(format!("{}: {}", sender_email, err));
+        }
 
         on_progress(TemplateDetectionProgress {
             candidate_sender_count: total_senders,
@@ -443,6 +484,20 @@ where
             processed_senders: sender_idx + 1,
             current_sender: None,
         });
+    }
+
+    if !sender_errors.is_empty() {
+        let sample = sender_errors
+            .iter()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" | ");
+        return Err(anyhow::anyhow!(
+            "Template detection completed with {} sender error(s). Sample: {}",
+            sender_errors.len(),
+            sample
+        ));
     }
 
     Ok(DetectFinancialTemplatesResponse {

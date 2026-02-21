@@ -219,7 +219,7 @@ pub async fn list_templates_with_variables_by_sender(
              FROM financial_extraction_templates t
              LEFT JOIN financial_template_variables v ON v.template_id = t.id
              WHERE t.data_source_type = 'email'
-               AND t.data_source_id = ?
+               AND LOWER(t.data_source_id) = LOWER(?)
                AND t.status = 'active'
              ORDER BY t.id ASC, v.id ASC",
         )?;
@@ -385,6 +385,77 @@ pub async fn list_anchor_email_ids_by_template_ids(
             for row in rows {
                 let (template_id, email_id) = row?;
                 out.insert(template_id, email_id);
+            }
+        }
+
+        Ok(out)
+    })
+    .await?
+}
+
+pub async fn list_sender_max_cluster_sizes(
+    conn: AsyncDbConnection,
+    sender_emails: &[String],
+    credential_id: Option<i64>,
+) -> Result<HashMap<String, usize>> {
+    if sender_emails.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let sender_emails = sender_emails.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut out: HashMap<String, usize> = HashMap::new();
+
+        for chunk in sender_emails.chunks(900) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let credential_filter = if credential_id.is_some() {
+                "AND e.credential_id = ?"
+            } else {
+                ""
+            };
+            let query = format!(
+                "SELECT t.data_source_id,
+                        MAX(
+                            (
+                                SELECT COUNT(*)
+                                FROM financial_template_email_links l
+                                JOIN emails e ON e.id = l.email_id
+                                WHERE l.template_id = t.id
+                                  {credential_filter}
+                            )
+                        ) AS max_cluster_size
+                 FROM financial_extraction_templates t
+                 WHERE t.data_source_type = 'email'
+                   AND t.status = 'active'
+                   AND LOWER(t.data_source_id) IN ({placeholders})
+                 GROUP BY t.data_source_id"
+            );
+
+            let mut params: Vec<Value> = Vec::new();
+            if let Some(cred) = credential_id {
+                params.push(Value::from(cred));
+            }
+            params.extend(
+                chunk
+                    .iter()
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .map(Value::from),
+            );
+
+            let mut stmt = conn.prepare(&query)?;
+            let rows = stmt.query_map(params_from_iter(params), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            for row in rows {
+                let (sender, max_cluster_size) = row?;
+                out.insert(
+                    sender.to_ascii_lowercase(),
+                    max_cluster_size.max(0) as usize,
+                );
             }
         }
 

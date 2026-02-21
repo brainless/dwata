@@ -551,7 +551,12 @@ fn is_financial_signal_line(line: &str) -> bool {
 }
 
 fn support_count(total_emails: usize, support_ratio: f64) -> usize {
-    ((total_emails as f64) * support_ratio).ceil().max(1.0) as usize
+    let required = ((total_emails as f64) * support_ratio).ceil().max(1.0) as usize;
+    if total_emails >= 2 {
+        required.max(2).min(total_emails)
+    } else {
+        required.min(total_emails.max(1))
+    }
 }
 
 fn build_subject_template_with_support(

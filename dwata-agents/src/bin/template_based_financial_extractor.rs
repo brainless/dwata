@@ -21,9 +21,7 @@ use dwata_agents::template_financial_extractor::{
 use dwata_agents::{discover_template_drafts, TemplateDetectionOptions, TemplateInputEmail};
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::gemini::GeminiClient;
-use nocodo_llm_sdk::models::gemini::GEMINI_3_FLASH_ID;
 use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
-use nocodo_llm_sdk::models::openai::GPT_5_MINI_ID;
 use nocodo_llm_sdk::ollama::OllamaClient;
 use nocodo_llm_sdk::openai::OpenAIClient;
 
@@ -53,7 +51,7 @@ struct Cli {
     template_only: bool,
 
     /// LLM provider to use
-    #[arg(long, default_value = "gemini", value_parser = ["gemini", "openai", "ollama"])]
+    #[arg(long, default_value = "ollama", value_parser = ["gemini", "openai", "ollama"])]
     provider: String,
 
     /// Model ID to use (provider-specific)
@@ -76,6 +74,14 @@ struct DbEmail {
     id: i64,
     subject: String,
     body: String,
+}
+
+struct DbTemplateRuntime {
+    id: i64,
+    full_template: String,
+    bill_placeholder_to_field: HashMap<String, String>,
+    txn_placeholder_to_field: HashMap<String, String>,
+    linked_email_ids: Vec<i64>,
 }
 
 struct TemplateRuntime {
@@ -130,12 +136,7 @@ async fn main() -> Result<()> {
 
     let model = match cli.model {
         Some(ref m) => m.clone(),
-        None => match cli.provider.as_str() {
-            "gemini" => GEMINI_3_FLASH_ID.to_string(),
-            "openai" => GPT_5_MINI_ID.to_string(),
-            "ollama" => MINISTRAL_3_3B_ID.to_string(),
-            _ => GEMINI_3_FLASH_ID.to_string(),
-        },
+        None => MINISTRAL_3_3B_ID.to_string(),
     };
 
     let (llm_client, storage): (
@@ -415,87 +416,95 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    println!("\n--- Extracting structured data from all sender emails ---");
+    println!("\n--- Extracting structured data from DB-linked templates ---");
     let sample_emails = load_all_emails_from_db(&cli.email_from)?;
-    println!("Loaded {} emails.\n", sample_emails.len());
+    let db_templates = load_db_template_runtimes_from_db(&cli.email_from)?;
+    println!(
+        "Loaded {} emails and {} active DB templates.\n",
+        sample_emails.len(),
+        db_templates.len()
+    );
+    if db_templates.is_empty() {
+        println!(
+            "No active DB templates found for sender '{}'.",
+            cli.email_from
+        );
+        return Ok(());
+    }
+    let emails_by_id: HashMap<i64, &DbEmail> = sample_emails.iter().map(|e| (e.id, e)).collect();
 
-    let mut bill_rows_by_template: BTreeMap<usize, Vec<(usize, i64, HashMap<String, String>)>> =
+    let mut bill_rows_by_template: BTreeMap<i64, Vec<(usize, i64, HashMap<String, String>)>> =
         BTreeMap::new();
-    let mut txn_rows_by_template: BTreeMap<usize, Vec<(usize, i64, HashMap<String, String>)>> =
+    let mut txn_rows_by_template: BTreeMap<i64, Vec<(usize, i64, HashMap<String, String>)>> =
         BTreeMap::new();
     let mut rejected_bill_rows = 0usize;
     let mut rejected_txn_rows = 0usize;
-    let mut unmatched = 0usize;
+    let mut missing_linked_emails = 0usize;
 
-    for (i, email) in sample_emails.iter().enumerate() {
-        let email_text = comparable_text(email);
-        let best = template_runtimes
-            .iter()
-            .map(|t| (t, normalized_word_edit_distance(&t.seed_text, &email_text)))
-            .min_by(|a, b| a.1.total_cmp(&b.1));
+    for tmpl in &db_templates {
+        for (idx, email_id) in tmpl.linked_email_ids.iter().enumerate() {
+            let Some(email) = emails_by_id.get(email_id) else {
+                missing_linked_emails += 1;
+                continue;
+            };
 
-        if let Some((tmpl, dist)) = best {
-            if dist <= cli.word_distance_threshold {
-                let placeholder_vals = extract_values_from_email(&tmpl.full_template, email);
-                let mut bill_field_vals: HashMap<String, String> = HashMap::new();
-                let mut txn_field_vals: HashMap<String, String> = HashMap::new();
-                let mut bill_row_valid = true;
-                let mut txn_row_valid = true;
-                for (placeholder, value) in placeholder_vals {
-                    if let Some(field) = tmpl.bill_placeholder_to_field.get(&placeholder) {
-                        if is_valid_bill_value(field, &value) {
-                            bill_field_vals.insert(field.clone(), value.clone());
-                        } else {
-                            bill_row_valid = false;
-                            eprintln!(
-                                "Rejected bill row for email {}: value {:?} does not match field {:?}",
-                                email.id, value, field
-                            );
-                        }
-                    }
-                    if let Some(field) = tmpl.txn_placeholder_to_field.get(&placeholder) {
-                        if is_valid_txn_value(field, &value) {
-                            txn_field_vals.insert(field.clone(), value);
-                        } else {
-                            txn_row_valid = false;
-                            eprintln!(
-                                "Rejected transaction row for email {}: value {:?} does not match field {:?}",
-                                email.id, value, field
-                            );
-                        }
-                    }
-                }
-                if !tmpl.bill_placeholder_to_field.is_empty() {
-                    if bill_row_valid {
-                        bill_rows_by_template.entry(tmpl.id).or_default().push((
-                            i + 1,
-                            email.id,
-                            bill_field_vals,
-                        ));
+            let placeholder_vals = extract_values_from_email(&tmpl.full_template, email);
+            let mut bill_field_vals: HashMap<String, String> = HashMap::new();
+            let mut txn_field_vals: HashMap<String, String> = HashMap::new();
+            let mut bill_row_valid = true;
+            let mut txn_row_valid = true;
+
+            for (placeholder, value) in placeholder_vals {
+                if let Some(field) = tmpl.bill_placeholder_to_field.get(&placeholder) {
+                    if is_valid_bill_value(field, &value) {
+                        bill_field_vals.insert(field.clone(), value.clone());
                     } else {
-                        rejected_bill_rows += 1;
+                        bill_row_valid = false;
+                        eprintln!(
+                            "Rejected bill row for email {}: value {:?} does not match field {:?}",
+                            email.id, value, field
+                        );
                     }
                 }
-                if !tmpl.txn_placeholder_to_field.is_empty() {
-                    if txn_row_valid {
-                        txn_rows_by_template.entry(tmpl.id).or_default().push((
-                            i + 1,
-                            email.id,
-                            txn_field_vals,
-                        ));
+                if let Some(field) = tmpl.txn_placeholder_to_field.get(&placeholder) {
+                    if is_valid_txn_value(field, &value) {
+                        txn_field_vals.insert(field.clone(), value);
                     } else {
-                        rejected_txn_rows += 1;
+                        txn_row_valid = false;
+                        eprintln!(
+                            "Rejected transaction row for email {}: value {:?} does not match field {:?}",
+                            email.id, value, field
+                        );
                     }
                 }
-            } else {
-                unmatched += 1;
             }
-        } else {
-            unmatched += 1;
+
+            if !tmpl.bill_placeholder_to_field.is_empty() {
+                if bill_row_valid {
+                    bill_rows_by_template.entry(tmpl.id).or_default().push((
+                        idx + 1,
+                        email.id,
+                        bill_field_vals,
+                    ));
+                } else {
+                    rejected_bill_rows += 1;
+                }
+            }
+            if !tmpl.txn_placeholder_to_field.is_empty() {
+                if txn_row_valid {
+                    txn_rows_by_template.entry(tmpl.id).or_default().push((
+                        idx + 1,
+                        email.id,
+                        txn_field_vals,
+                    ));
+                } else {
+                    rejected_txn_rows += 1;
+                }
+            }
         }
     }
 
-    for runtime in &template_runtimes {
+    for runtime in &db_templates {
         let mut bill_fields: BTreeSet<String> = BTreeSet::new();
         for f in runtime.bill_placeholder_to_field.values() {
             bill_fields.insert(f.clone());
@@ -525,15 +534,16 @@ async fn main() -> Result<()> {
         let header_refs: Vec<&str> = headers.iter().map(|s| s.as_str()).collect();
         print_table(
             &format!(
-                "Bill Extraction Data (T{} size {})",
-                runtime.id, runtime.size
+                "Bill Extraction Data (DB template {} links {})",
+                runtime.id,
+                runtime.linked_email_ids.len()
             ),
             &header_refs,
             &rows,
         );
     }
 
-    for runtime in &template_runtimes {
+    for runtime in &db_templates {
         let mut txn_fields: BTreeSet<String> = BTreeSet::new();
         for f in runtime.txn_placeholder_to_field.values() {
             txn_fields.insert(f.clone());
@@ -563,14 +573,18 @@ async fn main() -> Result<()> {
         let header_refs: Vec<&str> = headers.iter().map(|s| s.as_str()).collect();
         print_table(
             &format!(
-                "Transaction Extraction Data (T{} size {})",
-                runtime.id, runtime.size
+                "Transaction Extraction Data (DB template {} links {})",
+                runtime.id,
+                runtime.linked_email_ids.len()
             ),
             &header_refs,
             &rows,
         );
     }
-    println!("Unmatched emails in sample: {}", unmatched);
+    println!(
+        "Linked emails missing from sender scan: {}",
+        missing_linked_emails
+    );
     println!(
         "Rejected rows due to type mismatch: bills={}, transactions={}",
         rejected_bill_rows, rejected_txn_rows
@@ -607,7 +621,11 @@ fn translate_template(template: &str, placeholder_to_field: &HashMap<String, Str
 
 /// Given a single template line and an email line, extract placeholder values
 /// by using the fixed text segments as delimiters.
-fn extract_values_from_line(template_line: &str, email_line: &str) -> HashMap<String, String> {
+fn extract_values_from_line(
+    template_line: &str,
+    email_line: &str,
+    next_template_line: Option<&str>,
+) -> HashMap<String, String> {
     let mut values = HashMap::new();
 
     // Parse template line into interleaved fixed / placeholder parts.
@@ -668,9 +686,21 @@ fn extract_values_from_line(template_line: &str, email_line: &str) -> HashMap<St
             email_line.len()
         };
 
-        let value = email_line[pos..value_end].trim();
+        let mut value = email_line[pos..value_end].trim().to_string();
+        // If this placeholder runs to end-of-line, use the next template line
+        // (when it is static text) as an additional delimiter to avoid over-capturing.
+        if trailing.is_empty() {
+            if let Some(next_line_raw) = next_template_line {
+                let next_line = next_line_raw.trim();
+                if !next_line.is_empty() && !next_line.contains("{{") {
+                    if let Some(idx) = value.find(next_line) {
+                        value = value[..idx].trim().to_string();
+                    }
+                }
+            }
+        }
         if !value.is_empty() {
-            values.insert(ph.to_string(), value.to_string());
+            values.insert(ph.to_string(), value);
         }
         pos = value_end;
     }
@@ -680,23 +710,178 @@ fn extract_values_from_line(template_line: &str, email_line: &str) -> HashMap<St
 
 /// Extract placeholder values from a single email by matching template lines.
 fn extract_values_from_email(template: &str, email: &DbEmail) -> HashMap<String, String> {
-    let email_text = format!("Subject: {}\n---\n{}", email.subject, email.body);
-    let mut all_values = HashMap::new();
+    let preprocessed_body = preprocess_body_for_extraction(&email.body);
+    let email_text = format!(
+        "Subject: {}\n---\n{}",
+        email.subject.trim(),
+        preprocessed_body
+    );
 
-    for template_line in template.lines() {
+    if let Some(values) = extract_values_from_full_template(template, &email_text) {
+        return values;
+    }
+
+    // Fallback: per-line extraction if full-template matching fails.
+    let mut all_values = HashMap::new();
+    let template_lines: Vec<&str> = template.lines().collect();
+    for (idx, template_line) in template_lines.iter().enumerate() {
         if !template_line.contains("{{") {
             continue;
         }
+        let next_template_line = template_lines.get(idx + 1).copied();
         for email_line in email_text.lines() {
-            let extracted = extract_values_from_line(template_line, email_line);
+            let extracted = extract_values_from_line(template_line, email_line, next_template_line);
             if !extracted.is_empty() {
                 all_values.extend(extracted);
-                break; // matched — move on to the next template line
+                break;
             }
         }
     }
-
     all_values
+}
+
+fn extract_values_from_full_template(
+    template: &str,
+    email_text: &str,
+) -> Option<HashMap<String, String>> {
+    let ph_re = Regex::new(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}").ok()?;
+    let mut pattern = String::from("(?s)^");
+    let mut names: Vec<String> = Vec::new();
+    let mut last = 0usize;
+
+    for caps in ph_re.captures_iter(template) {
+        let m = caps.get(0)?;
+        let name = caps.get(1)?.as_str().to_string();
+        let fixed = &template[last..m.start()];
+        pattern.push_str(&fixed_text_to_regex(fixed));
+        pattern.push_str("(.*?)");
+        names.push(name);
+        last = m.end();
+    }
+    pattern.push_str(&fixed_text_to_regex(&template[last..]));
+    pattern.push('$');
+
+    let re = Regex::new(&pattern).ok()?;
+    let caps = re.captures(email_text)?;
+    let mut out = HashMap::new();
+    for (i, name) in names.iter().enumerate() {
+        if let Some(v) = caps.get(i + 1) {
+            let value = v.as_str().trim();
+            if !value.is_empty() {
+                out.insert(name.clone(), value.to_string());
+            }
+        }
+    }
+    Some(out)
+}
+
+fn fixed_text_to_regex(fixed: &str) -> String {
+    let mut out = String::new();
+    let mut in_ws = false;
+    for ch in fixed.chars() {
+        if ch.is_whitespace() {
+            if !in_ws {
+                out.push_str(r"\s+");
+                in_ws = true;
+            }
+            continue;
+        }
+        in_ws = false;
+        match ch {
+            '\\' | '^' | '$' | '.' | '|' | '?' | '*' | '+' | '(' | ')' | '[' | ']' | '{' | '}' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn preprocess_body_for_extraction(raw: &str) -> String {
+    let mut lines: Vec<String> = raw
+        .replace('\r', "")
+        .lines()
+        .map(normalize_line_for_extraction)
+        .filter(|l| !l.is_empty())
+        .filter(|l| !is_noise_line_for_extraction(l))
+        .collect();
+
+    let merged = lines.join(" ");
+    lines = split_into_sentences_for_extraction(&merged)
+        .into_iter()
+        .map(|s| normalize_line_for_extraction(&s))
+        .filter(|s| !s.is_empty())
+        .filter(|s| !is_noise_line_for_extraction(s))
+        .collect();
+
+    lines.join("\n")
+}
+
+fn split_into_sentences_for_extraction(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut buf = String::new();
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let ch = chars[i];
+        buf.push(ch);
+        let prev = if i > 0 { Some(chars[i - 1]) } else { None };
+        let next = if i + 1 < chars.len() {
+            Some(chars[i + 1])
+        } else {
+            None
+        };
+        let is_sentence_punct = matches!(ch, '.' | '!' | '?');
+        let punct_followed_by_space_or_end = next.is_none_or(|c| c.is_whitespace());
+        let is_domain_or_decimal = ch == '.'
+            && prev.is_some_and(|c| c.is_ascii_alphanumeric())
+            && next.is_some_and(|c| c.is_ascii_alphanumeric());
+        let boundary = is_sentence_punct && punct_followed_by_space_or_end && !is_domain_or_decimal;
+        if boundary {
+            let s = buf.trim();
+            if !s.is_empty() {
+                out.push(s.to_string());
+            }
+            buf.clear();
+            while i + 1 < chars.len() && chars[i + 1].is_whitespace() {
+                i += 1;
+            }
+        }
+        i += 1;
+    }
+    let tail = buf.trim();
+    if !tail.is_empty() {
+        out.push(tail.to_string());
+    }
+    out
+}
+
+fn normalize_line_for_extraction(line: &str) -> String {
+    let mut s = line
+        .replace('\u{00A0}', " ")
+        .replace('\u{FFFD}', " ")
+        .trim()
+        .to_string();
+    if let Ok(re) = Regex::new(r"\s+") {
+        s = re.replace_all(&s, " ").to_string();
+    }
+    s
+}
+
+fn is_noise_line_for_extraction(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    if lower.len() > 260 {
+        return true;
+    }
+    if lower.chars().all(|c| !c.is_ascii_alphanumeric()) {
+        return true;
+    }
+    lower.contains("confidentiality notice")
+        || lower.contains("intended recipient")
+        || lower.contains("unauthorized")
+        || lower.contains("privileged information")
+        || lower.contains("this is an auto generated email")
 }
 
 fn is_valid_bill_value(field: &str, value: &str) -> bool {
@@ -816,6 +1001,103 @@ fn is_identifier_like(raw: &str) -> bool {
         return false;
     }
     s.chars().any(|c| c.is_ascii_alphanumeric())
+}
+
+fn is_bill_field_name(field: &str) -> bool {
+    matches!(
+        field,
+        "total-amount"
+            | "currency"
+            | "issued-date"
+            | "due-date"
+            | "billing-period-start"
+            | "billing-period-end"
+            | "document-reference"
+            | "service-identifier"
+    )
+}
+
+fn is_txn_field_name(field: &str) -> bool {
+    matches!(
+        field,
+        "amount" | "currency" | "transaction-date" | "vendor" | "transaction-reference"
+    )
+}
+
+fn load_db_template_runtimes_from_db(sender_email: &str) -> Result<Vec<DbTemplateRuntime>> {
+    let db_path = get_db_path()?;
+    let conn = Connection::open(&db_path)
+        .with_context(|| format!("Failed to open database at {:?}", db_path))?;
+
+    let mut stmt = conn.prepare(
+        "SELECT t.id,
+                t.template_body,
+                v.placeholder_name,
+                v.target_field,
+                l.email_id
+         FROM financial_extraction_templates t
+         LEFT JOIN financial_template_variables v ON v.template_id = t.id
+         LEFT JOIN financial_template_email_links l ON l.template_id = t.id
+         WHERE t.data_source_type = 'email'
+           AND LOWER(t.data_source_id) = LOWER(?1)
+           AND t.status = 'active'
+         ORDER BY t.id ASC, v.id ASC, l.id ASC",
+    )?;
+
+    #[derive(Default)]
+    struct RuntimeAccumulator {
+        full_template: String,
+        bill_placeholder_to_field: HashMap<String, String>,
+        txn_placeholder_to_field: HashMap<String, String>,
+        linked_email_ids: BTreeSet<i64>,
+    }
+
+    let mut grouped: BTreeMap<i64, RuntimeAccumulator> = BTreeMap::new();
+    let rows = stmt.query_map(params![sender_email], |row| {
+        let template_id: i64 = row.get(0)?;
+        let template_body: String = row.get(1)?;
+        let placeholder_name: Option<String> = row.get(2)?;
+        let target_field: Option<String> = row.get(3)?;
+        let email_id: Option<i64> = row.get(4)?;
+        Ok((
+            template_id,
+            template_body,
+            placeholder_name,
+            target_field,
+            email_id,
+        ))
+    })?;
+
+    for row in rows {
+        let (template_id, template_body, placeholder_name, target_field, email_id) = row?;
+        let entry = grouped.entry(template_id).or_default();
+        if entry.full_template.is_empty() {
+            entry.full_template = template_body;
+        }
+        if let (Some(placeholder), Some(field)) = (placeholder_name, target_field) {
+            if is_bill_field_name(&field) {
+                entry.bill_placeholder_to_field.insert(placeholder, field);
+            } else if is_txn_field_name(&field) {
+                entry.txn_placeholder_to_field.insert(placeholder, field);
+            }
+        }
+        if let Some(email_id) = email_id {
+            entry.linked_email_ids.insert(email_id);
+        }
+    }
+
+    let templates = grouped
+        .into_iter()
+        .map(|(id, acc)| DbTemplateRuntime {
+            id,
+            full_template: acc.full_template,
+            bill_placeholder_to_field: acc.bill_placeholder_to_field,
+            txn_placeholder_to_field: acc.txn_placeholder_to_field,
+            linked_email_ids: acc.linked_email_ids.into_iter().collect(),
+        })
+        .collect();
+
+    Ok(templates)
 }
 
 /// Load the most-recent N emails for a sender from the database (no clustering).
