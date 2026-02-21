@@ -1,4 +1,5 @@
 use crate::storage::{AgentStorage, InMemoryAgentStorage, Session};
+use crate::template_bill_extractor::types::BillField;
 use crate::{
     TemplateBillExtractorAgent, TemplateDocumentLabelerAgent, TemplateFinancialExtractorAgent,
 };
@@ -178,6 +179,13 @@ pub async fn detect_templates_for_sender(
                     );
                 }
             }
+            // Bill templates are only useful if they can extract a payable amount.
+            // We enforce this at detection output too (defense in depth against
+            // future prompt/agent regressions).
+            if !has_required_bill_amount(&placeholder_to_field) {
+                tracing::warn!("Discarding bill-labeled template without total-amount mapping");
+                continue;
+            }
         } else if label.has_transaction {
             let session_id = storage
                 .create_session(Session {
@@ -230,6 +238,16 @@ pub async fn detect_templates_for_sender(
     }
 
     Ok(out)
+}
+
+fn has_required_bill_amount(placeholder_to_field: &HashMap<String, String>) -> bool {
+    let total_amount = serde_json::to_value(BillField::TotalAmount)
+        .ok()
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "total-amount".to_string());
+    placeholder_to_field
+        .values()
+        .any(|field| field == &total_amount)
 }
 
 fn cluster_emails(

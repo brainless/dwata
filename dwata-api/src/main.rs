@@ -667,6 +667,10 @@ async fn main() -> std::io::Result<()> {
                 "/api/financial/templates/detect",
                 web::get().to(handlers::financial::get_detect_templates_status),
             )
+            .route(
+                "/api/financial/extract",
+                web::post().to(handlers::financial::extract_financial),
+            )
             .default_service(web::route().to(gui_embed::serve_gui))
     })
     .bind((host.as_str(), port))?

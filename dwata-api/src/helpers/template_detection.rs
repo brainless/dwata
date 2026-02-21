@@ -32,6 +32,8 @@ const DEFAULT_FINANCIAL_KEYWORDS: &[&str] = &[
 ];
 
 const DEFAULT_TEMPLATE_MATCH_THRESHOLD: f64 = 0.55;
+const RECENT_EMAIL_WINDOW_MS: i64 = 30_i64 * 24 * 60 * 60 * 1000;
+const MIN_GENERATED_TEMPLATES_PER_RUN: usize = 3;
 
 #[derive(Debug, Clone)]
 struct TemplateMatchResult {
@@ -46,6 +48,93 @@ pub struct TemplateDetectionProgress {
     pub total_senders: usize,
     pub processed_senders: usize,
     pub current_sender: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct RankedSender {
+    sender_email: String,
+    total_candidate_emails: usize,
+    recent_candidate_emails: usize,
+    latest_email_ts: i64,
+    max_existing_cluster_size: usize,
+}
+
+/// Rank candidate senders for template generation.
+///
+/// Important: template detection currently executes per sender, but we want to
+/// prioritize likely template-heavy clusters first. We use sender-level stats as
+/// a proxy for cluster quality and keep this policy isolated because ranking is
+/// expected to evolve often.
+///
+/// Current ranking order:
+/// 1) largest known template cluster size for sender (desc)
+/// 2) number of recent candidate emails for sender (desc)
+/// 3) recency of latest candidate email for sender (desc)
+/// 4) total candidate email count for sender (desc)
+/// 5) sender email lexical tie-breaker (asc, deterministic)
+fn rank_candidate_senders(
+    scan_rows: &[emails_db::EmailScanRow],
+    sender_cluster_sizes: &HashMap<String, usize>,
+) -> Vec<RankedSender> {
+    if scan_rows.is_empty() {
+        return Vec::new();
+    }
+
+    // "Recent" is defined relative to the freshest candidate email seen in this
+    // detection run, not wall-clock time, so offline/backfill datasets rank well.
+    let max_seen_ts = scan_rows
+        .iter()
+        .map(|row| row.date_received)
+        .max()
+        .unwrap_or(0);
+    let recent_cutoff = max_seen_ts.saturating_sub(RECENT_EMAIL_WINDOW_MS);
+
+    let mut sender_stats: HashMap<String, (usize, usize, i64)> = HashMap::new();
+    for row in scan_rows {
+        let sender_key = row.from_address.trim().to_ascii_lowercase();
+        if sender_key.is_empty() {
+            continue;
+        }
+        let entry = sender_stats
+            .entry(sender_key)
+            .or_insert((0usize, 0usize, row.date_received));
+        entry.0 += 1;
+        if row.date_received >= recent_cutoff {
+            entry.1 += 1;
+        }
+        if row.date_received > entry.2 {
+            entry.2 = row.date_received;
+        }
+    }
+
+    let mut ranked = sender_stats
+        .into_iter()
+        .map(
+            |(sender_email, (total_candidate_emails, recent_candidate_emails, latest_email_ts))| {
+                RankedSender {
+                    max_existing_cluster_size: sender_cluster_sizes
+                        .get(&sender_email)
+                        .copied()
+                        .unwrap_or(0),
+                    sender_email,
+                    total_candidate_emails,
+                    recent_candidate_emails,
+                    latest_email_ts,
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+
+    ranked.sort_by(|a, b| {
+        b.max_existing_cluster_size
+            .cmp(&a.max_existing_cluster_size)
+            .then_with(|| b.recent_candidate_emails.cmp(&a.recent_candidate_emails))
+            .then_with(|| b.latest_email_ts.cmp(&a.latest_email_ts))
+            .then_with(|| b.total_candidate_emails.cmp(&a.total_candidate_emails))
+            .then_with(|| a.sender_email.cmp(&b.sender_email))
+    });
+
+    ranked
 }
 
 fn placeholder_regex() -> &'static Regex {
@@ -124,6 +213,18 @@ fn to_template_type(has_bill: bool) -> FinancialTemplateType {
     } else {
         FinancialTemplateType::Transaction
     }
+}
+
+fn has_required_amount_mapping_for_template(
+    cluster: &dwata_agents::DetectedTemplateCluster,
+) -> bool {
+    if !cluster.has_bill {
+        return true;
+    }
+    cluster
+        .variables
+        .iter()
+        .any(|v| v.target_field == "total-amount")
 }
 
 fn build_llm_client(_config: &ApiConfig) -> Result<Arc<dyn LlmClient>> {
@@ -249,21 +350,13 @@ where
     )
     .await?;
 
-    let mut sender_stats: HashMap<String, (usize, i64)> = HashMap::new();
-    for row in &scan_rows {
-        let sender_key = row.from_address.trim().to_ascii_lowercase();
-        if sender_key.is_empty() {
-            continue;
-        }
-        let entry = sender_stats
-            .entry(sender_key)
-            .or_insert((0usize, row.date_received));
-        entry.0 += 1;
-        if row.date_received > entry.1 {
-            entry.1 = row.date_received;
-        }
-    }
-    let sender_emails = sender_stats.keys().cloned().collect::<Vec<_>>();
+    let mut sender_emails = scan_rows
+        .iter()
+        .map(|row| row.from_address.trim().to_ascii_lowercase())
+        .filter(|sender| !sender.is_empty())
+        .collect::<Vec<_>>();
+    sender_emails.sort();
+    sender_emails.dedup();
     let sender_cluster_sizes = templates_db::list_sender_max_cluster_sizes(
         db.async_connection.clone(),
         &sender_emails,
@@ -271,22 +364,8 @@ where
     )
     .await?;
 
-    let mut senders = sender_stats.into_iter().collect::<Vec<_>>();
-    senders.sort_by(|a, b| {
-        let a_cluster = sender_cluster_sizes.get(&a.0).copied().unwrap_or(0);
-        let b_cluster = sender_cluster_sizes.get(&b.0).copied().unwrap_or(0);
-        b.1 .1
-            .cmp(&a.1 .1)
-            .then_with(|| b_cluster.cmp(&a_cluster))
-            .then_with(|| b.1 .0.cmp(&a.1 .0))
-            .then_with(|| a.0.cmp(&b.0))
-    });
-    if let Some(max_senders) = request.max_senders {
-        if senders.len() > max_senders {
-            senders.truncate(max_senders);
-        }
-    }
-    let total_senders = senders.len();
+    let ranked_senders = rank_candidate_senders(&scan_rows, &sender_cluster_sizes);
+    let total_senders = ranked_senders.len();
     on_progress(TemplateDetectionProgress {
         candidate_sender_count: total_senders,
         candidate_email_count: scan_rows.len(),
@@ -300,7 +379,8 @@ where
     let mut templates = Vec::new();
     let mut sender_errors: Vec<String> = Vec::new();
 
-    for (sender_idx, (sender_email, _)) in senders.iter().enumerate() {
+    for (sender_idx, ranked_sender) in ranked_senders.iter().enumerate() {
+        let sender_email = &ranked_sender.sender_email;
         on_progress(TemplateDetectionProgress {
             candidate_sender_count: total_senders,
             candidate_email_count: scan_rows.len(),
@@ -393,12 +473,34 @@ where
             .await?;
 
             let mut discarded_empty_mappings = 0usize;
+            let mut discarded_missing_bill_amount = 0usize;
+            let mut valid_clusters = Vec::new();
             for cluster in clusters {
                 if cluster.variables.is_empty() {
                     discarded_empty_mappings += 1;
                     continue;
                 }
+                if !has_required_amount_mapping_for_template(&cluster) {
+                    discarded_missing_bill_amount += 1;
+                    continue;
+                }
+                valid_clusters.push(cluster);
+            }
 
+            // Each sender request to agents must yield at least one usable template
+            // (with variable mappings and bill amount constraints). If not, skip this
+            // sender's generated clusters and continue with the next sender.
+            if valid_clusters.is_empty() {
+                tracing::warn!(
+                    sender = %sender_email,
+                    discarded_empty_mappings = discarded_empty_mappings,
+                    discarded_missing_bill_amount = discarded_missing_bill_amount,
+                    "Discarded sender-generated clusters because no usable templates were produced"
+                );
+                return Ok(());
+            }
+
+            for cluster in valid_clusters {
                 let template_type = to_template_type(cluster.has_bill);
                 let template_id = templates_db::insert_template(
                     db.async_connection.clone(),
@@ -461,6 +563,13 @@ where
                     "Discarded generated templates with no variable mappings"
                 );
             }
+            if discarded_missing_bill_amount > 0 {
+                tracing::warn!(
+                    sender = %sender_email,
+                    discarded = discarded_missing_bill_amount,
+                    "Discarded bill templates missing total-amount mapping"
+                );
+            }
 
             let refreshed_templates = templates_db::list_templates_with_variables_by_sender(
                 db.async_connection.clone(),
@@ -484,8 +593,11 @@ where
             processed_senders: sender_idx + 1,
             current_sender: None,
         });
-    }
 
+        if templates.len() >= MIN_GENERATED_TEMPLATES_PER_RUN {
+            break;
+        }
+    }
     if !sender_errors.is_empty() {
         let sample = sender_errors
             .iter()
@@ -493,15 +605,15 @@ where
             .cloned()
             .collect::<Vec<_>>()
             .join(" | ");
-        return Err(anyhow::anyhow!(
-            "Template detection completed with {} sender error(s). Sample: {}",
-            sender_errors.len(),
-            sample
-        ));
+        tracing::warn!(
+            sender_error_count = sender_errors.len(),
+            sample = %sample,
+            "Template detection completed with sender-level errors; returning successful partial result"
+        );
     }
 
     Ok(DetectFinancialTemplatesResponse {
-        candidate_sender_count: senders.len(),
+        candidate_sender_count: ranked_senders.len(),
         candidate_email_count: scan_rows.len(),
         templates,
     })
@@ -509,9 +621,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{match_email_to_sender_templates, match_template_score};
+    use super::{match_email_to_sender_templates, match_template_score, rank_candidate_senders};
+    use crate::database::emails::EmailScanRow;
     use crate::database::financial_templates::SenderFinancialTemplateRow;
     use shared_types::FinancialTemplateType;
+    use std::collections::HashMap;
 
     #[test]
     fn template_score_matches_placeholder_wildcards() {
@@ -550,5 +664,73 @@ mod tests {
 
         let matched = match_email_to_sender_templates(email, &templates, 0.2).expect("match");
         assert_eq!(matched.template_id, 2);
+    }
+
+    #[test]
+    fn ranking_prioritizes_cluster_size_then_recent_candidate_count() {
+        let rows = vec![
+            EmailScanRow {
+                from_address: "a@example.com".to_string(),
+                date_received: 1_000_000,
+                subject: None,
+                body_text: None,
+                body_html: None,
+            },
+            EmailScanRow {
+                from_address: "a@example.com".to_string(),
+                date_received: 999_900,
+                subject: None,
+                body_text: None,
+                body_html: None,
+            },
+            EmailScanRow {
+                from_address: "b@example.com".to_string(),
+                date_received: 1_000_000,
+                subject: None,
+                body_text: None,
+                body_html: None,
+            },
+            EmailScanRow {
+                from_address: "c@example.com".to_string(),
+                date_received: 1_000_000,
+                subject: None,
+                body_text: None,
+                body_html: None,
+            },
+            EmailScanRow {
+                from_address: "c@example.com".to_string(),
+                date_received: 999_950,
+                subject: None,
+                body_text: None,
+                body_html: None,
+            },
+            EmailScanRow {
+                from_address: "c@example.com".to_string(),
+                date_received: 999_940,
+                subject: None,
+                body_text: None,
+                body_html: None,
+            },
+        ];
+
+        let mut cluster_sizes = HashMap::new();
+        cluster_sizes.insert("a@example.com".to_string(), 5);
+        cluster_sizes.insert("b@example.com".to_string(), 7);
+        cluster_sizes.insert("c@example.com".to_string(), 5);
+
+        let ranked = rank_candidate_senders(&rows, &cluster_sizes);
+        let ordered = ranked
+            .into_iter()
+            .map(|r| r.sender_email)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ordered,
+            vec![
+                "b@example.com".to_string(),
+                "c@example.com".to_string(),
+                "a@example.com".to_string()
+            ]
+        );
     }
 }

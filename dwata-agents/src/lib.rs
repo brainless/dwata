@@ -5,6 +5,7 @@ pub mod template_bill_extractor;
 pub mod template_detection;
 pub mod template_document_labeler;
 pub mod template_financial_extractor;
+pub mod template_value_extractor;
 
 pub use statement_extractor::{ColumnarSheet, StatementTemplate, StatementTransaction};
 pub use storage::{AgentStorage, Message, Session, ToolCall};
@@ -15,3 +16,7 @@ pub use template_detection::{
 };
 pub use template_document_labeler::{LabelDocumentParams, TemplateDocumentLabelerAgent};
 pub use template_financial_extractor::{TemplateFinancialExtractorAgent, TranslateVariablesParams};
+pub use template_value_extractor::{
+    extract_values_from_email, is_valid_bill_value, is_valid_txn_value, parse_amount, parse_date,
+    TemplateEmailContent,
+};

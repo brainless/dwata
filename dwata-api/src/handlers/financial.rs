@@ -13,6 +13,11 @@ use shared_types::{
     FinancialTemplateWithVariables, ListFinancialTemplatesResponse,
 };
 use std::sync::Arc;
+#[derive(Deserialize)]
+pub struct ExtractFinancialRequest {
+    #[serde(default)]
+    pub credential_id: Option<i64>,
+}
 
 #[derive(Deserialize)]
 pub struct TransactionFilters {
@@ -236,4 +241,18 @@ pub async fn get_detect_templates_status(
     detection_job: web::Data<TemplateDetectionJobState>,
 ) -> ActixResult<HttpResponse> {
     Ok(HttpResponse::Ok().json(detection_job.snapshot()))
+}
+
+pub async fn extract_financial(
+    db: web::Data<Arc<Database>>,
+    request: web::Json<ExtractFinancialRequest>,
+) -> ActixResult<HttpResponse> {
+    let result = crate::helpers::financial_extraction::extract_financial_from_templates(
+        db.get_ref().clone(),
+        request.credential_id,
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(result))
 }

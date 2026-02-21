@@ -1,5 +1,5 @@
 use crate::storage::{AgentStorage, Message};
-use crate::template_bill_extractor::types::TranslateBillVariablesParams;
+use crate::template_bill_extractor::types::{BillField, TranslateBillVariablesParams};
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::types::{CompletionRequest, ContentBlock, Message as LlmMessage};
 use nocodo_llm_sdk::Tool;
@@ -107,6 +107,22 @@ impl TemplateBillExtractorAgent {
                 for tool_call in tool_calls {
                     if tool_call.name() == "translate_bill_variables" {
                         let params: TranslateBillVariablesParams = tool_call.parse_arguments()?;
+                        let has_total_amount = params
+                            .translations
+                            .iter()
+                            .any(|t| t.field == Some(BillField::TotalAmount));
+
+                        if !has_total_amount {
+                            self.storage
+                                .create_message(Message {
+                                    id: None,
+                                    session_id,
+                                    role: "user".to_string(),
+                                    content: "Invalid mapping: bill templates must include at least one placeholder mapped to `total-amount`. Re-check placeholders and call `translate_bill_variables` again.".to_string(),
+                                })
+                                .await?;
+                            continue;
+                        }
 
                         self.storage
                             .create_message(Message {
