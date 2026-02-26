@@ -21,6 +21,7 @@ impl TemplateDetectionJobState {
                 candidate_email_count: 0,
                 new_templates_count: 0,
                 error: None,
+                debug: None,
             })),
         }
     }

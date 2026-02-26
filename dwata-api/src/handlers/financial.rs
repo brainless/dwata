@@ -184,6 +184,7 @@ pub async fn detect_templates(
         state.candidate_email_count = 0;
         state.new_templates_count = 0;
         state.error = None;
+        state.debug = None;
     });
 
     let job_state = detection_job.get_ref().clone();
@@ -203,6 +204,7 @@ pub async fn detect_templates(
                     state.current_sender = progress.current_sender;
                     state.candidate_sender_count = progress.candidate_sender_count;
                     state.candidate_email_count = progress.candidate_email_count;
+                    state.debug = progress.debug;
                 });
             },
         )

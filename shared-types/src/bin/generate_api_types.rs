@@ -181,6 +181,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(
         DetectFinancialTemplatesResponse::export_to_string()?,
     ));
+    types.push(clean_type(TemplateDetectionSearchPage::export_to_string()?));
+    types.push(clean_type(
+        TemplateDetectionCandidateEmailPreview::export_to_string()?,
+    ));
+    types.push(clean_type(TemplateDetectionSenderRank::export_to_string()?));
+    types.push(clean_type(
+        TemplateDetectionGeneratedTemplateDebug::export_to_string()?,
+    ));
+    types.push(clean_type(TemplateDetectionSenderDebug::export_to_string()?));
+    types.push(clean_type(TemplateDetectionDebugState::export_to_string()?));
     types.push(clean_type(
         FinancialTemplateDetectionJobStatus::export_to_string()?,
     ));

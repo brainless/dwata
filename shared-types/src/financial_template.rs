@@ -54,7 +54,6 @@ pub struct FinancialTemplateApplicability {
 pub struct DetectFinancialTemplatesRequest {
     pub credential_id: Option<i64>,
     pub max_candidate_emails: Option<usize>,
-    pub max_senders: Option<usize>,
     pub max_templates_per_sender: Option<usize>,
 }
 
@@ -82,6 +81,70 @@ pub struct DetectFinancialTemplatesResponse {
     pub templates: Vec<DetectedFinancialTemplate>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TemplateDetectionSearchPage {
+    pub offset: usize,
+    pub limit: usize,
+    pub hit_count: usize,
+    pub unique_added: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TemplateDetectionCandidateEmailPreview {
+    pub sender_email: String,
+    pub date_received: i64,
+    pub subject: String,
+    pub body_preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TemplateDetectionSenderRank {
+    pub sender_email: String,
+    pub rank: usize,
+    pub total_candidate_emails: usize,
+    pub recent_candidate_emails: usize,
+    pub latest_email_ts: i64,
+    pub max_existing_cluster_size: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TemplateDetectionGeneratedTemplateDebug {
+    pub template_id: Option<i64>,
+    pub template_type: Option<FinancialTemplateType>,
+    pub template_body: String,
+    pub translated_template_body: String,
+    pub source_email_ids: Vec<i64>,
+    pub variables: Vec<DetectedFinancialTemplateVariable>,
+    pub has_bill: bool,
+    pub discarded_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TemplateDetectionSenderDebug {
+    pub sender_email: String,
+    pub rank: usize,
+    pub sender_candidate_count: usize,
+    pub existing_template_count: usize,
+    pub initially_matched_count: usize,
+    pub fresh_unmatched_count: usize,
+    pub pool_count: usize,
+    pub generated_templates: Vec<TemplateDetectionGeneratedTemplateDebug>,
+    pub error: Option<String>,
+    pub skipped_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TemplateDetectionDebugState {
+    pub keyword_query: String,
+    pub keyword_list: Vec<String>,
+    pub max_candidate_emails: usize,
+    pub search_pages: Vec<TemplateDetectionSearchPage>,
+    pub matched_document_ids_count: usize,
+    pub sender_ranking: Vec<TemplateDetectionSenderRank>,
+    pub candidate_email_previews: Vec<TemplateDetectionCandidateEmailPreview>,
+    pub sender_debug: Vec<TemplateDetectionSenderDebug>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 pub enum FinancialTemplateDetectionJobStatus {
@@ -104,6 +167,7 @@ pub struct FinancialTemplateDetectionJobState {
     pub candidate_email_count: usize,
     pub new_templates_count: usize,
     pub error: Option<String>,
+    pub debug: Option<TemplateDetectionDebugState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

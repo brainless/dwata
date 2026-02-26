@@ -750,7 +750,7 @@ import type { DataSourceType } from "./DataSourceType";
 export type FinancialTemplateApplicability = { id: bigint, template_id: bigint, data_source_type: DataSourceType, data_source_id: string, match_score: number | null, created_at: bigint, };
 
 
-export type DetectFinancialTemplatesRequest = { credential_id: bigint | null, max_candidate_emails: number | null, max_senders: number | null, max_templates_per_sender: number | null, };
+export type DetectFinancialTemplatesRequest = { credential_id: bigint | null, max_candidate_emails: number | null, max_templates_per_sender: number | null, };
 
 
 export type DetectedFinancialTemplateVariable = { placeholder_name: string, target_field: string, };
@@ -767,12 +767,41 @@ import type { DetectedFinancialTemplate } from "./DetectedFinancialTemplate";
 export type DetectFinancialTemplatesResponse = { candidate_sender_count: number, candidate_email_count: number, templates: Array<DetectedFinancialTemplate>, };
 
 
+export type TemplateDetectionSearchPage = { offset: number, limit: number, hit_count: number, unique_added: number, };
+
+
+export type TemplateDetectionCandidateEmailPreview = { sender_email: string, date_received: bigint, subject: string, body_preview: string, };
+
+
+export type TemplateDetectionSenderRank = { sender_email: string, rank: number, total_candidate_emails: number, recent_candidate_emails: number, latest_email_ts: bigint, max_existing_cluster_size: number, };
+
+
+import type { DetectedFinancialTemplateVariable } from "./DetectedFinancialTemplateVariable";
+import type { FinancialTemplateType } from "./FinancialTemplateType";
+
+export type TemplateDetectionGeneratedTemplateDebug = { template_id: bigint | null, template_type: FinancialTemplateType | null, template_body: string, translated_template_body: string, source_email_ids: Array<bigint>, variables: Array<DetectedFinancialTemplateVariable>, has_bill: boolean, discarded_reason: string | null, };
+
+
+import type { TemplateDetectionGeneratedTemplateDebug } from "./TemplateDetectionGeneratedTemplateDebug";
+
+export type TemplateDetectionSenderDebug = { sender_email: string, rank: number, sender_candidate_count: number, existing_template_count: number, initially_matched_count: number, fresh_unmatched_count: number, pool_count: number, generated_templates: Array<TemplateDetectionGeneratedTemplateDebug>, error: string | null, skipped_reason: string | null, };
+
+
+import type { TemplateDetectionCandidateEmailPreview } from "./TemplateDetectionCandidateEmailPreview";
+import type { TemplateDetectionSearchPage } from "./TemplateDetectionSearchPage";
+import type { TemplateDetectionSenderDebug } from "./TemplateDetectionSenderDebug";
+import type { TemplateDetectionSenderRank } from "./TemplateDetectionSenderRank";
+
+export type TemplateDetectionDebugState = { keyword_query: string, keyword_list: Array<string>, max_candidate_emails: number, search_pages: Array<TemplateDetectionSearchPage>, matched_document_ids_count: number, sender_ranking: Array<TemplateDetectionSenderRank>, candidate_email_previews: Array<TemplateDetectionCandidateEmailPreview>, sender_debug: Array<TemplateDetectionSenderDebug>, };
+
+
 export type FinancialTemplateDetectionJobStatus = "idle" | "running" | "completed" | "failed";
 
 
 import type { FinancialTemplateDetectionJobStatus } from "./FinancialTemplateDetectionJobStatus";
+import type { TemplateDetectionDebugState } from "./TemplateDetectionDebugState";
 
-export type FinancialTemplateDetectionJobState = { run_id: bigint, status: FinancialTemplateDetectionJobStatus, started_at: bigint | null, finished_at: bigint | null, total_senders: number, processed_senders: number, current_sender: string | null, candidate_sender_count: number, candidate_email_count: number, new_templates_count: number, error: string | null, };
+export type FinancialTemplateDetectionJobState = { run_id: bigint, status: FinancialTemplateDetectionJobStatus, started_at: bigint | null, finished_at: bigint | null, total_senders: number, processed_senders: number, current_sender: string | null, candidate_sender_count: number, candidate_email_count: number, new_templates_count: number, error: string | null, debug: TemplateDetectionDebugState | null, };
 
 
 export type FinancialTemplateFieldMapping = { placeholder_name: string, target_field: string, };
@@ -787,3 +816,9 @@ export type FinancialTemplateWithVariables = { template: FinancialExtractionTemp
 import type { FinancialTemplateWithVariables } from "./FinancialTemplateWithVariables";
 
 export type ListFinancialTemplatesResponse = { templates: Array<FinancialTemplateWithVariables>, };
+
+
+export type DeleteFinancialTemplatesRequest = { template_ids: Array<bigint>, };
+
+
+export type DeleteFinancialTemplatesResponse = { deleted_count: number, };
