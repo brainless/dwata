@@ -458,12 +458,14 @@ async fn main() -> std::io::Result<()> {
             cors_builder
                 .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                 .allowed_headers(vec!["Authorization", "Accept", "Content-Type"])
+                .expose_headers(vec!["x-detect-state-version"])
                 .max_age(3600)
         } else {
             Cors::default()
                 .allow_any_origin()
                 .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                 .allowed_headers(vec!["Authorization", "Accept", "Content-Type"])
+                .expose_headers(vec!["x-detect-state-version"])
                 .max_age(3600)
         };
 

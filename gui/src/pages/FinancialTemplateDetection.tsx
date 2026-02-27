@@ -5,10 +5,25 @@ import type { FinancialTemplateDetectionJobState } from "../api-types/types";
 import { getApiUrl } from "../config/api";
 import FinancialPageLayout from "../components/FinancialPageLayout";
 
-async function fetchDetectJobState(): Promise<FinancialTemplateDetectionJobState> {
-  const response = await fetch(getApiUrl("/api/financial/templates/detect"));
+type DetectJobFetchResult = {
+  state: FinancialTemplateDetectionJobState;
+  version: number | null;
+};
+
+async function fetchDetectJobState(sinceVersion?: number): Promise<DetectJobFetchResult> {
+  const params = new URLSearchParams();
+  params.set("timeout_ms", "25000");
+  if (sinceVersion !== undefined) {
+    params.set("since_version", String(sinceVersion));
+  }
+  const response = await fetch(getApiUrl(`/api/financial/templates/detect?${params.toString()}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return await response.json();
+  const versionHeader = response.headers.get("x-detect-state-version");
+  const version = versionHeader ? Number(versionHeader) : null;
+  return {
+    state: await response.json(),
+    version: Number.isFinite(version) ? version : null,
+  };
 }
 
 async function startDetection(): Promise<FinancialTemplateDetectionJobState> {
@@ -27,27 +42,38 @@ export default function FinancialTemplateDetection() {
   const [submitting, setSubmitting] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [senderFilter, setSenderFilter] = createSignal("");
+  const [stateVersion, setStateVersion] = createSignal<number | undefined>(undefined);
 
-  let timer: number | undefined;
-  const load = async () => {
-    try {
-      const state = await fetchDetectJobState();
-      setJob(state);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load detection status");
-    } finally {
-      setLoading(false);
+  let active = true;
+  const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  const loadLoop = async () => {
+    while (active) {
+      try {
+        const result = await fetchDetectJobState(stateVersion());
+        setJob(result.state);
+        if (result.version !== null) {
+          setStateVersion(result.version);
+        } else {
+          // Fallback when response headers are not exposed/readable (e.g. CORS):
+          // avoid tight-looping and degrade to short-interval polling.
+          await sleep(1500);
+        }
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load detection status");
+        await sleep(1500);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   onMount(async () => {
-    await load();
-    timer = window.setInterval(load, 1500);
+    void loadLoop();
   });
 
   onCleanup(() => {
-    if (timer) window.clearInterval(timer);
+    active = false;
   });
 
   const onStart = async () => {
@@ -141,39 +167,20 @@ export default function FinancialTemplateDetection() {
             </Show>
           </Show>
 
+          <Show when={job() && job()!.status === "completed"}>
+            <div class="mt-5">
+              <button class="btn btn-primary" onClick={onStart} disabled={submitting()}>
+                {submitting() ? "Starting..." : "Detect Templates with AI"}
+              </button>
+            </div>
+          </Show>
+
           <Show when={debug()}>
             <div class="divider my-5">Scan Details</div>
             <div class="space-y-5 text-sm">
               <div>
                 <div><span class="font-medium">Keyword query:</span> {debug()!.keyword_query}</div>
                 <div><span class="font-medium">Matched document IDs:</span> {debug()!.matched_document_ids_count}</div>
-                <div><span class="font-medium">Search pages:</span> {debug()!.search_pages.length}</div>
-              </div>
-
-              <div class="overflow-x-auto">
-                <div class="font-medium mb-2">Search pagination</div>
-                <table class="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Offset</th>
-                      <th>Limit</th>
-                      <th>Hits</th>
-                      <th>Unique Added</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <For each={debug()!.search_pages}>
-                      {(p) => (
-                        <tr>
-                          <td>{p.offset}</td>
-                          <td>{p.limit}</td>
-                          <td>{p.hit_count}</td>
-                          <td>{p.unique_added}</td>
-                        </tr>
-                      )}
-                    </For>
-                  </tbody>
-                </table>
               </div>
 
               <div class="overflow-x-auto">

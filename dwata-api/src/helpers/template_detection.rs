@@ -13,8 +13,8 @@ use shared_types::{
     DetectedFinancialTemplate, DetectedFinancialTemplateVariable, DocumentKind,
     FinancialTemplateType, SearchDocumentsRequest, SearchField, SearchTerm,
     TemplateDetectionCandidateEmailPreview, TemplateDetectionDebugState,
-    TemplateDetectionGeneratedTemplateDebug, TemplateDetectionSearchPage,
-    TemplateDetectionSenderDebug, TemplateDetectionSenderRank,
+    TemplateDetectionGeneratedTemplateDebug, TemplateDetectionSenderDebug,
+    TemplateDetectionSenderRank,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
@@ -327,7 +327,6 @@ where
     let mut matched_document_ids = Vec::new();
     let mut seen_document_ids = HashSet::new();
     let mut offset = 0usize;
-    let mut search_pages = Vec::new();
 
     loop {
         let page_limit = if let Some(max) = max_candidate_emails {
@@ -356,20 +355,12 @@ where
         if search_result.hits.is_empty() {
             break;
         }
-        let mut unique_added = 0usize;
         for hit in &search_result.hits {
             if seen_document_ids.insert(hit.document_id) {
                 matched_document_ids.push(hit.document_id);
-                unique_added += 1;
             }
         }
         let fetched = search_result.hits.len();
-        search_pages.push(TemplateDetectionSearchPage {
-            offset,
-            limit: page_limit,
-            hit_count: fetched,
-            unique_added,
-        });
         if fetched < page_limit {
             break;
         }
@@ -399,6 +390,10 @@ where
     .await?;
 
     let ranked_senders = rank_candidate_senders(&scan_rows, &sender_cluster_sizes);
+    let ranked_senders = ranked_senders
+        .into_iter()
+        .filter(|s| s.total_candidate_emails >= 2)
+        .collect::<Vec<_>>();
     let sender_ranking = ranked_senders
         .iter()
         .enumerate()
@@ -432,7 +427,6 @@ where
         keyword_query: query.clone(),
         keyword_list,
         max_candidate_emails: max_candidate_emails.unwrap_or(0),
-        search_pages,
         matched_document_ids_count: matched_document_ids.len(),
         sender_ranking,
         candidate_email_previews,

@@ -767,9 +767,6 @@ import type { DetectedFinancialTemplate } from "./DetectedFinancialTemplate";
 export type DetectFinancialTemplatesResponse = { candidate_sender_count: number, candidate_email_count: number, templates: Array<DetectedFinancialTemplate>, };
 
 
-export type TemplateDetectionSearchPage = { offset: number, limit: number, hit_count: number, unique_added: number, };
-
-
 export type TemplateDetectionCandidateEmailPreview = { sender_email: string, date_received: bigint, subject: string, body_preview: string, };
 
 
@@ -788,11 +785,10 @@ export type TemplateDetectionSenderDebug = { sender_email: string, rank: number,
 
 
 import type { TemplateDetectionCandidateEmailPreview } from "./TemplateDetectionCandidateEmailPreview";
-import type { TemplateDetectionSearchPage } from "./TemplateDetectionSearchPage";
 import type { TemplateDetectionSenderDebug } from "./TemplateDetectionSenderDebug";
 import type { TemplateDetectionSenderRank } from "./TemplateDetectionSenderRank";
 
-export type TemplateDetectionDebugState = { keyword_query: string, keyword_list: Array<string>, max_candidate_emails: number, search_pages: Array<TemplateDetectionSearchPage>, matched_document_ids_count: number, sender_ranking: Array<TemplateDetectionSenderRank>, candidate_email_previews: Array<TemplateDetectionCandidateEmailPreview>, sender_debug: Array<TemplateDetectionSenderDebug>, };
+export type TemplateDetectionDebugState = { keyword_query: string, keyword_list: Array<string>, max_candidate_emails: number, matched_document_ids_count: number, sender_ranking: Array<TemplateDetectionSenderRank>, candidate_email_previews: Array<TemplateDetectionCandidateEmailPreview>, sender_debug: Array<TemplateDetectionSenderDebug>, };
 
 
 export type FinancialTemplateDetectionJobStatus = "idle" | "running" | "completed" | "failed";

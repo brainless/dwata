@@ -57,6 +57,18 @@ fn default_templates_limit() -> usize {
     200
 }
 
+#[derive(Deserialize)]
+pub struct DetectStatusQuery {
+    #[serde(default)]
+    pub since_version: Option<u64>,
+    #[serde(default = "default_detect_status_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+fn default_detect_status_timeout_ms() -> u64 {
+    25_000
+}
+
 pub async fn list_transactions(
     db: web::Data<Arc<Database>>,
     query: web::Query<TransactionFilters>,
@@ -241,8 +253,14 @@ pub async fn detect_templates(
 
 pub async fn get_detect_templates_status(
     detection_job: web::Data<TemplateDetectionJobState>,
+    query: web::Query<DetectStatusQuery>,
 ) -> ActixResult<HttpResponse> {
-    Ok(HttpResponse::Ok().json(detection_job.snapshot()))
+    let (state, version) = detection_job
+        .wait_for_change(query.since_version, query.timeout_ms)
+        .await;
+    Ok(HttpResponse::Ok()
+        .insert_header(("x-detect-state-version", version.to_string()))
+        .json(state))
 }
 
 pub async fn extract_financial(

@@ -82,14 +82,6 @@ pub struct DetectFinancialTemplatesResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct TemplateDetectionSearchPage {
-    pub offset: usize,
-    pub limit: usize,
-    pub hit_count: usize,
-    pub unique_added: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct TemplateDetectionCandidateEmailPreview {
     pub sender_email: String,
     pub date_received: i64,
@@ -138,7 +130,6 @@ pub struct TemplateDetectionDebugState {
     pub keyword_query: String,
     pub keyword_list: Vec<String>,
     pub max_candidate_emails: usize,
-    pub search_pages: Vec<TemplateDetectionSearchPage>,
     pub matched_document_ids_count: usize,
     pub sender_ranking: Vec<TemplateDetectionSenderRank>,
     pub candidate_email_previews: Vec<TemplateDetectionCandidateEmailPreview>,
