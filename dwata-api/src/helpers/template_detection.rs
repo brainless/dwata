@@ -36,12 +36,38 @@ const DEFAULT_FINANCIAL_KEYWORDS: &[&str] = &[
 
 const DEFAULT_TEMPLATE_MATCH_THRESHOLD: f64 = 0.55;
 const RECENT_EMAIL_WINDOW_MS: i64 = 30_i64 * 24 * 60 * 60 * 1000;
-const MIN_GENERATED_TEMPLATES_PER_RUN: usize = 3;
+const BILL_TARGET_FIELDS: &[&str] = &[
+    "total-amount",
+    "currency",
+    "issued-date",
+    "due-date",
+    "billing-period-start",
+    "billing-period-end",
+    "document-reference",
+    "service-identifier",
+];
+const TRANSACTION_TARGET_FIELDS: &[&str] = &[
+    "amount",
+    "currency",
+    "transaction-date",
+    "vendor",
+    "transaction-reference",
+];
 
 #[derive(Debug, Clone)]
 struct TemplateMatchResult {
     template_id: i64,
     score: f64,
+}
+
+#[derive(Debug, Clone)]
+struct PreparedDetectedCluster {
+    template_type: FinancialTemplateType,
+    template_body: String,
+    translated_template_body: String,
+    source_email_ids: Vec<i64>,
+    variables: Vec<DetectedFinancialTemplateVariable>,
+    has_bill: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +172,82 @@ fn placeholder_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"\{\{\s*placeholder_[^}]+\}\}").expect("valid regex"))
 }
 
+fn template_variable_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}").expect("valid regex"))
+}
+
+fn collect_template_variable_names(template_body: &str) -> HashSet<String> {
+    template_variable_regex()
+        .captures_iter(template_body)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+        .collect()
+}
+
+fn is_template_placeholder_name(name: &str) -> bool {
+    name.starts_with("placeholder_") || name.starts_with("subject_")
+}
+
+fn is_allowed_target_field(template_type: FinancialTemplateType, field: &str) -> bool {
+    match template_type {
+        FinancialTemplateType::Bill => BILL_TARGET_FIELDS.contains(&field),
+        FinancialTemplateType::Transaction => TRANSACTION_TARGET_FIELDS.contains(&field),
+    }
+}
+
+fn sanitize_cluster_variables(
+    template_body: &str,
+    template_type: FinancialTemplateType,
+    variables: &[dwata_agents::TemplateVariableMapping],
+) -> Vec<DetectedFinancialTemplateVariable> {
+    let template_placeholders = collect_template_variable_names(template_body);
+    let mut seen_placeholders = HashSet::new();
+    let mut out = Vec::new();
+
+    for v in variables {
+        let placeholder_name = v.placeholder_name.trim();
+        let target_field = v.target_field.trim();
+        if placeholder_name.is_empty() || target_field.is_empty() {
+            continue;
+        }
+        if !is_template_placeholder_name(placeholder_name) {
+            continue;
+        }
+        if !template_placeholders.contains(placeholder_name) {
+            continue;
+        }
+        if !is_allowed_target_field(template_type, target_field) {
+            continue;
+        }
+        if !seen_placeholders.insert(placeholder_name.to_string()) {
+            continue;
+        }
+        out.push(DetectedFinancialTemplateVariable {
+            placeholder_name: placeholder_name.to_string(),
+            target_field: target_field.to_string(),
+        });
+    }
+
+    out
+}
+
+fn has_total_amount_mapping(variables: &[DetectedFinancialTemplateVariable]) -> bool {
+    variables.iter().any(|v| v.target_field == "total-amount")
+}
+
+fn render_translated_template(
+    template_body: &str,
+    variables: &[DetectedFinancialTemplateVariable],
+) -> String {
+    let mut out = template_body.to_string();
+    for v in variables {
+        let old = format!("{{{{ {} }}}}", v.placeholder_name);
+        let new = format!("{{{{ {} }}}}", v.target_field);
+        out = out.replace(&old, &new);
+    }
+    out
+}
+
 fn split_fixed_segments(template_body: &str) -> Vec<&str> {
     placeholder_regex()
         .split(template_body)
@@ -217,18 +319,6 @@ fn to_template_type(has_bill: bool) -> FinancialTemplateType {
     } else {
         FinancialTemplateType::Transaction
     }
-}
-
-fn has_required_amount_mapping_for_template(
-    cluster: &dwata_agents::DetectedTemplateCluster,
-) -> bool {
-    if !cluster.has_bill {
-        return true;
-    }
-    cluster
-        .variables
-        .iter()
-        .any(|v| v.target_field == "total-amount")
 }
 
 fn build_llm_client(_config: &ApiConfig) -> Result<Arc<dyn LlmClient>> {
@@ -610,40 +700,44 @@ where
             }
         };
 
-        let mut valid_clusters = Vec::new();
+        let mut valid_clusters: Vec<PreparedDetectedCluster> = Vec::new();
         for cluster in clusters {
-            if cluster.variables.is_empty() {
+            let template_type = to_template_type(cluster.has_bill);
+            let sanitized_variables = sanitize_cluster_variables(
+                &cluster.template_body,
+                template_type,
+                &cluster.variables,
+            );
+
+            if sanitized_variables.is_empty() {
                 sender_debug
                     .generated_templates
                     .push(TemplateDetectionGeneratedTemplateDebug {
                         template_id: None,
-                        template_type: None,
+                        template_type: Some(template_type),
                         template_body: cluster.template_body,
                         translated_template_body: cluster.translated_template_body,
                         source_email_ids: cluster.email_ids,
                         variables: Vec::new(),
                         has_bill: cluster.has_bill,
-                        discarded_reason: Some("No variable mappings".to_string()),
+                        discarded_reason: Some(
+                            "No valid variable mappings after placeholder validation".to_string(),
+                        ),
                     });
                 continue;
             }
-            if !has_required_amount_mapping_for_template(&cluster) {
+            if cluster.has_bill && !has_total_amount_mapping(&sanitized_variables) {
+                let translated_template_body =
+                    render_translated_template(&cluster.template_body, &sanitized_variables);
                 sender_debug
                     .generated_templates
                     .push(TemplateDetectionGeneratedTemplateDebug {
                         template_id: None,
-                        template_type: Some(to_template_type(cluster.has_bill)),
+                        template_type: Some(template_type),
                         template_body: cluster.template_body,
-                        translated_template_body: cluster.translated_template_body,
+                        translated_template_body,
                         source_email_ids: cluster.email_ids,
-                        variables: cluster
-                            .variables
-                            .iter()
-                            .map(|v| DetectedFinancialTemplateVariable {
-                                placeholder_name: v.placeholder_name.clone(),
-                                target_field: v.target_field.clone(),
-                            })
-                            .collect(),
+                        variables: sanitized_variables,
                         has_bill: cluster.has_bill,
                         discarded_reason: Some(
                             "Bill template missing total-amount mapping".to_string(),
@@ -651,7 +745,17 @@ where
                     });
                 continue;
             }
-            valid_clusters.push(cluster);
+            valid_clusters.push(PreparedDetectedCluster {
+                template_type,
+                template_body: cluster.template_body.clone(),
+                translated_template_body: render_translated_template(
+                    &cluster.template_body,
+                    &sanitized_variables,
+                ),
+                source_email_ids: cluster.email_ids.clone(),
+                variables: sanitized_variables,
+                has_bill: cluster.has_bill,
+            });
         }
 
         if valid_clusters.is_empty() {
@@ -661,7 +765,7 @@ where
         }
 
         for cluster in valid_clusters {
-            let template_type = to_template_type(cluster.has_bill);
+            let template_type = cluster.template_type;
             let template_id = match templates_db::insert_template(
                 db.async_connection.clone(),
                 DataSourceType::Email,
@@ -708,7 +812,7 @@ where
                 break;
             }
 
-            for email_id in &cluster.email_ids {
+            for email_id in &cluster.source_email_ids {
                 if let Err(err) = templates_db::insert_template_email_link(
                     db.async_connection.clone(),
                     template_id,
@@ -725,23 +829,14 @@ where
                 break;
             }
 
-            let variables = cluster
-                .variables
-                .into_iter()
-                .map(|v| DetectedFinancialTemplateVariable {
-                    placeholder_name: v.placeholder_name,
-                    target_field: v.target_field,
-                })
-                .collect::<Vec<_>>();
-
             templates.push(DetectedFinancialTemplate {
                 template_id,
                 sender_email: sender_email.clone(),
                 template_type,
                 template_body: cluster.template_body.clone(),
                 translated_template_body: cluster.translated_template_body.clone(),
-                source_email_ids: cluster.email_ids.clone(),
-                variables: variables.clone(),
+                source_email_ids: cluster.source_email_ids.clone(),
+                variables: cluster.variables.clone(),
             });
 
             sender_debug
@@ -751,8 +846,8 @@ where
                     template_type: Some(template_type),
                     template_body: cluster.template_body,
                     translated_template_body: cluster.translated_template_body,
-                    source_email_ids: cluster.email_ids,
-                    variables,
+                    source_email_ids: cluster.source_email_ids,
+                    variables: cluster.variables,
                     has_bill: cluster.has_bill,
                     discarded_reason: None,
                 });
@@ -786,10 +881,6 @@ where
             current_sender: None,
             debug: Some(debug_state.clone()),
         });
-
-        if templates.len() >= MIN_GENERATED_TEMPLATES_PER_RUN {
-            break;
-        }
     }
 
     Ok(DetectFinancialTemplatesResponse {
