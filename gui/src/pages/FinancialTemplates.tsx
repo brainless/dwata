@@ -17,8 +17,22 @@ function snippet(text: string, max: number): string {
   return `${normalized.slice(0, max - 1)}...`;
 }
 
+function formatTemplateBody(text: string): string {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\n\s*-{3,}\s*\n/g, "\n\n")
+    .replace(/(Subject:[^\n]*)\n+(Body:)/i, "$1\n\n$2")
+    .trim();
+}
+
+function templateSnippet(text: string, max: number): string {
+  const formatted = formatTemplateBody(text);
+  if (formatted.length <= max) return formatted;
+  return `${formatted.slice(0, max - 1)}...`;
+}
+
 export default function FinancialTemplates() {
-  const [templates] = createResource(fetchTemplates);
+  const [templates, { refetch }] = createResource(fetchTemplates);
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
   const [deleting, setDeleting] = createSignal(false);
   const [deleteError, setDeleteError] = createSignal<string | null>(null);
@@ -58,7 +72,7 @@ export default function FinancialTemplates() {
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setSelected(new Set());
-      await templates.refetch();
+      await refetch();
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Failed to delete templates");
     } finally {
@@ -131,20 +145,20 @@ export default function FinancialTemplates() {
                               {row.template.data_source_id}
                             </td>
                             <td class="capitalize">{row.template.template_type}</td>
-                            <td class="max-w-xl" title={row.template.template_body}>
-                              {snippet(row.template.template_body, 120)}
+                            <td class="max-w-xl whitespace-pre-wrap" title={formatTemplateBody(row.template.template_body)}>
+                              {templateSnippet(row.template.template_body, 1000)}
                             </td>
                             <td>
                               <Show
                                 when={row.variables.length > 0}
                                 fallback={<span class="text-xs text-base-content/60">No variables</span>}
                               >
-                                <div class="flex flex-wrap gap-1">
+                                <div class="space-y-1">
                                   <For each={row.variables}>
                                     {(v) => (
-                                      <span class="badge badge-outline badge-sm" title={`${v.placeholder_name} -> ${v.target_field}`}>
+                                      <div class="text-xs leading-tight" title={`${v.placeholder_name} -> ${v.target_field}`}>
                                         {snippet(`${v.placeholder_name} -> ${v.target_field}`, 42)}
-                                      </span>
+                                      </div>
                                     )}
                                   </For>
                                 </div>
