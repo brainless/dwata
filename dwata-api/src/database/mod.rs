@@ -7,6 +7,7 @@ pub mod downloads;
 pub mod emails;
 pub mod events;
 pub mod extraction_jobs;
+pub mod financial_bills;
 pub mod financial_templates;
 pub mod financial_transactions;
 pub mod folders;

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use shared_types::{
     DataSourceType, FinancialSummary, FinancialTransaction, TransactionCategory, TransactionParty,
     TransactionStatus,
@@ -43,8 +43,6 @@ pub async fn insert_financial_transaction(
 
     let status = match transaction.status {
         TransactionStatus::Paid => "paid",
-        TransactionStatus::Pending => "pending",
-        TransactionStatus::Overdue => "overdue",
         TransactionStatus::Cancelled => "cancelled",
         TransactionStatus::Refunded => "refunded",
     };
@@ -235,11 +233,13 @@ pub async fn list_financial_transactions_filtered(
             let status_str: String = row.try_get(9)?;
             let status = match status_str.as_str() {
                 "paid" => TransactionStatus::Paid,
-                "pending" => TransactionStatus::Pending,
-                "overdue" => TransactionStatus::Overdue,
                 "cancelled" => TransactionStatus::Cancelled,
                 "refunded" => TransactionStatus::Refunded,
-                _ => TransactionStatus::Pending,
+                other => {
+                    return Err(anyhow!(
+                        "Unsupported transaction status in financial_transactions: {other}"
+                    ))
+                }
             };
 
             let category_str: Option<String> = row.try_get(6)?;
@@ -318,18 +318,11 @@ pub async fn get_financial_summary(
     .fetch_one(pool)
     .await?;
 
-    let pending_statuses = sqlx::query(
-        "SELECT
-            COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending,
-            COALESCE(SUM(CASE WHEN status = 'overdue' THEN 1 ELSE 0 END), 0) as overdue
-         FROM financial_transactions
-         WHERE transaction_date >= ?",
-    )
-    .bind(start_date)
-    .fetch_one(pool)
-    .await?;
-    let pending_bills: i32 = pending_statuses.try_get(0)?;
-    let overdue_payments: i32 = pending_statuses.try_get(1)?;
+    let (pending_bills, overdue_payments) =
+        crate::database::financial_bills::count_unpaid_and_overdue_bills_for_period(
+            pool, start_date, end_date,
+        )
+        .await?;
 
     Ok(FinancialSummary {
         total_income,

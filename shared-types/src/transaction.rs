@@ -36,9 +36,7 @@ pub enum TransactionCategory {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 pub enum TransactionStatus {
-    Pending,
     Paid,
-    Overdue,
     Cancelled,
     Refunded,
 }

@@ -685,7 +685,7 @@ vendor_id: bigint | null, };
 export type TransactionCategory = "income" | "expense" | "investment" | "tax" | "utility" | "subscription" | "entertainment" | "travel" | "healthcare" | "education" | "other";
 
 
-export type TransactionStatus = "pending" | "paid" | "overdue" | "cancelled" | "refunded";
+export type TransactionStatus = "paid" | "cancelled" | "refunded";
 
 
 import type { TransactionVendorType } from "./TransactionVendorType";
@@ -711,6 +711,7 @@ export type FinancialSummary = { total_income: number, total_expenses: number, n
 export type FinancialExtractionSummary = { source_count: bigint, transaction_count: bigint, last_extracted_at: bigint | null, };
 
 
+import type { Bill } from "./Bill";
 import type { CategoryBreakdown } from "./CategoryBreakdown";
 import type { FinancialSummary } from "./FinancialSummary";
 import type { FinancialTransaction } from "./FinancialTransaction";
@@ -718,7 +719,7 @@ import type { FinancialTransaction } from "./FinancialTransaction";
 /**
  * Financial health metrics
  */
-export type FinancialHealth = { summary: FinancialSummary, recent_transactions: Array<FinancialTransaction>, upcoming_bills: Array<FinancialTransaction>, category_breakdown: Array<CategoryBreakdown>, };
+export type FinancialHealth = { summary: FinancialSummary, recent_transactions: Array<FinancialTransaction>, upcoming_bills: Array<Bill>, category_breakdown: Array<CategoryBreakdown>, };
 
 
 import type { TransactionCategory } from "./TransactionCategory";
@@ -727,6 +728,15 @@ import type { TransactionCategory } from "./TransactionCategory";
  * Breakdown by category
  */
 export type CategoryBreakdown = { category: TransactionCategory, amount: number, percentage: number, transaction_count: number, };
+
+
+export type FinancialPagination = { page: number, limit: number, total_count: number, total_pages: number, };
+
+
+import type { Bill } from "./Bill";
+import type { FinancialPagination } from "./FinancialPagination";
+
+export type ListFinancialBillsResponse = { bills: Array<Bill>, pagination: FinancialPagination, };
 
 
 export type FinancialTemplateType = "bill" | "transaction";

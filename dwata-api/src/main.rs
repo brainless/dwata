@@ -650,6 +650,10 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::financial::list_transactions),
             )
             .route(
+                "/api/financial/bills",
+                web::get().to(handlers::financial::list_bills),
+            )
+            .route(
                 "/api/financial/summary",
                 web::get().to(handlers::financial::get_summary),
             )

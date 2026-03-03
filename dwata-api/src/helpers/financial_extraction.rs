@@ -1,4 +1,4 @@
-use crate::database::{financial_transactions as txn_db, Database};
+use crate::database::{financial_bills as bill_db, financial_transactions as txn_db, Database};
 use anyhow::Result;
 use dwata_agents::{
     extract_values_from_email, is_valid_bill_value, is_valid_txn_value, parse_amount, parse_date,
@@ -6,7 +6,8 @@ use dwata_agents::{
 };
 use serde::Serialize;
 use shared_types::{
-    DataSourceType, FinancialTransaction, TransactionCategory, TransactionParty, TransactionStatus,
+    Bill, BillStatus, DataSourceType, FinancialDocumentType, FinancialTransaction,
+    TransactionCategory, TransactionParty, TransactionStatus,
 };
 use sqlx::Row;
 use std::collections::HashMap;
@@ -16,6 +17,7 @@ use std::sync::Arc;
 pub struct FinancialExtractionRunResponse {
     pub templates_scanned: usize,
     pub emails_scanned: usize,
+    pub inserted_bills: usize,
     pub inserted_transactions: usize,
     pub discarded_rows: usize,
 }
@@ -40,6 +42,7 @@ pub async fn extract_financial_from_templates(
 ) -> Result<FinancialExtractionRunResponse> {
     let mut templates = load_templates(&db, credential_id).await?;
     let mut emails_scanned = 0usize;
+    let mut inserted_bills = 0usize;
     let mut inserted_transactions = 0usize;
     let mut discarded_rows = 0usize;
 
@@ -92,17 +95,29 @@ pub async fn extract_financial_from_templates(
 
             let email_id: i64 = email.try_get("id")?;
             let received_ts: i64 = email.try_get("date_received")?;
-            if let Some(txn) = build_transaction_from_fields(
-                &template.kind,
-                &field_values,
-                email_id,
-                received_ts,
-                template.id,
-            ) {
-                txn_db::insert_financial_transaction(&db.sqlx_pool, &txn).await?;
-                inserted_transactions += 1;
-            } else {
-                discarded_rows += 1;
+            match template.kind {
+                TemplateKind::Bill => {
+                    if let Some(bill) = build_bill_from_fields(&field_values, email_id, received_ts)
+                    {
+                        bill_db::insert_financial_bill(&db.sqlx_pool, &bill).await?;
+                        inserted_bills += 1;
+                    } else {
+                        discarded_rows += 1;
+                    }
+                }
+                TemplateKind::Transaction => {
+                    if let Some(txn) = build_transaction_from_fields(
+                        &field_values,
+                        email_id,
+                        received_ts,
+                        template.id,
+                    ) {
+                        txn_db::insert_financial_transaction(&db.sqlx_pool, &txn).await?;
+                        inserted_transactions += 1;
+                    } else {
+                        discarded_rows += 1;
+                    }
+                }
             }
         }
     }
@@ -110,6 +125,7 @@ pub async fn extract_financial_from_templates(
     Ok(FinancialExtractionRunResponse {
         templates_scanned: load_template_count(&db, credential_id).await?,
         emails_scanned,
+        inserted_bills,
         inserted_transactions,
         discarded_rows,
     })
@@ -243,7 +259,6 @@ async fn load_linked_emails_for_template(
 }
 
 fn build_transaction_from_fields(
-    kind: &TemplateKind,
     fields: &HashMap<String, String>,
     email_id: i64,
     date_received_ms: i64,
@@ -259,63 +274,92 @@ fn build_transaction_from_fields(
                 .to_string()
         });
 
-    match kind {
-        TemplateKind::Bill => {
-            let amount = parse_amount(fields.get("total-amount")?)?;
-            let date = fields
-                .get("due-date")
-                .or_else(|| fields.get("issued-date"))
-                .and_then(|v| parse_date(v))
-                .map(|d| d.format("%Y-%m-%d").to_string())
-                .unwrap_or(default_date);
-            Some(FinancialTransaction {
-                id: 0,
-                data_source_type: DataSourceType::Email,
-                data_source_id: email_id.to_string(),
-                amount: amount.abs(),
-                currency: fields
-                    .get("currency")
-                    .cloned()
-                    .unwrap_or_else(|| "USD".to_string()),
-                transaction_date: date,
-                category: Some(TransactionCategory::Expense),
-                payer: TransactionParty { vendor_id: None },
-                payee: TransactionParty { vendor_id: None },
-                status: TransactionStatus::Pending,
-                source_file: None,
-                extracted_at,
-                notes: Some(format!("template_id={template_id};kind=bill")),
-                transaction_reference: fields.get("document-reference").cloned(),
-            })
-        }
-        TemplateKind::Transaction => {
-            let amount = parse_amount(fields.get("amount")?)?;
-            let date = fields
-                .get("transaction-date")
-                .and_then(|v| parse_date(v))
-                .map(|d| d.format("%Y-%m-%d").to_string())
-                .unwrap_or(default_date);
-            Some(FinancialTransaction {
-                id: 0,
-                data_source_type: DataSourceType::Email,
-                data_source_id: email_id.to_string(),
-                amount: amount.abs(),
-                currency: fields
-                    .get("currency")
-                    .cloned()
-                    .unwrap_or_else(|| "USD".to_string()),
-                transaction_date: date,
-                category: Some(TransactionCategory::Expense),
-                payer: TransactionParty { vendor_id: None },
-                payee: TransactionParty { vendor_id: None },
-                status: TransactionStatus::Paid,
-                source_file: None,
-                extracted_at,
-                notes: Some(format!("template_id={template_id};kind=transaction")),
-                transaction_reference: fields.get("transaction-reference").cloned(),
-            })
-        }
-    }
+    let amount = parse_amount(fields.get("amount")?)?;
+    let date = fields
+        .get("transaction-date")
+        .and_then(|v| parse_date(v))
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or(default_date);
+    Some(FinancialTransaction {
+        id: 0,
+        data_source_type: DataSourceType::Email,
+        data_source_id: email_id.to_string(),
+        amount: amount.abs(),
+        currency: fields
+            .get("currency")
+            .cloned()
+            .unwrap_or_else(|| "USD".to_string()),
+        transaction_date: date,
+        category: Some(TransactionCategory::Expense),
+        payer: TransactionParty { vendor_id: None },
+        payee: TransactionParty { vendor_id: None },
+        status: TransactionStatus::Paid,
+        source_file: None,
+        extracted_at,
+        notes: Some(format!("template_id={template_id};kind=transaction")),
+        transaction_reference: fields.get("transaction-reference").cloned(),
+    })
+}
+
+fn build_bill_from_fields(
+    fields: &HashMap<String, String>,
+    email_id: i64,
+    date_received_ms: i64,
+) -> Option<Bill> {
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let now_s = chrono::Utc::now().timestamp();
+    let amount = parse_amount(fields.get("total-amount")?)?.abs();
+
+    let issued_date_raw = fields.get("issued-date").cloned();
+    let issued_date = issued_date_raw
+        .as_ref()
+        .and_then(|v| parse_date(v))
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .map(|dt| dt.and_utc().timestamp_millis());
+
+    let due_date_raw = fields.get("due-date").cloned();
+    let fallback_due = chrono::DateTime::from_timestamp_millis(date_received_ms)
+        .map(|dt| dt.date_naive())
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .map(|dt| dt.and_utc().timestamp_millis());
+    let due_date = due_date_raw
+        .as_ref()
+        .and_then(|v| parse_date(v))
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .map(|dt| dt.and_utc().timestamp_millis())
+        .or(fallback_due);
+
+    let status = match due_date {
+        Some(v) if v < now_ms => BillStatus::Overdue,
+        _ => BillStatus::Unpaid,
+    };
+
+    Some(Bill {
+        id: 0,
+        data_source_type: DataSourceType::Email,
+        data_source_id: email_id.to_string(),
+        document_type: FinancialDocumentType::Bill,
+        status,
+        issuer_vendor_id: None,
+        document_reference: fields.get("document-reference").cloned(),
+        total_amount: Some(amount),
+        currency: Some(
+            fields
+                .get("currency")
+                .cloned()
+                .unwrap_or_else(|| "USD".to_string()),
+        ),
+        issued_date_raw,
+        issued_date,
+        due_date_raw,
+        due_date,
+        billing_period_start_raw: None,
+        billing_period_start: None,
+        billing_period_end_raw: None,
+        billing_period_end: None,
+        created_at: now_s,
+        updated_at: now_s,
+    })
 }
 
 fn preferred_body_text(body_text: Option<&str>, body_html: Option<&str>) -> String {

@@ -4,8 +4,6 @@ import {
   HiOutlineCurrencyDollar,
   HiOutlineExclamationTriangle,
   HiOutlineDocumentText,
-  HiOutlineCalendar,
-  HiOutlineClock,
   HiOutlineArrowPath,
   HiOutlineArrowUpTray,
 } from "solid-icons/hi";
@@ -177,11 +175,6 @@ export default function FinancialHealth() {
     fetchCredentials();
   });
 
-  const upcomingBills = () => {
-    const all = transactions();
-    return all.filter((t) => t.status === "pending" || t.status === "overdue");
-  };
-
   const categoryBreakdown = (): CategoryBreakdown[] => {
     const all = transactions();
     const totals = new Map<
@@ -219,10 +212,6 @@ export default function FinancialHealth() {
     switch (status) {
       case "paid":
         return "badge-success";
-      case "pending":
-        return "badge-warning";
-      case "overdue":
-        return "badge-error";
       case "cancelled":
         return "badge-ghost";
       case "refunded":
@@ -528,73 +517,6 @@ export default function FinancialHealth() {
               <div class="card bg-base-100 shadow-sm border border-base-300">
                 <div class="card-body">
                   <h2 class="card-title mb-4">Upcoming Bills</h2>
-
-                  <Show
-                    when={upcomingBills().length > 0}
-                    fallback={
-                      <div class="text-center py-8 text-base-content/60">
-                        No upcoming bills
-                      </div>
-                    }
-                  >
-                    <div class="space-y-3">
-                      <For each={upcomingBills()}>
-                        {(bill) => (
-                          <div class="flex items-start gap-3 p-3 rounded-lg bg-base-200 hover:bg-base-300 transition-colors">
-                            <div
-                              class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                              classList={{
-                                "bg-error/20 text-error":
-                                  bill.status === "overdue",
-                                "bg-warning/20 text-warning":
-                                  bill.status === "pending",
-                              }}
-                            >
-                              {bill.status === "overdue" ? (
-                                <HiOutlineExclamationTriangle class="w-5 h-5" />
-                              ) : (
-                                <HiOutlineClock class="w-5 h-5" />
-                              )}
-                            </div>
-                            <div class="flex-1 min-w-0">
-                              <div class="font-medium text-sm">
-                                {bill.vendor || 'Unknown Vendor'}
-                              </div>
-                              <div class="text-xs text-base-content/60 flex items-center gap-1 mt-1">
-                                <HiOutlineCalendar class="w-3 h-3" />
-                                Due{" "}
-                                {new Date(
-                                  bill.transaction_date,
-                                ).toLocaleDateString()}
-                              </div>
-                              {bill.notes && (
-                                <div class="text-xs text-error mt-1">
-                                  {bill.notes}
-                                </div>
-                              )}
-                            </div>
-                            <div class="text-right">
-                              <div class="font-semibold text-sm">
-                                {formatCurrency(
-                                  Math.abs(bill.amount),
-                                  bill.currency,
-                                )}
-                              </div>
-                              <span
-                                class={`badge badge-xs ${getStatusBadgeClass(bill.status)}`}
-                              >
-                                {bill.status}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </For>
-                    </div>
-
-                    <button class="btn btn-sm btn-block mt-4">
-                      View All Bills
-                    </button>
-                  </Show>
                 </div>
               </div>
             </div>

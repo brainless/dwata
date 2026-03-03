@@ -55,7 +55,8 @@ pub use extraction_job::{
     ExtractionSourceType, ExtractorType,
 };
 pub use financial::{
-    CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialSummary,
+    CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialPagination,
+    FinancialSummary, ListFinancialBillsResponse,
 };
 pub use financial_template::{
     DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,

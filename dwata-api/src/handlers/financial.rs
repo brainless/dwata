@@ -1,16 +1,17 @@
 use crate::config::ApiConfig;
 use crate::database::{
-    financial_templates as templates_db, financial_transactions as db, Database,
+    financial_bills as bills_db, financial_templates as templates_db, financial_transactions as db,
+    Database,
 };
 use crate::helpers::template_detection_job::TemplateDetectionJobState;
 use crate::search::tantivy::TantivySearchIndex;
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
 use shared_types::{
-    DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,
-    DetectFinancialTemplatesRequest, FinancialExtractionTemplate, FinancialSummary,
-    FinancialTemplateDetectionJobStatus, FinancialTemplateFieldMapping,
-    FinancialTemplateWithVariables, ListFinancialTemplatesResponse,
+    BillStatus, DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,
+    DetectFinancialTemplatesRequest, FinancialExtractionTemplate, FinancialPagination,
+    FinancialSummary, FinancialTemplateDetectionJobStatus, FinancialTemplateFieldMapping,
+    FinancialTemplateWithVariables, ListFinancialBillsResponse, ListFinancialTemplatesResponse,
 };
 use std::sync::Arc;
 #[derive(Deserialize)]
@@ -45,6 +46,20 @@ fn default_page() -> usize {
 
 fn default_limit() -> usize {
     500
+}
+
+#[derive(Deserialize)]
+pub struct BillFilters {
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub start_due_date: Option<String>,
+    #[serde(default)]
+    pub end_due_date: Option<String>,
+    #[serde(default = "default_page")]
+    pub page: usize,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
 }
 
 #[derive(Deserialize)]
@@ -100,6 +115,62 @@ pub async fn list_transactions(
             "total_pages": total_pages,
         }
     })))
+}
+
+pub async fn list_bills(
+    db: web::Data<Arc<Database>>,
+    query: web::Query<BillFilters>,
+) -> ActixResult<HttpResponse> {
+    let offset = (query.page.saturating_sub(1)) * query.limit;
+    let parsed_status = match query.status.as_deref() {
+        Some("received") => Some(BillStatus::Received),
+        Some("unpaid") => Some(BillStatus::Unpaid),
+        Some("paid") => Some(BillStatus::Paid),
+        Some("overdue") => Some(BillStatus::Overdue),
+        Some("cancelled") => Some(BillStatus::Cancelled),
+        Some(other) => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Unsupported bill status filter: {other}")
+            })))
+        }
+        None => None,
+    };
+
+    let start_due_date_ms = query
+        .start_due_date
+        .as_deref()
+        .map(bills_db::date_string_to_utc_ms)
+        .transpose()
+        .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
+    let end_due_date_ms = query
+        .end_due_date
+        .as_deref()
+        .map(bills_db::date_string_to_utc_ms)
+        .transpose()
+        .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
+
+    let (bills, total_count) = bills_db::list_financial_bills_filtered(
+        &db.sqlx_pool,
+        parsed_status,
+        start_due_date_ms,
+        end_due_date_ms,
+        query.limit,
+        offset,
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    let total_pages = (total_count as f64 / query.limit as f64).ceil() as usize;
+
+    Ok(HttpResponse::Ok().json(ListFinancialBillsResponse {
+        bills,
+        pagination: FinancialPagination {
+            page: query.page,
+            limit: query.limit,
+            total_count,
+            total_pages,
+        },
+    }))
 }
 
 pub async fn list_templates(
