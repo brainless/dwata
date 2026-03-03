@@ -3,7 +3,9 @@ use crate::database::{emails as emails_db, financial_templates as templates_db, 
 use crate::search::tantivy::TantivySearchIndex;
 use actix_web::web;
 use anyhow::Result;
-use dwata_agents::{detect_templates_for_sender, TemplateDetectionOptions, TemplateInputEmail};
+use dwata_agents::{
+    detect_reverse_templates_for_sender, TemplateDetectionOptions, TemplateInputEmail,
+};
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
 use nocodo_llm_sdk::ollama::OllamaClient;
@@ -184,10 +186,6 @@ fn collect_template_variable_names(template_body: &str) -> HashSet<String> {
         .collect()
 }
 
-fn is_template_placeholder_name(name: &str) -> bool {
-    name.starts_with("placeholder_") || name.starts_with("subject_")
-}
-
 fn is_allowed_target_field(template_type: FinancialTemplateType, field: &str) -> bool {
     match template_type {
         FinancialTemplateType::Bill => BILL_TARGET_FIELDS.contains(&field),
@@ -208,9 +206,6 @@ fn sanitize_cluster_variables(
         let placeholder_name = v.placeholder_name.trim();
         let target_field = v.target_field.trim();
         if placeholder_name.is_empty() || target_field.is_empty() {
-            continue;
-        }
-        if !is_template_placeholder_name(placeholder_name) {
             continue;
         }
         if !template_placeholders.contains(placeholder_name) {
@@ -681,7 +676,7 @@ where
         }
 
         let input_emails = pool_rows.iter().map(to_input_email).collect::<Vec<_>>();
-        let clusters = match detect_templates_for_sender(
+        let clusters = match detect_reverse_templates_for_sender(
             llm_client.clone(),
             model.clone(),
             input_emails,

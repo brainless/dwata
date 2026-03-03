@@ -1,12 +1,13 @@
 use crate::storage::{AgentStorage, InMemoryAgentStorage, Session};
 use crate::template_bill_extractor::types::BillField;
 use crate::{
-    TemplateBillExtractorAgent, TemplateDocumentLabelerAgent, TemplateFinancialExtractorAgent,
+    LlmReverseTemplateExtractorAgent, ReverseTemplateType, TemplateBillExtractorAgent,
+    TemplateDocumentLabelerAgent, TemplateFinancialExtractorAgent,
 };
 use anyhow::Result;
 use nocodo_llm_sdk::client::LlmClient;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -59,6 +60,25 @@ struct EmailCluster {
     seed_text: String,
     members: Vec<TemplateInputEmail>,
 }
+
+const BILL_FIELDS: &[&str] = &[
+    "total-amount",
+    "currency",
+    "issued-date",
+    "due-date",
+    "billing-period-start",
+    "billing-period-end",
+    "document-reference",
+    "service-identifier",
+];
+
+const TRANSACTION_FIELDS: &[&str] = &[
+    "amount",
+    "currency",
+    "transaction-date",
+    "vendor",
+    "transaction-reference",
+];
 
 pub fn discover_template_drafts(
     emails: Vec<TemplateInputEmail>,
@@ -234,6 +254,106 @@ pub async fn detect_templates_for_sender(
             email_ids: draft.selected_email_ids,
             variables,
             has_bill: label.has_bill,
+        });
+    }
+
+    Ok(out)
+}
+
+pub async fn detect_reverse_templates_for_sender(
+    llm_client: Arc<dyn LlmClient>,
+    model: String,
+    emails: Vec<TemplateInputEmail>,
+    options: TemplateDetectionOptions,
+) -> Result<Vec<DetectedTemplateCluster>> {
+    let email_by_id = emails
+        .iter()
+        .map(|email| (email.id, email.clone()))
+        .collect::<HashMap<_, _>>();
+    let drafts = discover_template_drafts(emails, options)?;
+    let mut out = Vec::new();
+
+    for draft in drafts {
+        let storage = Arc::new(InMemoryAgentStorage::new());
+        let label = {
+            let session_id = storage
+                .create_session(Session {
+                    id: None,
+                    agent_type: "template-document-labeler".to_string(),
+                    objective: "Classify financial document type".to_string(),
+                    context_data: None,
+                    status: "running".to_string(),
+                    result: None,
+                })
+                .await?;
+            let agent = TemplateDocumentLabelerAgent::new(
+                llm_client.clone(),
+                storage.clone(),
+                model.clone(),
+                draft.full_template.clone(),
+            );
+            agent.execute(session_id).await?
+        };
+
+        let template_type = if label.has_bill {
+            ReverseTemplateType::Bill
+        } else if label.has_transaction {
+            ReverseTemplateType::Transaction
+        } else {
+            continue;
+        };
+
+        let sample_email = match draft
+            .selected_email_ids
+            .iter()
+            .find_map(|id| email_by_id.get(id))
+            .cloned()
+        {
+            Some(sample) => sample,
+            None => continue,
+        };
+
+        let reverse_output = {
+            let session_id = storage
+                .create_session(Session {
+                    id: None,
+                    agent_type: "llm-reverse-template-extractor".to_string(),
+                    objective: "Reverse one sample into canonical field Jinja2".to_string(),
+                    context_data: None,
+                    status: "running".to_string(),
+                    result: None,
+                })
+                .await?;
+            let agent = LlmReverseTemplateExtractorAgent::new(
+                llm_client.clone(),
+                storage.clone(),
+                template_type,
+                sample_email.subject,
+                sample_email.body,
+            );
+            agent.execute(session_id).await?
+        };
+
+        let allowed_fields = match template_type {
+            ReverseTemplateType::Bill => BILL_FIELDS,
+            ReverseTemplateType::Transaction => TRANSACTION_FIELDS,
+        };
+        let variables =
+            collect_canonical_field_mappings(&reverse_output.template_body, allowed_fields);
+        if matches!(template_type, ReverseTemplateType::Bill)
+            && !variables.iter().any(|v| v.target_field == "total-amount")
+        {
+            tracing::warn!("Discarding reverse bill template without total-amount placeholder");
+            continue;
+        }
+
+        out.push(DetectedTemplateCluster {
+            template_body: reverse_output.template_body.clone(),
+            translated_template_body: reverse_output.template_body,
+            seed_text: draft.seed_text,
+            email_ids: draft.selected_email_ids,
+            variables,
+            has_bill: matches!(template_type, ReverseTemplateType::Bill),
         });
     }
 
@@ -715,6 +835,33 @@ fn levenshtein_words(a: &[&str], b: &[&str]) -> usize {
         std::mem::swap(&mut prev, &mut curr);
     }
     prev[b.len()]
+}
+
+fn collect_canonical_field_mappings(
+    template: &str,
+    allowed_fields: &[&str],
+) -> Vec<TemplateVariableMapping> {
+    let re = match Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}") {
+        Ok(re) => re,
+        Err(_) => return Vec::new(),
+    };
+    let allowed = allowed_fields.iter().copied().collect::<HashSet<_>>();
+    let mut seen = HashSet::new();
+    let mut mappings = Vec::new();
+    for caps in re.captures_iter(template) {
+        let field = match caps.get(1) {
+            Some(m) => m.as_str(),
+            None => continue,
+        };
+        if !allowed.contains(field) || !seen.insert(field.to_string()) {
+            continue;
+        }
+        mappings.push(TemplateVariableMapping {
+            placeholder_name: field.to_string(),
+            target_field: field.to_string(),
+        });
+    }
+    mappings
 }
 
 fn translate_template(template: &str, placeholder_to_field: &HashMap<String, String>) -> String {

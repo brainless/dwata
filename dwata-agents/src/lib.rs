@@ -1,4 +1,5 @@
 pub mod date_parser;
+pub mod llm_reverse_template_extractor;
 pub mod statement_extractor;
 pub mod storage;
 pub mod template_bill_extractor;
@@ -7,12 +8,17 @@ pub mod template_document_labeler;
 pub mod template_financial_extractor;
 pub mod template_value_extractor;
 
+pub use llm_reverse_template_extractor::{
+    LlmReverseTemplateExtractorAgent, ReverseTemplateField, ReverseTemplateParams,
+    ReverseTemplateType, ReverseVariableTranslation,
+};
 pub use statement_extractor::{ColumnarSheet, StatementTemplate, StatementTransaction};
 pub use storage::{AgentStorage, Message, Session, ToolCall};
 pub use template_bill_extractor::{TemplateBillExtractorAgent, TranslateBillVariablesParams};
 pub use template_detection::{
-    detect_templates_for_sender, discover_template_drafts, DetectedTemplateCluster,
-    TemplateDetectionOptions, TemplateDraft, TemplateInputEmail, TemplateVariableMapping,
+    detect_reverse_templates_for_sender, detect_templates_for_sender, discover_template_drafts,
+    DetectedTemplateCluster, TemplateDetectionOptions, TemplateDraft, TemplateInputEmail,
+    TemplateVariableMapping,
 };
 pub use template_document_labeler::{LabelDocumentParams, TemplateDocumentLabelerAgent};
 pub use template_financial_extractor::{TemplateFinancialExtractorAgent, TranslateVariablesParams};
