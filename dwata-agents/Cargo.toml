@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 # nocodo framework
-nocodo-llm-sdk = { path = "../../nocodo/nocodo-llm-sdk" }
+nocodo-llm-sdk = { package = "llm-sdk", path = "../../llm-sdk" }
 
 # Internal dependencies
 shared-types = { path = "../shared-types" }

@@ -7,7 +7,7 @@ This document describes the architecture that matches the current branch and mig
 - `dwata-api`: Rust backend (Actix), SQLite persistence, sync jobs, extraction APIs
 - `dwata-agents`: template-based financial extraction logic and CLI tooling
 - `gui`: SolidJS frontend for settings, sync status, search, and financial flows
-- `nocodo-llm-sdk` (from sibling `nocodo` repo): provider abstraction for one-time template interpretation calls
+- `nocodo-llm-sdk` (Cargo alias to sibling `llm-sdk` repo): provider abstraction for one-time template interpretation calls
 
 ## Primary Data Flow
 

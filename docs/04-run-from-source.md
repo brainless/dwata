@@ -9,7 +9,7 @@ Clone these side-by-side under the same parent folder:
 ```bash
 cd /path/to/workspace
 git clone https://github.com/brainless/dwata.git
-git clone https://github.com/brainless/nocodo.git
+git clone https://github.com/brainless/llm-sdk.git
 ```
 
 Expected layout:
@@ -17,10 +17,10 @@ Expected layout:
 ```text
 /path/to/workspace/
   dwata/
-  nocodo/
+  llm-sdk/
 ```
 
-`dwata` uses a local path dependency to `../../nocodo/nocodo-llm-sdk`, so `nocodo` must be present as a sibling repo.
+`dwata` uses a local path dependency to `../../llm-sdk` (aliased as `nocodo-llm-sdk` in Cargo), so `llm-sdk` must be present as a sibling repo.
 
 ## Prerequisites
 
@@ -91,5 +91,5 @@ cargo run --bin generate_api_types
 
 ## Source Dependency Check
 
-- Required extra source repo for this branch: `nocodo` (for `nocodo-llm-sdk` path dependency).
+- Required extra source repo for this branch: `llm-sdk` (for `nocodo-llm-sdk` alias to `llm-sdk` path dependency).
 - No other source repo is needed.
