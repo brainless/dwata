@@ -1,6 +1,6 @@
 use crate::date_parser::parse_to_iso;
-use crate::template_financial_extractor::TransactionField;
 use calamine::{open_workbook_auto, Data, Reader};
+use shared_types::{DataSourceType, FinancialTransaction, TransactionParty, TransactionStatus};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -19,14 +19,13 @@ pub struct StatementTemplate {
     pub row_template: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct StatementTransaction {
-    pub transaction_date: String,
-    pub amount: f64,
-    pub currency: Option<String>,
-    pub vendor: Option<String>,
-    pub transaction_reference: Option<String>,
-    pub raw_row: HashMap<String, String>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StatementField {
+    Amount,
+    Currency,
+    TransactionDate,
+    Vendor,
+    TransactionReference,
 }
 
 pub fn read_statement_sheets(
@@ -132,7 +131,7 @@ pub fn build_template(sheet: &ColumnarSheet) -> StatementTemplate {
     }
 }
 
-pub fn infer_field_mapping(headers: &[String]) -> HashMap<String, TransactionField> {
+pub fn infer_field_mapping(headers: &[String]) -> HashMap<String, StatementField> {
     let mut map = HashMap::new();
     let mut saw_amount = false;
     for h in headers {
@@ -144,24 +143,24 @@ pub fn infer_field_mapping(headers: &[String]) -> HashMap<String, TransactionFie
                 || n.contains("debit")
                 || n.contains("credit"))
         {
-            map.insert(h.clone(), TransactionField::Amount);
+            map.insert(h.clone(), StatementField::Amount);
             saw_amount = true;
             continue;
         }
         if n.contains("date") || n == "dt" {
-            map.insert(h.clone(), TransactionField::TransactionDate);
+            map.insert(h.clone(), StatementField::TransactionDate);
             continue;
         }
         if n.contains("narration") || n.contains("description") || n.contains("particular") {
-            map.insert(h.clone(), TransactionField::Vendor);
+            map.insert(h.clone(), StatementField::Vendor);
             continue;
         }
         if n.contains("ref") || n.contains("chq") || n.contains("utr") || n.contains("txn") {
-            map.insert(h.clone(), TransactionField::TransactionReference);
+            map.insert(h.clone(), StatementField::TransactionReference);
             continue;
         }
         if n.contains("currency") || n == "ccy" {
-            map.insert(h.clone(), TransactionField::Currency);
+            map.insert(h.clone(), StatementField::Currency);
             continue;
         }
     }
@@ -170,9 +169,9 @@ pub fn infer_field_mapping(headers: &[String]) -> HashMap<String, TransactionFie
 
 pub fn extract_transactions(
     sheet: &ColumnarSheet,
-    field_map: &HashMap<String, TransactionField>,
+    field_map: &HashMap<String, StatementField>,
     default_currency: Option<&str>,
-) -> Vec<StatementTransaction> {
+) -> Vec<FinancialTransaction> {
     let header_index = sheet
         .headers
         .iter()
@@ -181,7 +180,8 @@ pub fn extract_transactions(
         .collect::<HashMap<_, _>>();
 
     let mut transactions = Vec::new();
-    for row in &sheet.rows {
+    let extracted_at = chrono::Utc::now().timestamp_millis();
+    for (row_idx, row) in sheet.rows.iter().enumerate() {
         let raw_row = sheet
             .headers
             .iter()
@@ -204,12 +204,12 @@ pub fn extract_transactions(
                 continue;
             }
             match field {
-                TransactionField::TransactionDate => {
+                StatementField::TransactionDate => {
                     if date.is_none() {
                         date = parse_to_iso(value);
                     }
                 }
-                TransactionField::Amount => {
+                StatementField::Amount => {
                     if amount.is_none() {
                         let mut parsed = parse_amount(value);
                         let header_norm = header.to_ascii_lowercase();
@@ -226,13 +226,13 @@ pub fn extract_transactions(
                         amount = parsed;
                     }
                 }
-                TransactionField::Currency => {
+                StatementField::Currency => {
                     currency = Some(value.to_string());
                 }
-                TransactionField::Vendor => {
+                StatementField::Vendor => {
                     vendor = Some(value.to_string());
                 }
-                TransactionField::TransactionReference => {
+                StatementField::TransactionReference => {
                     reference = Some(value.to_string());
                 }
             }
@@ -242,13 +242,23 @@ pub fn extract_transactions(
             amount = amount_from_dr_cr(sheet, row);
         }
         if let (Some(transaction_date), Some(amount)) = (date, amount) {
-            transactions.push(StatementTransaction {
+            transactions.push(FinancialTransaction {
+                id: 0,
+                data_source_type: DataSourceType::BankStatement,
+                data_source_id: format!("{}:{}", sheet.name, row_idx + 1),
                 transaction_date,
                 amount,
-                currency: currency.clone(),
-                vendor: vendor.clone(),
+                currency: currency.clone().unwrap_or_else(|| "UNK".to_string()),
+                category: None,
+                payer: TransactionParty { vendor_id: None },
+                payee: TransactionParty { vendor_id: None },
+                status: TransactionStatus::Paid,
+                source_file: None,
+                extracted_at,
+                notes: vendor
+                    .clone()
+                    .or_else(|| serde_json::to_string(&raw_row).ok()),
                 transaction_reference: reference.clone(),
-                raw_row,
             });
         }
     }

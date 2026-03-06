@@ -47,9 +47,5 @@ config = { version = "0.14", default-features = false, features = ["toml"] }
 dirs = "5.0"
 
 [[bin]]
-name = "template_based_financial_extractor"
-path = "src/bin/template_based_financial_extractor.rs"
-
-[[bin]]
 name = "statement_based_financial_extractor"
 path = "src/bin/statement_based_financial_extractor.rs"

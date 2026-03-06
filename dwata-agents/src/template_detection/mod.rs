@@ -1,9 +1,5 @@
 use crate::storage::{AgentStorage, InMemoryAgentStorage, Session};
-use crate::template_bill_extractor::types::BillField;
-use crate::{
-    LlmReverseTemplateExtractorAgent, ReverseTemplateType, TemplateBillExtractorAgent,
-    TemplateDocumentLabelerAgent, TemplateFinancialExtractorAgent,
-};
+use crate::{LlmReverseTemplateExtractorAgent, ReverseTemplateType, TemplateDocumentLabelerAgent};
 use anyhow::Result;
 use nocodo_llm_sdk::client::LlmClient;
 use regex::Regex;
@@ -80,6 +76,22 @@ const TRANSACTION_FIELDS: &[&str] = &[
     "transaction-reference",
 ];
 
+fn canonical_field_aliases(
+    template_type: ReverseTemplateType,
+    fields: &[&str],
+) -> HashMap<String, String> {
+    let mut aliases = HashMap::new();
+    for field in fields {
+        let canonical = (*field).to_string();
+        aliases.insert(canonical.clone(), canonical.clone());
+        aliases.insert(field.replace('-', "_"), canonical);
+    }
+    if matches!(template_type, ReverseTemplateType::Transaction) {
+        aliases.insert("vendor_name".to_string(), "vendor".to_string());
+    }
+    aliases
+}
+
 pub fn discover_template_drafts(
     emails: Vec<TemplateInputEmail>,
     options: TemplateDetectionOptions,
@@ -143,121 +155,7 @@ pub async fn detect_templates_for_sender(
     emails: Vec<TemplateInputEmail>,
     options: TemplateDetectionOptions,
 ) -> Result<Vec<DetectedTemplateCluster>> {
-    let drafts = discover_template_drafts(emails, options)?;
-    let mut out = Vec::new();
-
-    for draft in drafts {
-        let storage = Arc::new(InMemoryAgentStorage::new());
-        let label = {
-            let session_id = storage
-                .create_session(Session {
-                    id: None,
-                    agent_type: "template-document-labeler".to_string(),
-                    objective: "Classify financial document type".to_string(),
-                    context_data: None,
-                    status: "running".to_string(),
-                    result: None,
-                })
-                .await?;
-            let agent = TemplateDocumentLabelerAgent::new(
-                llm_client.clone(),
-                storage.clone(),
-                model.clone(),
-                draft.full_template.clone(),
-            );
-            agent.execute(session_id).await?
-        };
-
-        let mut placeholder_to_field: HashMap<String, String> = HashMap::new();
-
-        if label.has_bill {
-            let session_id = storage
-                .create_session(Session {
-                    id: None,
-                    agent_type: "template-bill-extractor".to_string(),
-                    objective: "Map template placeholders to bill fields".to_string(),
-                    context_data: None,
-                    status: "running".to_string(),
-                    result: None,
-                })
-                .await?;
-            let agent = TemplateBillExtractorAgent::new(
-                llm_client.clone(),
-                storage.clone(),
-                model.clone(),
-                draft.full_template.clone(),
-            );
-            let params = agent.execute(session_id).await?;
-            for t in params.translations {
-                if let Some(field) = t.field {
-                    placeholder_to_field.insert(
-                        t.placeholder,
-                        serde_json::to_value(field)?
-                            .as_str()
-                            .unwrap_or("unknown")
-                            .to_string(),
-                    );
-                }
-            }
-            // Bill templates are only useful if they can extract a payable amount.
-            // We enforce this at detection output too (defense in depth against
-            // future prompt/agent regressions).
-            if !has_required_bill_amount(&placeholder_to_field) {
-                tracing::warn!("Discarding bill-labeled template without total-amount mapping");
-                continue;
-            }
-        } else if label.has_transaction {
-            let session_id = storage
-                .create_session(Session {
-                    id: None,
-                    agent_type: "template-financial-extractor".to_string(),
-                    objective: "Map template placeholders to transaction fields".to_string(),
-                    context_data: None,
-                    status: "running".to_string(),
-                    result: None,
-                })
-                .await?;
-            let agent = TemplateFinancialExtractorAgent::new(
-                llm_client.clone(),
-                storage,
-                model.clone(),
-                draft.full_template.clone(),
-            );
-            let params = agent.execute(session_id).await?;
-            for t in params.translations {
-                if let Some(field) = t.field {
-                    placeholder_to_field.insert(
-                        t.placeholder,
-                        serde_json::to_value(field)?
-                            .as_str()
-                            .unwrap_or("unknown")
-                            .to_string(),
-                    );
-                }
-            }
-        }
-
-        let translated_template_body =
-            translate_template(&draft.full_template, &placeholder_to_field);
-        let variables = placeholder_to_field
-            .into_iter()
-            .map(|(placeholder_name, target_field)| TemplateVariableMapping {
-                placeholder_name,
-                target_field,
-            })
-            .collect::<Vec<_>>();
-
-        out.push(DetectedTemplateCluster {
-            template_body: draft.full_template,
-            translated_template_body,
-            seed_text: draft.seed_text,
-            email_ids: draft.selected_email_ids,
-            variables,
-            has_bill: label.has_bill,
-        });
-    }
-
-    Ok(out)
+    detect_reverse_templates_for_sender(llm_client, model, emails, options).await
 }
 
 pub async fn detect_reverse_templates_for_sender(
@@ -334,12 +232,14 @@ pub async fn detect_reverse_templates_for_sender(
             agent.execute(session_id).await?
         };
 
-        let allowed_fields = match template_type {
-            ReverseTemplateType::Bill => BILL_FIELDS,
-            ReverseTemplateType::Transaction => TRANSACTION_FIELDS,
+        let field_aliases = match template_type {
+            ReverseTemplateType::Bill => canonical_field_aliases(template_type, BILL_FIELDS),
+            ReverseTemplateType::Transaction => {
+                canonical_field_aliases(template_type, TRANSACTION_FIELDS)
+            }
         };
         let variables =
-            collect_canonical_field_mappings(&reverse_output.template_body, allowed_fields);
+            collect_canonical_field_mappings(&reverse_output.template_body, &field_aliases);
         if matches!(template_type, ReverseTemplateType::Bill)
             && !variables.iter().any(|v| v.target_field == "total-amount")
         {
@@ -358,16 +258,6 @@ pub async fn detect_reverse_templates_for_sender(
     }
 
     Ok(out)
-}
-
-fn has_required_bill_amount(placeholder_to_field: &HashMap<String, String>) -> bool {
-    let total_amount = serde_json::to_value(BillField::TotalAmount)
-        .ok()
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "total-amount".to_string());
-    placeholder_to_field
-        .values()
-        .any(|field| field == &total_amount)
 }
 
 fn cluster_emails(
@@ -839,37 +729,30 @@ fn levenshtein_words(a: &[&str], b: &[&str]) -> usize {
 
 fn collect_canonical_field_mappings(
     template: &str,
-    allowed_fields: &[&str],
+    field_aliases: &HashMap<String, String>,
 ) -> Vec<TemplateVariableMapping> {
     let re = match Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}") {
         Ok(re) => re,
         Err(_) => return Vec::new(),
     };
-    let allowed = allowed_fields.iter().copied().collect::<HashSet<_>>();
-    let mut seen = HashSet::new();
+    let mut seen_targets = HashSet::new();
     let mut mappings = Vec::new();
     for caps in re.captures_iter(template) {
-        let field = match caps.get(1) {
+        let token = match caps.get(1) {
             Some(m) => m.as_str(),
             None => continue,
         };
-        if !allowed.contains(field) || !seen.insert(field.to_string()) {
+        let target_field = match field_aliases.get(token) {
+            Some(field) => field.clone(),
+            None => continue,
+        };
+        if !seen_targets.insert(target_field.clone()) {
             continue;
         }
         mappings.push(TemplateVariableMapping {
-            placeholder_name: field.to_string(),
-            target_field: field.to_string(),
+            placeholder_name: target_field.clone(),
+            target_field,
         });
     }
     mappings
-}
-
-fn translate_template(template: &str, placeholder_to_field: &HashMap<String, String>) -> String {
-    let mut out = template.to_string();
-    for (placeholder, field) in placeholder_to_field {
-        let old = format!("{{{{ {} }}}}", placeholder);
-        let new = format!("{{{{ {} }}}}", field);
-        out = out.replace(&old, &new);
-    }
-    out
 }
