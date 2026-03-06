@@ -4,7 +4,8 @@ use crate::search::tantivy::TantivySearchIndex;
 use actix_web::web;
 use anyhow::Result;
 use dwata_agents::{
-    detect_reverse_templates_for_sender, TemplateDetectionOptions, TemplateInputEmail,
+    detect_reverse_templates_for_sender, discover_template_drafts, normalize_email_content,
+    TemplateDetectionOptions, TemplateInputEmail,
 };
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
@@ -15,7 +16,8 @@ use shared_types::{
     DetectedFinancialTemplate, DetectedFinancialTemplateVariable, DocumentKind,
     FinancialTemplateType, SearchDocumentsRequest, SearchField, SearchTerm,
     TemplateDetectionDebugState, TemplateDetectionGeneratedTemplateDebug,
-    TemplateDetectionSenderDebug, TemplateDetectionSenderRank,
+    TemplateDetectionSenderDebug, TemplateDetectionSenderLlmDraftPreview,
+    TemplateDetectionSenderLlmInputsResponse, TemplateDetectionSenderRank,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
@@ -320,26 +322,27 @@ fn build_llm_client(_config: &ApiConfig) -> Result<Arc<dyn LlmClient>> {
 }
 
 fn to_input_email(row: &emails_db::TemplateCandidateEmailRow) -> TemplateInputEmail {
+    // Canonical normalization path shared with preview/debug APIs and both LLM agents.
+    let normalized = normalize_email_content(
+        row.subject.as_deref(),
+        row.body_text.as_deref(),
+        row.body_html.as_deref(),
+    );
     TemplateInputEmail {
         id: row.email_id,
-        subject: row.subject.clone().unwrap_or_default(),
-        body: row
-            .body_text
-            .clone()
-            .or_else(|| row.body_html.clone())
-            .unwrap_or_default(),
+        subject: normalized.subject,
+        body: normalized.body,
     }
 }
 
 fn to_matchable_email_text(row: &emails_db::TemplateCandidateEmailRow) -> String {
-    format!(
-        "Subject: {}\n---\n{}",
-        row.subject.clone().unwrap_or_default(),
-        row.body_text
-            .clone()
-            .or_else(|| row.body_html.clone())
-            .unwrap_or_default()
-    )
+    // Keep matching text aligned with the same normalization used by LLM inputs.
+    let normalized = normalize_email_content(
+        row.subject.as_deref(),
+        row.body_text.as_deref(),
+        row.body_html.as_deref(),
+    );
+    format!("Subject: {}\n---\n{}", normalized.subject, normalized.body)
 }
 
 async fn link_matching_emails_for_sender(
@@ -370,30 +373,31 @@ async fn link_matching_emails_for_sender(
     Ok(matched_email_ids)
 }
 
-pub async fn detect_and_store_templates(
-    db: web::Data<Arc<Database>>,
-    search_index: web::Data<Arc<TantivySearchIndex>>,
-    config: web::Data<Arc<ApiConfig>>,
-    request: DetectFinancialTemplatesRequest,
-) -> Result<DetectFinancialTemplatesResponse> {
-    detect_and_store_templates_with_progress(db, search_index, config, request, |_| {}).await
+fn match_existing_templates_for_sender(
+    sender_templates: &[templates_db::SenderFinancialTemplateRow],
+    sender_candidate_rows: &[emails_db::TemplateCandidateEmailRow],
+) -> HashSet<i64> {
+    let mut matched_email_ids = HashSet::new();
+    for row in sender_candidate_rows {
+        let email_text = to_matchable_email_text(row);
+        if match_email_to_sender_templates(
+            &email_text,
+            sender_templates,
+            DEFAULT_TEMPLATE_MATCH_THRESHOLD,
+        )
+        .is_some()
+        {
+            matched_email_ids.insert(row.email_id);
+        }
+    }
+    matched_email_ids
 }
 
-pub async fn detect_and_store_templates_with_progress<F>(
-    db: web::Data<Arc<Database>>,
+async fn collect_matched_document_ids(
     search_index: web::Data<Arc<TantivySearchIndex>>,
-    config: web::Data<Arc<ApiConfig>>,
-    request: DetectFinancialTemplatesRequest,
-    mut on_progress: F,
-) -> Result<DetectFinancialTemplatesResponse>
-where
-    F: FnMut(TemplateDetectionProgress),
-{
+    request: &DetectFinancialTemplatesRequest,
+) -> Result<Vec<i64>> {
     let query = build_tantivy_query(DEFAULT_FINANCIAL_KEYWORDS);
-    let keyword_list = DEFAULT_FINANCIAL_KEYWORDS
-        .iter()
-        .map(|s| (*s).to_string())
-        .collect::<Vec<_>>();
     let max_candidate_emails = request.max_candidate_emails;
 
     let mut matched_document_ids = Vec::new();
@@ -438,6 +442,150 @@ where
         }
         offset += fetched;
     }
+
+    Ok(matched_document_ids)
+}
+
+pub async fn preview_sender_llm_inputs(
+    db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
+    request: DetectFinancialTemplatesRequest,
+    sender_email: String,
+) -> Result<TemplateDetectionSenderLlmInputsResponse> {
+    let matched_document_ids = collect_matched_document_ids(search_index, &request).await?;
+    let sender_key = sender_email.trim().to_ascii_lowercase();
+
+    let sender_rows = emails_db::list_template_candidate_emails_by_sender_and_document_ids(
+        db.async_connection.clone(),
+        &sender_key,
+        &matched_document_ids,
+        request.credential_id,
+        request.max_candidate_emails,
+    )
+    .await?;
+
+    let existing_templates = templates_db::list_templates_with_variables_by_sender(
+        db.async_connection.clone(),
+        &sender_key,
+    )
+    .await?;
+
+    // Preview API is read-only: compute initial matches in-memory to mirror detection logic.
+    let initially_matched_ids =
+        match_existing_templates_for_sender(&existing_templates, &sender_rows);
+
+    let unmatched_rows =
+        emails_db::list_unmatched_template_candidate_emails_by_sender_and_document_ids(
+            db.async_connection.clone(),
+            &sender_key,
+            &matched_document_ids,
+            request.credential_id,
+            request.max_candidate_emails,
+        )
+        .await?;
+    let fresh_unmatched_rows = unmatched_rows
+        .into_iter()
+        .filter(|row| !initially_matched_ids.contains(&row.email_id))
+        .collect::<Vec<_>>();
+
+    let template_ids = existing_templates
+        .iter()
+        .map(|t| t.template_id)
+        .collect::<Vec<_>>();
+    let anchor_email_ids = templates_db::list_anchor_email_ids_by_template_ids(
+        db.async_connection.clone(),
+        &template_ids,
+        request.credential_id,
+    )
+    .await?;
+
+    let sender_rows_by_id = sender_rows
+        .iter()
+        .map(|r| (r.email_id, r.clone()))
+        .collect::<HashMap<_, _>>();
+    let mut pool_rows = fresh_unmatched_rows.clone();
+    let mut seen_pool_email_ids = pool_rows.iter().map(|r| r.email_id).collect::<HashSet<_>>();
+    for template_id in template_ids {
+        if let Some(anchor_email_id) = anchor_email_ids.get(&template_id) {
+            if seen_pool_email_ids.contains(anchor_email_id) {
+                continue;
+            }
+            if let Some(anchor_row) = sender_rows_by_id.get(anchor_email_id) {
+                seen_pool_email_ids.insert(*anchor_email_id);
+                pool_rows.push(anchor_row.clone());
+            }
+        }
+    }
+
+    // Use the same canonical normalization helper as detection for LLM-facing content.
+    let input_emails = pool_rows.iter().map(to_input_email).collect::<Vec<_>>();
+    let input_by_id = input_emails
+        .iter()
+        .map(|email| (email.id, (email.subject.clone(), email.body.clone())))
+        .collect::<HashMap<_, _>>();
+    let drafts = discover_template_drafts(
+        input_emails,
+        TemplateDetectionOptions {
+            word_distance_threshold: 0.35,
+            max_clusters: request.max_templates_per_sender.unwrap_or(3),
+        },
+    )?;
+    let draft_previews = drafts
+        .into_iter()
+        .map(|draft| {
+            let sample = draft
+                .selected_email_ids
+                .iter()
+                .find_map(|id| input_by_id.get(id).cloned())
+                .unwrap_or_default();
+            TemplateDetectionSenderLlmDraftPreview {
+                seed_text: draft.seed_text,
+                cluster_size: draft.cluster_size,
+                selected_email_ids: draft.selected_email_ids,
+                full_template: draft.full_template,
+                sample_subject: sample.0,
+                sample_body: sample.1,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok(TemplateDetectionSenderLlmInputsResponse {
+        sender_email: sender_key,
+        sender_candidate_count: sender_rows.len(),
+        existing_template_count: existing_templates.len(),
+        initially_matched_count: initially_matched_ids.len(),
+        fresh_unmatched_count: fresh_unmatched_rows.len(),
+        pool_count: pool_rows.len(),
+        drafts: draft_previews,
+    })
+}
+
+pub async fn detect_and_store_templates(
+    db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
+    config: web::Data<Arc<ApiConfig>>,
+    request: DetectFinancialTemplatesRequest,
+) -> Result<DetectFinancialTemplatesResponse> {
+    detect_and_store_templates_with_progress(db, search_index, config, request, |_| {}).await
+}
+
+pub async fn detect_and_store_templates_with_progress<F>(
+    db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
+    config: web::Data<Arc<ApiConfig>>,
+    request: DetectFinancialTemplatesRequest,
+    mut on_progress: F,
+) -> Result<DetectFinancialTemplatesResponse>
+where
+    F: FnMut(TemplateDetectionProgress),
+{
+    let query = build_tantivy_query(DEFAULT_FINANCIAL_KEYWORDS);
+    let keyword_list = DEFAULT_FINANCIAL_KEYWORDS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect::<Vec<_>>();
+    let max_candidate_emails = request.max_candidate_emails;
+    let matched_document_ids = collect_matched_document_ids(search_index, &request).await?;
 
     let scan_rows = emails_db::list_email_scan_rows_by_document_ids(
         db.async_connection.clone(),

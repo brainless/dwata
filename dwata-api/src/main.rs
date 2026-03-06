@@ -678,6 +678,10 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::financial::get_detect_templates_status),
             )
             .route(
+                "/api/financial/templates/detect/sender-llm-inputs",
+                web::get().to(handlers::financial::get_detect_sender_llm_inputs),
+            )
+            .route(
                 "/api/financial/extract",
                 web::post().to(handlers::financial::extract_financial),
             )

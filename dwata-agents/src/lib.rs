@@ -16,8 +16,8 @@ pub use storage::{AgentStorage, Message, Session, ToolCall};
 pub use template_bill_extractor::{TemplateBillExtractorAgent, TranslateBillVariablesParams};
 pub use template_detection::{
     detect_reverse_templates_for_sender, detect_templates_for_sender, discover_template_drafts,
-    DetectedTemplateCluster, TemplateDetectionOptions, TemplateDraft, TemplateInputEmail,
-    TemplateVariableMapping,
+    normalize_email_content, DetectedTemplateCluster, NormalizedEmailContent,
+    TemplateDetectionOptions, TemplateDraft, TemplateInputEmail, TemplateVariableMapping,
 };
 pub use template_document_labeler::{LabelDocumentParams, TemplateDocumentLabelerAgent};
 pub use template_value_extractor::{

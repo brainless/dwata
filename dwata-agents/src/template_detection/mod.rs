@@ -14,6 +14,12 @@ pub struct TemplateInputEmail {
 }
 
 #[derive(Debug, Clone)]
+pub struct NormalizedEmailContent {
+    pub subject: String,
+    pub body: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct TemplateDetectionOptions {
     pub word_distance_threshold: f64,
     pub max_clusters: usize,
@@ -75,6 +81,103 @@ const TRANSACTION_FIELDS: &[&str] = &[
     "vendor",
     "transaction-reference",
 ];
+
+/// Build normalized plain-text subject/body from raw email content.
+///
+/// This is the canonical source for template-detection text preparation:
+/// - Prefer `body_text` when present.
+/// - Fallback to lossy HTML-to-text extraction from `body_html`.
+/// - Apply consistent whitespace/newline cleanup for downstream agents.
+pub fn normalize_email_content(
+    subject: Option<&str>,
+    body_text: Option<&str>,
+    body_html: Option<&str>,
+) -> NormalizedEmailContent {
+    let subject = clean_plain_text(subject.unwrap_or_default());
+    let body = if let Some(text) = body_text {
+        let cleaned = clean_plain_text(text);
+        if !cleaned.is_empty() {
+            cleaned
+        } else {
+            clean_plain_text(&extract_text_from_html(body_html.unwrap_or_default()))
+        }
+    } else {
+        clean_plain_text(&extract_text_from_html(body_html.unwrap_or_default()))
+    };
+
+    NormalizedEmailContent { subject, body }
+}
+
+fn clean_plain_text(raw: &str) -> String {
+    let mut out = raw.replace('\r', "").replace('\u{00A0}', " ");
+    if let Ok(re_ws) = Regex::new(r"[ \t]+") {
+        out = re_ws.replace_all(&out, " ").to_string();
+    }
+    if let Ok(re_nl) = Regex::new(r"\n{3,}") {
+        out = re_nl.replace_all(&out, "\n\n").to_string();
+    }
+    out.lines()
+        .map(|line| line.trim())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn extract_text_from_html(html: &str) -> String {
+    if html.trim().is_empty() {
+        return String::new();
+    }
+
+    let mut out = html.to_string();
+    if let Ok(re_script_style) = Regex::new(r"(?is)<(script|style)[^>]*>.*?</(script|style)>") {
+        out = re_script_style.replace_all(&out, " ").to_string();
+    }
+    if let Ok(re_block_breaks) = Regex::new(r"(?i)<\s*(br|/p|/div|/li|/tr|/h[1-6])\s*/?>") {
+        out = re_block_breaks.replace_all(&out, "\n").to_string();
+    }
+    if let Ok(re_li) = Regex::new(r"(?i)<\s*li[^>]*>") {
+        out = re_li.replace_all(&out, "\n- ").to_string();
+    }
+    if let Ok(re_tags) = Regex::new(r"(?is)<[^>]+>") {
+        out = re_tags.replace_all(&out, " ").to_string();
+    }
+
+    out = out
+        .replace("&nbsp;", " ")
+        .replace("&#160;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'");
+
+    if let Ok(re_numeric_entity) = Regex::new(r"&#([0-9]{1,7});") {
+        out = re_numeric_entity
+            .replace_all(&out, |caps: &regex::Captures| {
+                caps.get(1)
+                    .and_then(|m| m.as_str().parse::<u32>().ok())
+                    .and_then(char::from_u32)
+                    .map(|c| c.to_string())
+                    .unwrap_or_default()
+            })
+            .to_string();
+    }
+    if let Ok(re_hex_entity) = Regex::new(r"&#x([0-9a-fA-F]{1,6});") {
+        out = re_hex_entity
+            .replace_all(&out, |caps: &regex::Captures| {
+                caps.get(1)
+                    .and_then(|m| u32::from_str_radix(m.as_str(), 16).ok())
+                    .and_then(char::from_u32)
+                    .map(|c| c.to_string())
+                    .unwrap_or_default()
+            })
+            .to_string();
+    }
+
+    out
+}
 
 fn canonical_field_aliases(
     template_type: ReverseTemplateType,

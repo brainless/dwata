@@ -198,6 +198,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FinancialTemplateDetectionJobState::export_to_string()?,
     ));
     types.push(clean_type(
+        TemplateDetectionSenderLlmDraftPreview::export_to_string()?,
+    ));
+    types.push(clean_type(
+        TemplateDetectionSenderLlmInputsResponse::export_to_string()?,
+    ));
+    types.push(clean_type(
         FinancialTemplateFieldMapping::export_to_string()?
     ));
     types.push(clean_type(

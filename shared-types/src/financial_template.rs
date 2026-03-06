@@ -154,6 +154,27 @@ pub struct FinancialTemplateDetectionJobState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TemplateDetectionSenderLlmDraftPreview {
+    pub seed_text: String,
+    pub cluster_size: usize,
+    pub selected_email_ids: Vec<i64>,
+    pub full_template: String,
+    pub sample_subject: String,
+    pub sample_body: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TemplateDetectionSenderLlmInputsResponse {
+    pub sender_email: String,
+    pub sender_candidate_count: usize,
+    pub existing_template_count: usize,
+    pub initially_matched_count: usize,
+    pub fresh_unmatched_count: usize,
+    pub pool_count: usize,
+    pub drafts: Vec<TemplateDetectionSenderLlmDraftPreview>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct FinancialTemplateFieldMapping {
     pub placeholder_name: String,
     pub target_field: String,

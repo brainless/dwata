@@ -820,6 +820,14 @@ import type { TemplateDetectionDebugState } from "./TemplateDetectionDebugState"
 export type FinancialTemplateDetectionJobState = { run_id: bigint, status: FinancialTemplateDetectionJobStatus, started_at: bigint | null, finished_at: bigint | null, total_senders: number, processed_senders: number, current_sender: string | null, candidate_sender_count: number, candidate_email_count: number, new_templates_count: number, error: string | null, debug: TemplateDetectionDebugState | null, };
 
 
+export type TemplateDetectionSenderLlmDraftPreview = { seed_text: string, cluster_size: number, selected_email_ids: Array<bigint>, full_template: string, sample_subject: string, sample_body: string, };
+
+
+import type { TemplateDetectionSenderLlmDraftPreview } from "./TemplateDetectionSenderLlmDraftPreview";
+
+export type TemplateDetectionSenderLlmInputsResponse = { sender_email: string, sender_candidate_count: number, existing_template_count: number, initially_matched_count: number, fresh_unmatched_count: number, pool_count: number, drafts: Array<TemplateDetectionSenderLlmDraftPreview>, };
+
+
 export type FinancialTemplateFieldMapping = { placeholder_name: string, target_field: string, };
 
 

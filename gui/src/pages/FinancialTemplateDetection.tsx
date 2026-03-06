@@ -1,7 +1,10 @@
 import { A } from "@solidjs/router";
 import { HiOutlineSparkles } from "solid-icons/hi";
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import type { FinancialTemplateDetectionJobState } from "../api-types/types";
+import type {
+  FinancialTemplateDetectionJobState,
+  TemplateDetectionSenderLlmInputsResponse,
+} from "../api-types/types";
 import { getApiUrl } from "../config/api";
 import FinancialPageLayout from "../components/FinancialPageLayout";
 
@@ -36,6 +39,16 @@ async function startDetection(): Promise<FinancialTemplateDetectionJobState> {
   return await response.json();
 }
 
+async function fetchSenderLlmInputs(senderEmail: string): Promise<TemplateDetectionSenderLlmInputsResponse> {
+  const params = new URLSearchParams();
+  params.set("sender_email", senderEmail);
+  const response = await fetch(
+    getApiUrl(`/api/financial/templates/detect/sender-llm-inputs?${params.toString()}`),
+  );
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return await response.json();
+}
+
 export default function FinancialTemplateDetection() {
   const [job, setJob] = createSignal<FinancialTemplateDetectionJobState | null>(null);
   const [loading, setLoading] = createSignal(true);
@@ -43,6 +56,9 @@ export default function FinancialTemplateDetection() {
   const [error, setError] = createSignal<string | null>(null);
   const [senderFilter, setSenderFilter] = createSignal("");
   const [stateVersion, setStateVersion] = createSignal<number | undefined>(undefined);
+  const [senderLlmInputs, setSenderLlmInputs] = createSignal<Record<string, TemplateDetectionSenderLlmInputsResponse>>({});
+  const [loadingSenderInputs, setLoadingSenderInputs] = createSignal<Record<string, boolean>>({});
+  const [senderInputErrors, setSenderInputErrors] = createSignal<Record<string, string>>({});
 
   let active = true;
   const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -86,6 +102,26 @@ export default function FinancialTemplateDetection() {
       setError(err instanceof Error ? err.message : "Failed to start detection");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onLoadSenderLlmInputs = async (senderEmail: string) => {
+    setLoadingSenderInputs((prev) => ({ ...prev, [senderEmail]: true }));
+    setSenderInputErrors((prev) => {
+      const next = { ...prev };
+      delete next[senderEmail];
+      return next;
+    });
+    try {
+      const response = await fetchSenderLlmInputs(senderEmail);
+      setSenderLlmInputs((prev) => ({ ...prev, [senderEmail]: response }));
+    } catch (err) {
+      setSenderInputErrors((prev) => ({
+        ...prev,
+        [senderEmail]: err instanceof Error ? err.message : "Failed to load sender LLM inputs",
+      }));
+    } finally {
+      setLoadingSenderInputs((prev) => ({ ...prev, [senderEmail]: false }));
     }
   };
 
@@ -235,6 +271,35 @@ export default function FinancialTemplateDetection() {
                       <div class="border border-base-300 rounded p-3">
                         <div class="font-medium">{s.rank}. {s.sender_email}</div>
                         <div>candidates={s.sender_candidate_count}, existing_templates={s.existing_template_count}, initial_matches={s.initially_matched_count}, unmatched={s.fresh_unmatched_count}, pool={s.pool_count}</div>
+                        <div class="mt-2">
+                          <button
+                            class="btn btn-outline btn-xs"
+                            onClick={() => onLoadSenderLlmInputs(s.sender_email)}
+                            disabled={!!loadingSenderInputs()[s.sender_email]}
+                          >
+                            {loadingSenderInputs()[s.sender_email] ? "Loading..." : "Show LLM Input Templates"}
+                          </button>
+                        </div>
+                        <Show when={senderInputErrors()[s.sender_email]}>
+                          <div class="text-error mt-1">input error: {senderInputErrors()[s.sender_email]}</div>
+                        </Show>
+                        <Show when={senderLlmInputs()[s.sender_email]}>
+                          {(inputs) => (
+                            <div class="mt-2 space-y-2">
+                              <div class="text-xs text-base-content/70">
+                                drafts={inputs().drafts.length}, initial_matches={inputs().initially_matched_count}, unmatched={inputs().fresh_unmatched_count}, pool={inputs().pool_count}
+                              </div>
+                              <For each={inputs().drafts}>
+                                {(d) => (
+                                  <div class="bg-base-200 rounded p-2">
+                                    <div class="text-xs">cluster={d.cluster_size}, selected_ids={d.selected_email_ids.join(", ")}</div>
+                                    <div class="text-xs whitespace-pre-wrap mt-1">{d.full_template}</div>
+                                  </div>
+                                )}
+                              </For>
+                            </div>
+                          )}
+                        </Show>
                         <Show when={s.skipped_reason}><div class="text-warning">skipped: {s.skipped_reason}</div></Show>
                         <Show when={s.error}><div class="text-error">error: {s.error}</div></Show>
                         <Show when={s.generated_templates.length > 0}>

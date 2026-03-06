@@ -12,6 +12,7 @@ use shared_types::{
     DetectFinancialTemplatesRequest, FinancialExtractionTemplate, FinancialPagination,
     FinancialSummary, FinancialTemplateDetectionJobStatus, FinancialTemplateFieldMapping,
     FinancialTemplateWithVariables, ListFinancialBillsResponse, ListFinancialTemplatesResponse,
+    TemplateDetectionSenderLlmInputsResponse,
 };
 use std::sync::Arc;
 #[derive(Deserialize)]
@@ -78,6 +79,17 @@ pub struct DetectStatusQuery {
     pub since_version: Option<u64>,
     #[serde(default = "default_detect_status_timeout_ms")]
     pub timeout_ms: u64,
+}
+
+#[derive(Deserialize)]
+pub struct DetectSenderLlmInputsQuery {
+    pub sender_email: String,
+    #[serde(default)]
+    pub credential_id: Option<i64>,
+    #[serde(default)]
+    pub max_candidate_emails: Option<usize>,
+    #[serde(default)]
+    pub max_templates_per_sender: Option<usize>,
 }
 
 fn default_detect_status_timeout_ms() -> u64 {
@@ -332,6 +344,28 @@ pub async fn get_detect_templates_status(
     Ok(HttpResponse::Ok()
         .insert_header(("x-detect-state-version", version.to_string()))
         .json(state))
+}
+
+pub async fn get_detect_sender_llm_inputs(
+    db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
+    query: web::Query<DetectSenderLlmInputsQuery>,
+) -> ActixResult<HttpResponse> {
+    let response: TemplateDetectionSenderLlmInputsResponse =
+        crate::helpers::template_detection::preview_sender_llm_inputs(
+            db,
+            search_index,
+            DetectFinancialTemplatesRequest {
+                credential_id: query.credential_id,
+                max_candidate_emails: query.max_candidate_emails,
+                max_templates_per_sender: query.max_templates_per_sender,
+            },
+            query.sender_email.clone(),
+        )
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 pub async fn extract_financial(

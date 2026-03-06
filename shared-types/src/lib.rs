@@ -66,7 +66,8 @@ pub use financial_template::{
     FinancialTemplateFieldMapping, FinancialTemplateStatus, FinancialTemplateType,
     FinancialTemplateVariable, FinancialTemplateWithVariables, ListFinancialTemplatesResponse,
     TemplateDetectionDebugState, TemplateDetectionGeneratedTemplateDebug,
-    TemplateDetectionSenderDebug, TemplateDetectionSenderRank,
+    TemplateDetectionSenderDebug, TemplateDetectionSenderLlmDraftPreview,
+    TemplateDetectionSenderLlmInputsResponse, TemplateDetectionSenderRank,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
