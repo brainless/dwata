@@ -93,7 +93,7 @@ pub fn normalize_email_content(
     body_text: Option<&str>,
     body_html: Option<&str>,
 ) -> NormalizedEmailContent {
-    let subject = clean_plain_text(subject.unwrap_or_default());
+    let subject = clean_subject_text(subject.unwrap_or_default());
     let body = if let Some(text) = body_text {
         let cleaned = clean_plain_text(text);
         if !cleaned.is_empty() {
@@ -116,12 +116,52 @@ fn clean_plain_text(raw: &str) -> String {
     if let Ok(re_nl) = Regex::new(r"\n{3,}") {
         out = re_nl.replace_all(&out, "\n\n").to_string();
     }
-    out.lines()
-        .map(|line| line.trim())
+    let mut paragraphs = Vec::new();
+    let mut current_lines = Vec::new();
+
+    for line in out.lines().map(|line| line.trim()) {
+        if line.is_empty() {
+            if !current_lines.is_empty() {
+                paragraphs.push(merge_lines_into_sentences(&current_lines));
+                current_lines.clear();
+            }
+            continue;
+        }
+        current_lines.push(line.to_string());
+    }
+
+    if !current_lines.is_empty() {
+        paragraphs.push(merge_lines_into_sentences(&current_lines));
+    }
+
+    paragraphs
+        .into_iter()
+        .filter(|p| !p.is_empty())
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n\n")
         .trim()
         .to_string()
+}
+
+fn merge_lines_into_sentences(lines: &[String]) -> String {
+    let merged = lines.join(" ");
+    split_into_sentences(&merged)
+        .into_iter()
+        .map(|sentence| sentence.trim().to_string())
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn clean_subject_text(raw: &str) -> String {
+    let mut out = raw
+        .replace('\r', " ")
+        .replace('\n', " ")
+        .replace('\u{00A0}', " ");
+    if let Ok(re_ws) = Regex::new(r"\s+") {
+        out = re_ws.replace_all(&out, " ").to_string();
+    }
+    out.trim().to_string()
 }
 
 fn extract_text_from_html(html: &str) -> String {
@@ -621,7 +661,13 @@ fn split_into_sentences(text: &str) -> Vec<String> {
         let is_domain_or_decimal = ch == '.'
             && prev.is_some_and(|c| c.is_ascii_alphanumeric())
             && next.is_some_and(|c| c.is_ascii_alphanumeric());
-        let boundary = is_sentence_punct && punct_followed_by_space_or_end && !is_domain_or_decimal;
+        let is_abbreviation = ch == '.'
+            && should_keep_period_with_prev_token(&buf)
+            && next_non_whitespace_char(&chars, i + 1).is_some();
+        let boundary = is_sentence_punct
+            && punct_followed_by_space_or_end
+            && !is_domain_or_decimal
+            && !is_abbreviation;
         if boundary {
             let s = buf.trim();
             if !s.is_empty() {
@@ -639,6 +685,59 @@ fn split_into_sentences(text: &str) -> Vec<String> {
         out.push(tail.to_string());
     }
     out
+}
+
+fn should_keep_period_with_prev_token(buf: &str) -> bool {
+    let token = last_alpha_token_before_period(buf)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if token.is_empty() {
+        return false;
+    }
+    if token.len() == 1 {
+        return true;
+    }
+    matches!(
+        token.as_str(),
+        "no" | "mr"
+            | "mrs"
+            | "ms"
+            | "dr"
+            | "prof"
+            | "sr"
+            | "jr"
+            | "st"
+            | "vs"
+            | "etc"
+            | "fig"
+            | "dept"
+            | "inc"
+            | "ltd"
+            | "co"
+    )
+}
+
+fn last_alpha_token_before_period(buf: &str) -> Option<String> {
+    let without_period = buf.strip_suffix('.')?.trim_end();
+    if without_period.is_empty() {
+        return None;
+    }
+    let token = without_period
+        .rsplit(|c: char| !c.is_ascii_alphabetic())
+        .find(|part| !part.is_empty())?;
+    Some(token.to_string())
+}
+
+fn next_non_whitespace_char(chars: &[char], start: usize) -> Option<char> {
+    let mut idx = start;
+    while idx < chars.len() {
+        let ch = chars[idx];
+        if !ch.is_whitespace() {
+            return Some(ch);
+        }
+        idx += 1;
+    }
+    None
 }
 
 fn normalize_line(line: &str) -> String {
