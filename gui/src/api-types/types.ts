@@ -412,6 +412,20 @@ import type { Email } from "./Email";
 export type ListEmailsResponse = { emails: Array<Email>, total_count: bigint, has_more: boolean, };
 
 
+/**
+ * Request to fetch emails by IDs
+ */
+export type EmailsByIdsRequest = { email_ids: Array<bigint>, };
+
+
+import type { Email } from "./Email";
+
+/**
+ * Response for email batch lookup
+ */
+export type EmailsByIdsResponse = { emails: Array<Email>, };
+
+
 export type DocumentSourceType = "imap-account" | "local-folder" | "cloud-drive" | "cloud-mailbox" | "manual-import";
 
 
@@ -688,15 +702,15 @@ export type TransactionCategory = "income" | "expense" | "investment" | "tax" | 
 export type TransactionStatus = "paid" | "cancelled" | "refunded";
 
 
-import type { TransactionVendorType } from "./TransactionVendorType";
+import type { VendorType } from "./VendorType";
 
 /**
  * Transaction vendor entity
  */
-export type TransactionVendor = { id: bigint, vendor_type: TransactionVendorType, vendor_name: string, vendor_external_id: string | null, created_at: bigint, updated_at: bigint, };
+export type Vendor = { id: bigint, vendor_type: VendorType, vendor_name: string, vendor_external_id: string | null, created_at: bigint, updated_at: bigint, };
 
 
-export type TransactionVendorType = "self-user" | "self-business" | "financial-instrument" | "merchant" | "employer" | "bank" | "individual" | "platform" | "unknown";
+export type VendorType = "self-user" | "self-business" | "financial-instrument" | "merchant" | "employer" | "bank" | "individual" | "platform" | "unknown";
 
 
 /**
@@ -777,9 +791,6 @@ import type { DetectedFinancialTemplate } from "./DetectedFinancialTemplate";
 export type DetectFinancialTemplatesResponse = { candidate_sender_count: number, candidate_email_count: number, templates: Array<DetectedFinancialTemplate>, };
 
 
-export type TemplateDetectionCandidateEmailPreview = { sender_email: string, date_received: bigint, subject: string, body_preview: string, };
-
-
 export type TemplateDetectionSenderRank = { sender_email: string, rank: number, total_candidate_emails: number, recent_candidate_emails: number, latest_email_ts: bigint, max_existing_cluster_size: number, };
 
 
@@ -794,11 +805,10 @@ import type { TemplateDetectionGeneratedTemplateDebug } from "./TemplateDetectio
 export type TemplateDetectionSenderDebug = { sender_email: string, rank: number, sender_candidate_count: number, existing_template_count: number, initially_matched_count: number, fresh_unmatched_count: number, pool_count: number, generated_templates: Array<TemplateDetectionGeneratedTemplateDebug>, error: string | null, skipped_reason: string | null, };
 
 
-import type { TemplateDetectionCandidateEmailPreview } from "./TemplateDetectionCandidateEmailPreview";
 import type { TemplateDetectionSenderDebug } from "./TemplateDetectionSenderDebug";
 import type { TemplateDetectionSenderRank } from "./TemplateDetectionSenderRank";
 
-export type TemplateDetectionDebugState = { keyword_query: string, keyword_list: Array<string>, max_candidate_emails: number, matched_document_ids_count: number, sender_ranking: Array<TemplateDetectionSenderRank>, candidate_email_previews: Array<TemplateDetectionCandidateEmailPreview>, sender_debug: Array<TemplateDetectionSenderDebug>, };
+export type TemplateDetectionDebugState = { keyword_query: string, keyword_list: Array<string>, max_candidate_emails: number, matched_document_ids_count: number, sender_ranking: Array<TemplateDetectionSenderRank>, candidate_email_ids: Array<bigint>, sender_debug: Array<TemplateDetectionSenderDebug>, };
 
 
 export type FinancialTemplateDetectionJobStatus = "idle" | "running" | "completed" | "failed";

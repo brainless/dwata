@@ -42,7 +42,7 @@ impl LlmReverseTemplateExtractorAgent {
 
         let reverse_tool = Tool::from_type::<ReverseTemplateParams>()
             .name("submit_reverse_template")
-            .description("Submit the reversed Jinja2 template.")
+            .description("Submit the reconstructed Jinja2 email source template.")
             .build();
 
         self.storage
@@ -50,7 +50,9 @@ impl LlmReverseTemplateExtractorAgent {
                 id: None,
                 session_id,
                 role: "user".to_string(),
-                content: "Generate the reversed Jinja2 template now.".to_string(),
+                content:
+                    "Generate the reconstructed Jinja2 source template for this sample email now."
+                        .to_string(),
             })
             .await?;
 

@@ -1,5 +1,7 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use shared_types::{ListEmailsRequest, ListEmailsResponse};
+use shared_types::{
+    EmailsByIdsRequest, EmailsByIdsResponse, ListEmailsRequest, ListEmailsResponse,
+};
 use std::sync::Arc;
 
 use crate::database::Database;
@@ -73,4 +75,15 @@ pub async fn get_email_labels(
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(labels))
+}
+
+pub async fn get_emails_by_ids(
+    db: web::Data<Arc<Database>>,
+    request: web::Json<EmailsByIdsRequest>,
+) -> ActixResult<HttpResponse> {
+    let emails = emails_db::list_emails_by_ids(db.async_connection.clone(), &request.email_ids)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(EmailsByIdsResponse { emails }))
 }

@@ -94,6 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(AttachmentExtractionStatus::export_to_string()?));
     types.push(clean_type(ListEmailsRequest::export_to_string()?));
     types.push(clean_type(ListEmailsResponse::export_to_string()?));
+    types.push(clean_type(EmailsByIdsRequest::export_to_string()?));
+    types.push(clean_type(EmailsByIdsResponse::export_to_string()?));
 
     // Document types
     types.push(clean_type(DocumentSourceType::export_to_string()?));
@@ -158,8 +160,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(TransactionParty::export_to_string()?));
     types.push(clean_type(TransactionCategory::export_to_string()?));
     types.push(clean_type(TransactionStatus::export_to_string()?));
-    types.push(clean_type(TransactionVendor::export_to_string()?));
-    types.push(clean_type(TransactionVendorType::export_to_string()?));
+    types.push(clean_type(Vendor::export_to_string()?));
+    types.push(clean_type(VendorType::export_to_string()?));
     types.push(clean_type(FinancialSummary::export_to_string()?));
     types.push(clean_type(FinancialExtractionSummary::export_to_string()?));
     types.push(clean_type(FinancialHealth::export_to_string()?));
@@ -182,9 +184,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(DetectedFinancialTemplate::export_to_string()?));
     types.push(clean_type(
         DetectFinancialTemplatesResponse::export_to_string()?,
-    ));
-    types.push(clean_type(
-        TemplateDetectionCandidateEmailPreview::export_to_string()?,
     ));
     types.push(clean_type(TemplateDetectionSenderRank::export_to_string()?));
     types.push(clean_type(

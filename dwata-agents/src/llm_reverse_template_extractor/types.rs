@@ -33,11 +33,11 @@ pub struct ReverseVariableTranslation {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(
-    description = "A reversed Jinja2 template for one financial sample. Placeholders must use canonical field names."
+    description = "A reconstructed Jinja2 source email template inferred from one rendered financial sample. Placeholders must use canonical field names."
 )]
 pub struct ReverseTemplateParams {
     #[schemars(
-        description = "Jinja2 template including `Subject: ...` and `---` body separator. Placeholders must be canonical fields for the template type."
+        description = "Reconstructed Jinja2 source template including `Subject: ...` and `---` body separator. Placeholders must be canonical fields for the template type."
     )]
     pub template_body: String,
 }

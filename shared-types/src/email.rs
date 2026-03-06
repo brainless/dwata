@@ -103,3 +103,17 @@ pub struct ListEmailsResponse {
     pub total_count: i64,
     pub has_more: bool,
 }
+
+/// Request to fetch emails by IDs
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct EmailsByIdsRequest {
+    pub email_ids: Vec<i64>,
+}
+
+/// Response for email batch lookup
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct EmailsByIdsResponse {
+    pub emails: Vec<Email>,
+}

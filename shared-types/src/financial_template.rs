@@ -82,14 +82,6 @@ pub struct DetectFinancialTemplatesResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct TemplateDetectionCandidateEmailPreview {
-    pub sender_email: String,
-    pub date_received: i64,
-    pub subject: String,
-    pub body_preview: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct TemplateDetectionSenderRank {
     pub sender_email: String,
     pub rank: usize,
@@ -132,7 +124,7 @@ pub struct TemplateDetectionDebugState {
     pub max_candidate_emails: usize,
     pub matched_document_ids_count: usize,
     pub sender_ranking: Vec<TemplateDetectionSenderRank>,
-    pub candidate_email_previews: Vec<TemplateDetectionCandidateEmailPreview>,
+    pub candidate_email_ids: Vec<i64>,
     pub sender_debug: Vec<TemplateDetectionSenderDebug>,
 }
 

@@ -14,9 +14,8 @@ use shared_types::{
     DataSourceType, DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse,
     DetectedFinancialTemplate, DetectedFinancialTemplateVariable, DocumentKind,
     FinancialTemplateType, SearchDocumentsRequest, SearchField, SearchTerm,
-    TemplateDetectionCandidateEmailPreview, TemplateDetectionDebugState,
-    TemplateDetectionGeneratedTemplateDebug, TemplateDetectionSenderDebug,
-    TemplateDetectionSenderRank,
+    TemplateDetectionDebugState, TemplateDetectionGeneratedTemplateDebug,
+    TemplateDetectionSenderDebug, TemplateDetectionSenderRank,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
@@ -343,18 +342,6 @@ fn to_matchable_email_text(row: &emails_db::TemplateCandidateEmailRow) -> String
     )
 }
 
-fn truncate_preview(input: &str, max_chars: usize) -> String {
-    let trimmed = input.trim();
-    let mut out = String::new();
-    for ch in trimmed.chars().take(max_chars) {
-        out.push(ch);
-    }
-    if trimmed.chars().count() > max_chars {
-        out.push_str("...");
-    }
-    out
-}
-
 async fn link_matching_emails_for_sender(
     db: web::Data<Arc<Database>>,
     sender_templates: &[templates_db::SenderFinancialTemplateRow],
@@ -491,22 +478,7 @@ where
             max_existing_cluster_size: s.max_existing_cluster_size,
         })
         .collect::<Vec<_>>();
-    let candidate_email_previews = scan_rows
-        .iter()
-        .take(300)
-        .map(|row| TemplateDetectionCandidateEmailPreview {
-            sender_email: row.from_address.trim().to_ascii_lowercase(),
-            date_received: row.date_received,
-            subject: row.subject.clone().unwrap_or_default(),
-            body_preview: truncate_preview(
-                &row.body_text
-                    .clone()
-                    .or_else(|| row.body_html.clone())
-                    .unwrap_or_default(),
-                240,
-            ),
-        })
-        .collect::<Vec<_>>();
+    let candidate_email_ids = scan_rows.iter().map(|row| row.email_id).collect::<Vec<_>>();
 
     let mut debug_state = TemplateDetectionDebugState {
         keyword_query: query.clone(),
@@ -514,7 +486,7 @@ where
         max_candidate_emails: max_candidate_emails.unwrap_or(0),
         matched_document_ids_count: matched_document_ids.len(),
         sender_ranking,
-        candidate_email_previews,
+        candidate_email_ids,
         sender_debug: Vec::new(),
     };
 
@@ -936,6 +908,7 @@ mod tests {
     fn ranking_prioritizes_cluster_size_then_recent_candidate_count() {
         let rows = vec![
             EmailScanRow {
+                email_id: 1,
                 from_address: "a@example.com".to_string(),
                 date_received: 1_000_000,
                 subject: None,
@@ -943,6 +916,7 @@ mod tests {
                 body_html: None,
             },
             EmailScanRow {
+                email_id: 2,
                 from_address: "a@example.com".to_string(),
                 date_received: 999_900,
                 subject: None,
@@ -950,6 +924,7 @@ mod tests {
                 body_html: None,
             },
             EmailScanRow {
+                email_id: 3,
                 from_address: "b@example.com".to_string(),
                 date_received: 1_000_000,
                 subject: None,
@@ -957,6 +932,7 @@ mod tests {
                 body_html: None,
             },
             EmailScanRow {
+                email_id: 4,
                 from_address: "c@example.com".to_string(),
                 date_received: 1_000_000,
                 subject: None,
@@ -964,6 +940,7 @@ mod tests {
                 body_html: None,
             },
             EmailScanRow {
+                email_id: 5,
                 from_address: "c@example.com".to_string(),
                 date_received: 999_950,
                 subject: None,
@@ -971,6 +948,7 @@ mod tests {
                 body_html: None,
             },
             EmailScanRow {
+                email_id: 6,
                 from_address: "c@example.com".to_string(),
                 date_received: 999_940,
                 subject: None,

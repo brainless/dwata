@@ -212,27 +212,13 @@ export default function FinancialTemplateDetection() {
               </div>
 
               <div class="overflow-x-auto">
-                <div class="font-medium mb-2">Candidate email previews (first {debug()!.candidate_email_previews.length})</div>
-                <table class="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Sender</th>
-                      <th>Subject</th>
-                      <th>Preview</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <For each={debug()!.candidate_email_previews}>
-                      {(row) => (
-                        <tr>
-                          <td>{row.sender_email}</td>
-                          <td>{row.subject}</td>
-                          <td class="max-w-[420px] whitespace-pre-wrap">{row.body_preview}</td>
-                        </tr>
-                      )}
-                    </For>
-                  </tbody>
-                </table>
+                <div class="font-medium mb-2">Candidate email IDs ({debug()!.candidate_email_ids.length})</div>
+                <div class="text-xs whitespace-pre-wrap break-all">
+                  {debug()!.candidate_email_ids.slice(0, 200).map((id) => String(id)).join(", ")}
+                  <Show when={debug()!.candidate_email_ids.length > 200}>
+                    {"\n"}...and {debug()!.candidate_email_ids.length - 200} more
+                  </Show>
+                </div>
               </div>
 
               <div>

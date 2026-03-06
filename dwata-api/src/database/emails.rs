@@ -8,6 +8,7 @@ use tokio::task;
 
 #[derive(Debug, Clone)]
 pub struct EmailScanRow {
+    pub email_id: i64,
     pub date_received: i64,
     pub from_address: String,
     pub subject: Option<String>,
@@ -208,6 +209,88 @@ pub async fn get_email(conn: AsyncDbConnection, email_id: i64) -> Result<Email> 
     .await?
 }
 
+/// Get emails by IDs preserving input order
+pub async fn list_emails_by_ids(conn: AsyncDbConnection, email_ids: &[i64]) -> Result<Vec<Email>> {
+    if email_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let email_ids = email_ids.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut by_id = std::collections::HashMap::new();
+
+        for chunk in email_ids.chunks(900) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let query = format!(
+                "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                        to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                        has_attachments, attachment_count, size_bytes, thread_id,
+                        created_at, updated_at
+                 FROM emails
+                 WHERE id IN ({})",
+                placeholders
+            );
+
+            let params: Vec<Value> = chunk.iter().copied().map(Value::from).collect();
+            let mut stmt = conn.prepare(&query)?;
+            let mapped = stmt.query_map(params_from_iter(params), |row| {
+                let to_json: String = row.get(9)?;
+                let cc_json: String = row.get(10)?;
+                let bcc_json: String = row.get(11)?;
+
+                Ok(Email {
+                    id: row.get(0)?,
+                    download_item_id: row.get(1)?,
+                    credential_id: row.get(2)?,
+                    uid: row.get::<_, i32>(3)? as u32,
+                    folder_id: row.get(4)?,
+                    message_id: row.get(5)?,
+                    subject: row.get(6)?,
+                    from_address: row.get(7)?,
+                    from_name: row.get(8)?,
+                    to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
+                    cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
+                    bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
+                    reply_to: row.get(12)?,
+                    date_sent: row.get(13)?,
+                    date_received: row.get(14)?,
+                    body_text: row.get(15)?,
+                    body_html: row.get(16)?,
+                    is_read: row.get(17)?,
+                    is_flagged: row.get(18)?,
+                    is_draft: row.get(19)?,
+                    is_answered: row.get(20)?,
+                    has_attachments: row.get(21)?,
+                    attachment_count: row.get(22)?,
+                    size_bytes: row.get(23)?,
+                    thread_id: row.get(24)?,
+                    created_at: row.get(25)?,
+                    updated_at: row.get(26)?,
+                })
+            })?;
+
+            for row in mapped {
+                let email = row?;
+                by_id.insert(email.id, email);
+            }
+        }
+
+        let mut ordered = Vec::with_capacity(email_ids.len());
+        for id in email_ids {
+            if let Some(email) = by_id.remove(&id) {
+                ordered.push(email);
+            }
+        }
+        Ok(ordered)
+    })
+    .await?
+}
+
 /// List emails with pagination
 pub async fn list_emails(
     conn: AsyncDbConnection,
@@ -322,7 +405,7 @@ pub async fn list_email_scan_rows(
     task::spawn_blocking(move || {
         let conn = conn.get_blocking();
         let mut query = String::from(
-            "SELECT date_received, from_address, subject, body_text, body_html FROM emails",
+            "SELECT id, date_received, from_address, subject, body_text, body_html FROM emails",
         );
         let mut params: Vec<Value> = Vec::new();
 
@@ -341,11 +424,12 @@ pub async fn list_email_scan_rows(
         let mut stmt = conn.prepare(&query)?;
         let rows = stmt.query_map(params_from_iter(params), |row| {
             Ok(EmailScanRow {
-                date_received: row.get(0)?,
-                from_address: row.get(1)?,
-                subject: row.get(2)?,
-                body_text: row.get(3)?,
-                body_html: row.get(4)?,
+                email_id: row.get(0)?,
+                date_received: row.get(1)?,
+                from_address: row.get(2)?,
+                subject: row.get(3)?,
+                body_text: row.get(4)?,
+                body_html: row.get(5)?,
             })
         })?;
 
@@ -402,6 +486,7 @@ pub async fn list_email_scan_rows_by_document_ids(
                     row.get::<_, i64>(0)?,
                     row.get::<_, i64>(1)?,
                     EmailScanRow {
+                        email_id: row.get(0)?,
                         date_received: row.get(1)?,
                         from_address: row.get(2)?,
                         subject: row.get(3)?,

@@ -45,8 +45,8 @@ pub use download::{
     FileFilter, ImapDownloadState, ImapFolderStatus, ImapSyncStrategy, SourceType,
 };
 pub use email::{
-    AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, ListEmailsRequest,
-    ListEmailsResponse,
+    AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, EmailsByIdsRequest,
+    EmailsByIdsResponse, ListEmailsRequest, ListEmailsResponse,
 };
 pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
 pub use extraction_job::{
@@ -65,9 +65,8 @@ pub use financial_template::{
     FinancialTemplateDetectionJobState, FinancialTemplateDetectionJobStatus,
     FinancialTemplateFieldMapping, FinancialTemplateStatus, FinancialTemplateType,
     FinancialTemplateVariable, FinancialTemplateWithVariables, ListFinancialTemplatesResponse,
-    TemplateDetectionCandidateEmailPreview, TemplateDetectionDebugState,
-    TemplateDetectionGeneratedTemplateDebug, TemplateDetectionSenderDebug,
-    TemplateDetectionSenderRank,
+    TemplateDetectionDebugState, TemplateDetectionGeneratedTemplateDebug,
+    TemplateDetectionSenderDebug, TemplateDetectionSenderRank,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
@@ -92,7 +91,7 @@ pub use task::{
 pub use transaction::{
     DataSourceType, FinancialTransaction, TransactionCategory, TransactionParty, TransactionStatus,
 };
-pub use vendor::{TransactionVendor, TransactionVendorType};
+pub use vendor::{Vendor, VendorType};
 
 // Re-export extraction types
 pub use extraction::*;

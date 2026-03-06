@@ -9,6 +9,8 @@ import type {
   ListFoldersResponse,
   ListLabelsResponse,
   ListEmailsResponse,
+  EmailsByIdsRequest,
+  EmailsByIdsResponse,
   SearchDocumentsResponse,
 } from "../api-types/types";
 
@@ -97,6 +99,20 @@ export async function fetchEmailsByAccount(
   const response = await fetch(getApiUrl(`/api/emails?${params}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();
+}
+
+export async function fetchEmailsByIds(emailIds: Array<number | bigint>): Promise<Email[]> {
+  const payload: EmailsByIdsRequest = {
+    email_ids: emailIds.map((id) => (typeof id === "bigint" ? Number(id) : id)),
+  };
+  const response = await fetch(getApiUrl("/api/emails/by-ids"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data: EmailsByIdsResponse = await response.json();
+  return data.emails;
 }
 
 type SearchScope = {

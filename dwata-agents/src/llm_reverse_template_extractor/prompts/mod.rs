@@ -4,22 +4,22 @@ fn allowed_fields_section(template_type: ReverseTemplateType) -> &'static str {
     match template_type {
         ReverseTemplateType::Bill => {
             r#"Allowed bill fields (use only these names):
-- total-amount
+- total_amount
 - currency
-- issued-date
-- due-date
-- billing-period-start
-- billing-period-end
-- document-reference
-- service-identifier"#
+- issued_date
+- due_date
+- billing_period_start
+- billing_period_end
+- document_reference
+- service_identifier"#
         }
         ReverseTemplateType::Transaction => {
             r#"Allowed transaction fields (use only these names):
 - amount
 - currency
-- transaction-date
-- vendor
-- transaction-reference"#
+- transaction_date
+- vendor_name
+- transaction_reference"#
         }
     }
 }
@@ -34,28 +34,32 @@ pub fn build_system_prompt(
         ReverseTemplateType::Transaction => "transaction",
     };
     format!(
-        r#"Reverse this {kind} sample into a Jinja2 template.
+        r#"Reconstruct the likely original source {kind} email template in Jinja2 from the rendered sample below.
+
+Important disambiguation:
+- "Reverse template extraction" means reverse-engineering the email template text that generated this message.
+- It does NOT mean reversing, refunding, or cancelling any payment/transaction.
 
 Rules:
 1. Output one template with this exact outer format:
    Subject: ...
    ---
    ...
-2. Replace variable parts with Jinja2 placeholders using canonical field names directly.
+2. Infer the template that could have produced the sample email, and replace variable parts with Jinja2 placeholders using canonical field names directly.
 3. Do NOT use generic placeholders like placeholder_1 or subject_1.
 4. Keep static text intact as much as possible.
 5. Use only fields listed below; if no matching field exists, keep raw text.
-6. Placeholder syntax must be exactly: {{ field-name }}
+6. Placeholder syntax must be exactly: {{ field_name }}
 7. Never use Jinja filters, functions, pipes, indexing, or attribute access.
 8. Never emit placeholders like:
-   - {{transaction-date|date("Y-m")}}
+   - {{transaction_date|date("Y-m")}}
    - {{ vendor.address }}
-   - {{ total-amount | replace("Rs.", "") }}
+   - {{ total_amount | replace("Rs.", "") }}
 9. Every placeholder variable name must be one of the allowed field names below.
 
 {allowed_fields}
 
-Sample email:
+Rendered sample email to reverse-engineer into a template:
 Subject: {sample_subject}
 ---
 {sample_body}
