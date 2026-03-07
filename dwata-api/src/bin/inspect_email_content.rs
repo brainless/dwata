@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
 use dwata_agents::{
-    normalize_email_content, LlmReverseTemplateExtractorAgent, ReverseTemplateType,
-    TemplateDocumentLabelerAgent,
+    extract_values_from_email, normalize_email_content, LlmReverseTemplateExtractorAgent,
+    ReverseTemplateType, TemplateDocumentLabelerAgent, TemplateEmailContent,
 };
 use dwata_api::database::emails as emails_db;
 use dwata_api::helpers::database::initialize_database;
@@ -137,6 +137,32 @@ async fn main() -> Result<()> {
             for variable in variables {
                 println!("- {}", variable);
             }
+        }
+
+        println!();
+        println!("Extracted Values (from original email using template):");
+        let extracted = extract_values_from_email(
+            &generated.template_body,
+            &TemplateEmailContent {
+                subject: normalized.subject.clone(),
+                body: normalized.body.clone(),
+            },
+        );
+        if extracted.is_empty() {
+            println!("(none extracted)");
+        } else {
+            println!("+---------------------------+----------------------------------+");
+            println!("| {:<25} | {:<30} |", "Placeholder", "Extracted Value");
+            println!("+---------------------------+----------------------------------+");
+            for (key, value) in &extracted {
+                let display_value = if value.len() > 30 {
+                    format!("{}...", &value[..27])
+                } else {
+                    value.clone()
+                };
+                println!("| {:<25} | {:<30} |", key, display_value);
+            }
+            println!("+---------------------------+----------------------------------+");
         }
     }
 

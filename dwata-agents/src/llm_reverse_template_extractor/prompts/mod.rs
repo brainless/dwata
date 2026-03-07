@@ -34,29 +34,47 @@ pub fn build_system_prompt(
         ReverseTemplateType::Transaction => "transaction",
     };
     format!(
-        r#"Reconstruct the likely original source {kind} email template in Jinja2 from the rendered sample below.
+        r#"Reconstruct the likely original source {kind} email template from the rendered sample below.
 
 Important disambiguation:
 - "Reverse template extraction" means reverse-engineering the email template text that generated this message.
 - It does NOT mean reversing, refunding, or cancelling any payment/transaction.
+
+STRICT RULE: Only use raw variable placeholders. Inside {{{{ }}}}, you must have ONLY the field name, nothing else.
+
+FORBIDDEN - Every one of these is WRONG:
+- Any method call: {{{{ name.something() }}}}, {{{{ name.split() }}}}, {{{{ name[0] }}}}
+- Any pipe/filter: {{{{ name|filter }}}}
+- Any attribute: {{{{ name.attr }}}}
+- Any function: {{{{ name.replace(...) }}}}
+
+CORRECT format: {{{{ field_name }}}} - just the name, nothing else.
+
+Examples of WRONG output:
+- {{{{ document_reference.split()[1] }}}}    <-- method call forbidden
+- {{{{ billing_period_start|replace("'", "") }}}}   <-- pipe forbidden  
+- {{{{ total_amount.upper() }}}}              <-- method call forbidden
+- {{{{ items[0] }}}}                           <-- indexing forbidden
+
+Examples of CORRECT output:
+- {{{{ document_reference }}}}
+- {{{{ billing_period_start }}}}
+- {{{{ total_amount }}}}
+- {{{{ vendor_name }}}}
+
+IMPORTANT: If the sample email contains complex data like "03325490439 (Account No. 8006515265)", extract the ENTIRE thing as one variable (e.g., document_reference), do NOT try to parse it with split/indices. Keep the parsing logic in your head - only output simple variable names.
 
 Rules:
 1. Output one template with this exact outer format:
    Subject: ...
    ---
    ...
-2. Infer the template that could have produced the sample email, and replace variable parts with Jinja2 placeholders using canonical field names directly.
+2. Use only simple placeholders {{{{ field_name }}}} - nothing else inside the braces.
 3. Do NOT use generic placeholders like placeholder_1 or subject_1.
 4. Keep static text intact as much as possible.
 5. Use only fields listed below; if no matching field exists, keep raw text.
-6. Placeholder syntax must be exactly: {{{{ field_name }}}}
-7. Never use Jinja filters, functions, pipes, indexing, or attribute access.
-8. Never emit placeholders like:
-   - {{{{transaction_date|date("Y-m")}}}}
-   - {{{{ vendor.address }}}}
-   - {{{{ total_amount | replace("Rs.", "") }}}}
-9. Every placeholder variable name must be one of the allowed field names below.
-10. When calling `submit_reverse_template`, the `template_body` value must be valid JSON string content:
+6. Every placeholder variable name must be one of the allowed field names below.
+7. When calling `submit_reverse_template`, the `template_body` value must be valid JSON string content:
    - keep it as ONE JSON string value
    - represent all line breaks as escaped newlines (`\n`)
    - do not include raw newline characters inside the JSON string literal
