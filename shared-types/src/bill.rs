@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::transaction::DataSourceType;
+use crate::transaction::{DataSourceType, TransactionCategory};
 
 /// Financial document types that can be extracted
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -40,7 +40,7 @@ pub enum ServiceIdentifierKind {
 }
 
 /// A financial document (bill, invoice, receipt, statement) extracted from an email or file.
-/// One Bill may be the source for zero (unpaid) or more FinancialTransactions.
+/// One Bill may be the source for zero (unpaid) or more Transactions.
 ///
 /// ## Date Column Conventions
 ///
@@ -57,6 +57,7 @@ pub struct Bill {
     pub data_source_id: String,
     pub document_type: FinancialDocumentType,
     pub status: BillStatus,
+    pub category: Option<TransactionCategory>,
     pub issuer_vendor_id: Option<i64>,
     pub document_reference: Option<String>,
     pub total_amount: Option<f64>,

@@ -3,7 +3,7 @@ use ts_rs::TS;
 
 use crate::{
     bill::Bill,
-    transaction::{FinancialTransaction, TransactionCategory},
+    transaction::{Transaction, TransactionCategory},
 };
 
 /// Financial summary/overview
@@ -31,7 +31,7 @@ pub struct FinancialExtractionSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct FinancialHealth {
     pub summary: FinancialSummary,
-    pub recent_transactions: Vec<FinancialTransaction>,
+    pub recent_transactions: Vec<Transaction>,
     pub upcoming_bills: Vec<Bill>,
     pub category_breakdown: Vec<CategoryBreakdown>,
 }

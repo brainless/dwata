@@ -61,12 +61,14 @@ async fn main() -> Result<()> {
         println!("Extracted transactions: {}", txns.len());
         for (idx, t) in txns.iter().take(8).enumerate() {
             println!(
-                "{:>3}. date={} amount={} currency={} vendor={} ref={}",
+                "{:>3}. date={} amount={} currency={} bill_id={:?} ref={}",
                 idx + 1,
-                t.transaction_date,
+                t.transaction_date_raw
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
                 t.amount,
                 t.currency,
-                t.notes.clone().unwrap_or_else(|| "-".to_string()),
+                t.bill_id,
                 t.transaction_reference
                     .clone()
                     .unwrap_or_else(|| "-".to_string())

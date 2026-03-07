@@ -11,14 +11,16 @@ fn allowed_fields_section(template_type: ReverseTemplateType) -> &'static str {
 - billing_period_start
 - billing_period_end
 - document_reference
-- service_identifier"#
+- service_identifier
+- category"#
         }
         ReverseTemplateType::Transaction => {
             r#"Allowed transaction fields (use only these names):
 - amount
 - currency
 - transaction_date
-- vendor_name
+- payer_vendor_id
+- payee_vendor_id
 - transaction_reference"#
         }
     }

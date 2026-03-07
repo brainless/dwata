@@ -24,13 +24,15 @@ pub struct ExtractFinancialRequest {
 #[derive(Deserialize)]
 pub struct TransactionFilters {
     #[serde(default)]
-    pub source_vendor_id: Option<i64>,
+    pub payer_vendor_id: Option<i64>,
     #[serde(default)]
-    pub destination_vendor_id: Option<i64>,
+    pub payee_vendor_id: Option<i64>,
     #[serde(default)]
-    pub start_date: Option<String>,
+    pub bill_id: Option<i64>,
     #[serde(default)]
-    pub end_date: Option<String>,
+    pub start_date: Option<i64>,
+    #[serde(default)]
+    pub end_date: Option<i64>,
     #[serde(default)]
     pub min_amount: Option<f64>,
     #[serde(default)]
@@ -104,10 +106,11 @@ pub async fn list_transactions(
 
     let (transactions, total_count) = db::list_financial_transactions_filtered(
         &db.sqlx_pool,
-        query.source_vendor_id,
-        query.destination_vendor_id,
-        query.start_date.as_deref(),
-        query.end_date.as_deref(),
+        query.payer_vendor_id,
+        query.payee_vendor_id,
+        query.bill_id,
+        query.start_date,
+        query.end_date,
         query.min_amount,
         query.max_amount,
         query.limit,

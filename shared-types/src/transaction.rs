@@ -41,28 +41,21 @@ pub enum TransactionStatus {
     Refunded,
 }
 
-/// Strongly typed transaction endpoint. Always present for both payer and payee.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct TransactionParty {
-    /// Canonical vendor reference. Null means unresolved.
-    pub vendor_id: Option<i64>,
-}
-
 /// Financial transaction extracted from documents
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct FinancialTransaction {
+pub struct Transaction {
     pub id: i64,
     pub data_source_type: DataSourceType,
     pub data_source_id: String,
     pub amount: f64,
     pub currency: String,
-    pub transaction_date: String,
-    pub category: Option<TransactionCategory>,
-    pub payer: TransactionParty,
-    pub payee: TransactionParty,
+    pub transaction_date_raw: Option<String>,
+    pub transaction_date: Option<i64>,
     pub status: TransactionStatus,
+    pub payer_vendor_id: Option<i64>,
+    pub payee_vendor_id: Option<i64>,
+    pub transaction_reference: Option<String>,
+    pub bill_id: Option<i64>,
     pub source_file: Option<String>,
     pub extracted_at: i64,
-    pub notes: Option<String>,
-    pub transaction_reference: Option<String>,
 }

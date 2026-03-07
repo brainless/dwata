@@ -1,6 +1,6 @@
-use crate::date_parser::parse_to_iso;
+use crate::date_parser::{parse_to_iso, parse_to_utc_timestamp_ms};
 use calamine::{open_workbook_auto, Data, Reader};
-use shared_types::{DataSourceType, FinancialTransaction, TransactionParty, TransactionStatus};
+use shared_types::{DataSourceType, Transaction, TransactionStatus};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -171,7 +171,7 @@ pub fn extract_transactions(
     sheet: &ColumnarSheet,
     field_map: &HashMap<String, StatementField>,
     default_currency: Option<&str>,
-) -> Vec<FinancialTransaction> {
+) -> Vec<Transaction> {
     let header_index = sheet
         .headers
         .iter()
@@ -241,23 +241,22 @@ pub fn extract_transactions(
         if amount.is_none() {
             amount = amount_from_dr_cr(sheet, row);
         }
-        if let (Some(transaction_date), Some(amount)) = (date, amount) {
-            transactions.push(FinancialTransaction {
+        if let (Some(txn_date), Some(amount)) = (date, amount) {
+            let parsed_date = parse_to_utc_timestamp_ms(&txn_date);
+            transactions.push(Transaction {
                 id: 0,
                 data_source_type: DataSourceType::BankStatement,
                 data_source_id: format!("{}:{}", sheet.name, row_idx + 1),
-                transaction_date,
+                transaction_date_raw: Some(txn_date),
+                transaction_date: parsed_date,
                 amount,
                 currency: currency.clone().unwrap_or_else(|| "UNK".to_string()),
-                category: None,
-                payer: TransactionParty { vendor_id: None },
-                payee: TransactionParty { vendor_id: None },
+                payer_vendor_id: None,
+                payee_vendor_id: None,
                 status: TransactionStatus::Paid,
                 source_file: None,
                 extracted_at,
-                notes: vendor
-                    .clone()
-                    .or_else(|| serde_json::to_string(&raw_row).ok()),
+                bill_id: None,
                 transaction_reference: reference.clone(),
             });
         }

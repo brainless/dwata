@@ -239,6 +239,7 @@ pub async fn list_financial_bills_filtered(
                 data_source_id: row.try_get(2)?,
                 document_type: document_type_from_str(&document_type_str),
                 status: bill_status_from_str(&status_str),
+                category: None,
                 issuer_vendor_id: row.try_get(5)?,
                 document_reference: row.try_get(6)?,
                 total_amount: row.try_get(7)?,

@@ -6,8 +6,8 @@ use dwata_agents::{
 };
 use serde::Serialize;
 use shared_types::{
-    Bill, BillStatus, DataSourceType, FinancialDocumentType, FinancialTransaction,
-    TransactionCategory, TransactionParty, TransactionStatus,
+    Bill, BillStatus, DataSourceType, FinancialDocumentType, Transaction, TransactionCategory,
+    TransactionStatus,
 };
 use sqlx::Row;
 use std::collections::HashMap;
@@ -263,7 +263,7 @@ fn build_transaction_from_fields(
     email_id: i64,
     date_received_ms: i64,
     template_id: i64,
-) -> Option<FinancialTransaction> {
+) -> Option<Transaction> {
     let extracted_at = chrono::Utc::now().timestamp_millis();
     let default_date = chrono::DateTime::from_timestamp_millis(date_received_ms)
         .map(|dt| dt.date_naive().format("%Y-%m-%d").to_string())
@@ -275,12 +275,13 @@ fn build_transaction_from_fields(
         });
 
     let amount = parse_amount(fields.get("amount")?)?;
+    let date_raw = fields.get("transaction_date").cloned();
     let date = fields
-        .get("transaction-date")
+        .get("transaction_date")
         .and_then(|v| parse_date(v))
-        .map(|d| d.format("%Y-%m-%d").to_string())
-        .unwrap_or(default_date);
-    Some(FinancialTransaction {
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .map(|dt| dt.and_utc().timestamp_millis());
+    Some(Transaction {
         id: 0,
         data_source_type: DataSourceType::Email,
         data_source_id: email_id.to_string(),
@@ -289,15 +290,15 @@ fn build_transaction_from_fields(
             .get("currency")
             .cloned()
             .unwrap_or_else(|| "USD".to_string()),
+        transaction_date_raw: date_raw,
         transaction_date: date,
-        category: Some(TransactionCategory::Expense),
-        payer: TransactionParty { vendor_id: None },
-        payee: TransactionParty { vendor_id: None },
+        payer_vendor_id: None,
+        payee_vendor_id: None,
         status: TransactionStatus::Paid,
         source_file: None,
         extracted_at,
-        notes: Some(format!("template_id={template_id};kind=transaction")),
-        transaction_reference: fields.get("transaction-reference").cloned(),
+        bill_id: None,
+        transaction_reference: Some(format!("template_id={template_id}")),
     })
 }
 
@@ -340,6 +341,7 @@ fn build_bill_from_fields(
         data_source_id: email_id.to_string(),
         document_type: FinancialDocumentType::Bill,
         status,
+        category: None,
         issuer_vendor_id: None,
         document_reference: fields.get("document-reference").cloned(),
         total_amount: Some(amount),

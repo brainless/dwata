@@ -89,9 +89,7 @@ pub use settings::{
 pub use task::{
     CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
 };
-pub use transaction::{
-    DataSourceType, FinancialTransaction, TransactionCategory, TransactionParty, TransactionStatus,
-};
+pub use transaction::{DataSourceType, Transaction, TransactionCategory, TransactionStatus};
 pub use vendor::{Vendor, VendorType};
 
 // Re-export extraction types

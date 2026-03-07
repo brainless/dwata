@@ -156,8 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(BillStatus::export_to_string()?));
     types.push(clean_type(BillSubject::export_to_string()?));
     types.push(clean_type(ServiceIdentifierKind::export_to_string()?));
-    types.push(clean_type(FinancialTransaction::export_to_string()?));
-    types.push(clean_type(TransactionParty::export_to_string()?));
+    types.push(clean_type(Transaction::export_to_string()?));
     types.push(clean_type(TransactionCategory::export_to_string()?));
     types.push(clean_type(TransactionStatus::export_to_string()?));
     types.push(clean_type(Vendor::export_to_string()?));

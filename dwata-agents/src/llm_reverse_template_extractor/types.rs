@@ -19,9 +19,11 @@ pub enum ReverseTemplateField {
     BillingPeriodEnd,
     DocumentReference,
     ServiceIdentifier,
+    Category,
     Amount,
     TransactionDate,
-    Vendor,
+    PayerVendorId,
+    PayeeVendorId,
     TransactionReference,
 }
 
