@@ -84,7 +84,27 @@ impl LlmReverseTemplateExtractorAgent {
                 response_format: None,
             };
 
-            let response = self.llm_client.complete(request).await?;
+            let response = match self.llm_client.complete(request).await {
+                Ok(resp) => resp,
+                Err(err) => {
+                    let err_msg = err.to_string();
+                    if err_msg.contains("invalid character '\\n' in string literal")
+                        && iteration == 0
+                    {
+                        self.storage
+                            .create_message(Message {
+                                id: None,
+                                session_id,
+                                role: "user".to_string(),
+                                content: "Tool-call JSON was invalid. Call `submit_reverse_template` again, but ensure `template_body` is a valid JSON string with escaped newlines (`\\n`) and no raw newline characters inside the JSON string."
+                                    .to_string(),
+                            })
+                            .await?;
+                        continue;
+                    }
+                    return Err(err.into());
+                }
+            };
             self.storage
                 .create_message(Message {
                     id: None,

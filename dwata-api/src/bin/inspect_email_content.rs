@@ -1,13 +1,22 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use dwata_agents::normalize_email_content;
+use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
+use dwata_agents::{
+    normalize_email_content, LlmReverseTemplateExtractorAgent, ReverseTemplateType,
+    TemplateDocumentLabelerAgent,
+};
 use dwata_api::database::emails as emails_db;
 use dwata_api::helpers::database::initialize_database;
+use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
+use nocodo_llm_sdk::ollama::OllamaClient;
+use regex::Regex;
+use std::collections::BTreeSet;
+use std::sync::{Arc, OnceLock};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "inspect_email_content",
-    about = "Print original and normalized content for a single email ID"
+    name = "inspect_email_template",
+    about = "Print cleaned email content plus detected type and generated canonical template"
 )]
 struct Args {
     /// Email ID from the emails table
@@ -44,6 +53,92 @@ async fn main() -> Result<()> {
     println!();
     println!("Normalized Body:");
     println!("{}", normalized.body);
+    println!();
+
+    let llm_client = Arc::new(OllamaClient::new().context("Failed to initialize Ollama client")?);
+    let storage = Arc::new(InMemoryAgentStorage::new());
+    let formatted_cleaned_email =
+        format!("Subject: {}\n---\n{}", normalized.subject, normalized.body);
+
+    let labeler_session_id = storage
+        .create_session(Session {
+            id: None,
+            agent_type: "template-document-labeler".to_string(),
+            objective: "Classify cleaned financial email".to_string(),
+            context_data: None,
+            status: "running".to_string(),
+            result: None,
+        })
+        .await
+        .context("Failed to create template-document-labeler session")?;
+    let labeler = TemplateDocumentLabelerAgent::new(
+        llm_client.clone(),
+        storage.clone(),
+        MINISTRAL_3_3B_ID.to_string(),
+        formatted_cleaned_email,
+    );
+    let label = labeler
+        .execute(labeler_session_id)
+        .await
+        .context("Template document labeler failed")?;
+
+    println!("Detected Document Type:");
+    println!(
+        "{:?} (has_bill={}, has_transaction={})",
+        label.doc_type, label.has_bill, label.has_transaction
+    );
+
+    let mut template_types = Vec::new();
+    if label.has_bill {
+        template_types.push(ReverseTemplateType::Bill);
+    }
+    if label.has_transaction {
+        template_types.push(ReverseTemplateType::Transaction);
+    }
+
+    if template_types.is_empty() {
+        println!();
+        println!("No Bill/Transaction template generation requested by labeler result.");
+        return Ok(());
+    }
+
+    for template_type in template_types {
+        let reverse_session_id = storage
+            .create_session(Session {
+                id: None,
+                agent_type: "llm-reverse-template-extractor".to_string(),
+                objective: format!("Generate {:?} template from cleaned email", template_type),
+                context_data: None,
+                status: "running".to_string(),
+                result: None,
+            })
+            .await
+            .context("Failed to create llm-reverse-template-extractor session")?;
+        let reverse = LlmReverseTemplateExtractorAgent::new(
+            llm_client.clone(),
+            storage.clone(),
+            template_type,
+            normalized.subject.clone(),
+            normalized.body.clone(),
+        );
+        let generated = reverse.execute(reverse_session_id).await.with_context(|| {
+            format!("Reverse template extraction failed for {:?}", template_type)
+        })?;
+        let variables = extract_template_variables(&generated.template_body);
+
+        println!();
+        println!("Generated Template Type: {:?}", template_type);
+        println!("Generated Template:");
+        println!("{}", generated.template_body);
+        println!("Variables:");
+        if variables.is_empty() {
+            println!("(none)");
+        } else {
+            for variable in variables {
+                println!("- {}", variable);
+            }
+        }
+    }
 
     Ok(())
 }
@@ -61,4 +156,19 @@ fn preferred_original_body<'a>(
         return ("body_html", html);
     }
     ("none", "")
+}
+
+fn template_variable_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}").expect("valid regex"))
+}
+
+fn extract_template_variables(template: &str) -> Vec<String> {
+    let mut variables = BTreeSet::new();
+    for caps in template_variable_regex().captures_iter(template) {
+        if let Some(name) = caps.get(1) {
+            variables.insert(name.as_str().to_string());
+        }
+    }
+    variables.into_iter().collect()
 }

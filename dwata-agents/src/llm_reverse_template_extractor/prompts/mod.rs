@@ -49,13 +49,17 @@ Rules:
 3. Do NOT use generic placeholders like placeholder_1 or subject_1.
 4. Keep static text intact as much as possible.
 5. Use only fields listed below; if no matching field exists, keep raw text.
-6. Placeholder syntax must be exactly: {{ field_name }}
+6. Placeholder syntax must be exactly: {{{{ field_name }}}}
 7. Never use Jinja filters, functions, pipes, indexing, or attribute access.
 8. Never emit placeholders like:
-   - {{transaction_date|date("Y-m")}}
-   - {{ vendor.address }}
-   - {{ total_amount | replace("Rs.", "") }}
+   - {{{{transaction_date|date("Y-m")}}}}
+   - {{{{ vendor.address }}}}
+   - {{{{ total_amount | replace("Rs.", "") }}}}
 9. Every placeholder variable name must be one of the allowed field names below.
+10. When calling `submit_reverse_template`, the `template_body` value must be valid JSON string content:
+   - keep it as ONE JSON string value
+   - represent all line breaks as escaped newlines (`\n`)
+   - do not include raw newline characters inside the JSON string literal
 
 {allowed_fields}
 
