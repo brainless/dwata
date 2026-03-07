@@ -163,6 +163,12 @@ async fn main() -> Result<()> {
                 println!("| {:<25} | {:<30} |", key, display_value);
             }
             println!("+---------------------------+----------------------------------+");
+
+            let vendor_names = extracted_vendor_names(&extracted);
+            if !vendor_names.is_empty() {
+                println!();
+                println!("Vendor Name(s): {}", vendor_names.join(", "));
+            }
         }
     }
 
@@ -197,4 +203,25 @@ fn extract_template_variables(template: &str) -> Vec<String> {
         }
     }
     variables.into_iter().collect()
+}
+
+fn extracted_vendor_names(extracted: &std::collections::HashMap<String, String>) -> Vec<String> {
+    let mut names = BTreeSet::new();
+    for key in [
+        "vendor_name",
+        "vendor-name",
+        "vendor",
+        "payer_vendor_name",
+        "payer-vendor-name",
+        "payee_vendor_name",
+        "payee-vendor-name",
+    ] {
+        if let Some(value) = extracted.get(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                names.insert(trimmed.to_string());
+            }
+        }
+    }
+    names.into_iter().collect()
 }

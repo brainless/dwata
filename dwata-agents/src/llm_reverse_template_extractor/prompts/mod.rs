@@ -19,8 +19,7 @@ fn allowed_fields_section(template_type: ReverseTemplateType) -> &'static str {
 - amount
 - currency
 - transaction_date
-- payer_vendor_id
-- payee_vendor_id
+- vendor_name
 - transaction_reference"#
         }
     }
@@ -76,7 +75,8 @@ Rules:
 4. Keep static text intact as much as possible.
 5. Use only fields listed below; if no matching field exists, keep raw text.
 6. Every placeholder variable name must be one of the allowed field names below.
-7. When calling `submit_reverse_template`, the `template_body` value must be valid JSON string content:
+7. For transaction vendor details, extract only `vendor_name`. Never use vendor IDs (for example, `payer_vendor_id`/`payee_vendor_id`) in placeholders.
+8. When calling `submit_reverse_template`, the `template_body` value must be valid JSON string content:
    - keep it as ONE JSON string value
    - represent all line breaks as escaped newlines (`\n`)
    - do not include raw newline characters inside the JSON string literal
