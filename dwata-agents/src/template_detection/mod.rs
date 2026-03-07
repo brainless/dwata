@@ -336,13 +336,16 @@ pub async fn detect_reverse_templates_for_sender(
             agent.execute(session_id).await?
         };
 
-        let template_type = if label.has_bill {
-            ReverseTemplateType::Bill
-        } else if label.has_transaction {
-            ReverseTemplateType::Transaction
-        } else {
+        let mut template_types = Vec::new();
+        if label.has_bill {
+            template_types.push(ReverseTemplateType::Bill);
+        }
+        if label.has_transaction {
+            template_types.push(ReverseTemplateType::Transaction);
+        }
+        if template_types.is_empty() {
             continue;
-        };
+        }
 
         let sample_email = match draft
             .selected_email_ids
@@ -354,50 +357,52 @@ pub async fn detect_reverse_templates_for_sender(
             None => continue,
         };
 
-        let reverse_output = {
-            let session_id = storage
-                .create_session(Session {
-                    id: None,
-                    agent_type: "llm-reverse-template-extractor".to_string(),
-                    objective: "Reverse one sample into canonical field Jinja2".to_string(),
-                    context_data: None,
-                    status: "running".to_string(),
-                    result: None,
-                })
-                .await?;
-            let agent = LlmReverseTemplateExtractorAgent::new(
-                llm_client.clone(),
-                storage.clone(),
-                template_type,
-                sample_email.subject,
-                sample_email.body,
-            );
-            agent.execute(session_id).await?
-        };
+        for template_type in template_types {
+            let reverse_output = {
+                let session_id = storage
+                    .create_session(Session {
+                        id: None,
+                        agent_type: "llm-reverse-template-extractor".to_string(),
+                        objective: "Reverse one sample into canonical field Jinja2".to_string(),
+                        context_data: None,
+                        status: "running".to_string(),
+                        result: None,
+                    })
+                    .await?;
+                let agent = LlmReverseTemplateExtractorAgent::new(
+                    llm_client.clone(),
+                    storage.clone(),
+                    template_type,
+                    sample_email.subject.clone(),
+                    sample_email.body.clone(),
+                );
+                agent.execute(session_id).await?
+            };
 
-        let field_aliases = match template_type {
-            ReverseTemplateType::Bill => canonical_field_aliases(template_type, BILL_FIELDS),
-            ReverseTemplateType::Transaction => {
-                canonical_field_aliases(template_type, TRANSACTION_FIELDS)
+            let field_aliases = match template_type {
+                ReverseTemplateType::Bill => canonical_field_aliases(template_type, BILL_FIELDS),
+                ReverseTemplateType::Transaction => {
+                    canonical_field_aliases(template_type, TRANSACTION_FIELDS)
+                }
+            };
+            let variables =
+                collect_canonical_field_mappings(&reverse_output.template_body, &field_aliases);
+            if matches!(template_type, ReverseTemplateType::Bill)
+                && !variables.iter().any(|v| v.target_field == "total-amount")
+            {
+                tracing::warn!("Discarding reverse bill template without total-amount placeholder");
+                continue;
             }
-        };
-        let variables =
-            collect_canonical_field_mappings(&reverse_output.template_body, &field_aliases);
-        if matches!(template_type, ReverseTemplateType::Bill)
-            && !variables.iter().any(|v| v.target_field == "total-amount")
-        {
-            tracing::warn!("Discarding reverse bill template without total-amount placeholder");
-            continue;
-        }
 
-        out.push(DetectedTemplateCluster {
-            template_body: reverse_output.template_body.clone(),
-            translated_template_body: reverse_output.template_body,
-            seed_text: draft.seed_text,
-            email_ids: draft.selected_email_ids,
-            variables,
-            has_bill: matches!(template_type, ReverseTemplateType::Bill),
-        });
+            out.push(DetectedTemplateCluster {
+                template_body: reverse_output.template_body.clone(),
+                translated_template_body: reverse_output.template_body,
+                seed_text: draft.seed_text.clone(),
+                email_ids: draft.selected_email_ids.clone(),
+                variables,
+                has_bill: matches!(template_type, ReverseTemplateType::Bill),
+            });
+        }
     }
 
     Ok(out)
