@@ -3,20 +3,19 @@ use clap::Parser;
 use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
 use dwata_agents::{
     extract_values_from_email, normalize_email_content, LlmTemplateVariableExtractorAgent,
-    ReverseTemplateType, TemplateDocumentLabelerAgent, TemplateEmailContent, TemplateVariable,
-    TemplateVariableType,
+    TemplateDocumentLabelerAgent, TemplateEmailContent, TemplateVariableType,
 };
 use dwata_api::database::emails as emails_db;
 use dwata_api::helpers::database::initialize_database;
 use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
 use nocodo_llm_sdk::ollama::OllamaClient;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "inspect_email_template",
-    about = "Print cleaned email content plus detected type and generated canonical template"
+    name = "inspect_email_variable_extraction",
+    about = "Extract template variables from email using LLM and reconstruct template via value search"
 )]
 struct Args {
     /// Email ID from the emails table
@@ -75,7 +74,7 @@ async fn main() -> Result<()> {
         llm_client.clone(),
         storage.clone(),
         MINISTRAL_3_3B_ID.to_string(),
-        formatted_cleaned_email,
+        formatted_cleaned_email.clone(),
     );
     let label = labeler
         .execute(labeler_session_id)
@@ -90,10 +89,10 @@ async fn main() -> Result<()> {
 
     let mut template_types = Vec::new();
     if label.has_bill {
-        template_types.push(ReverseTemplateType::Bill);
+        template_types.push(TemplateVariableType::Bill);
     }
     if label.has_transaction {
-        template_types.push(ReverseTemplateType::Transaction);
+        template_types.push(TemplateVariableType::Transaction);
     }
 
     if template_types.is_empty() {
@@ -103,11 +102,7 @@ async fn main() -> Result<()> {
     }
 
     for template_type in template_types {
-        let var_type = match template_type {
-            ReverseTemplateType::Bill => TemplateVariableType::Bill,
-            ReverseTemplateType::Transaction => TemplateVariableType::Transaction,
-        };
-        let reverse_session_id = storage
+        let var_session_id = storage
             .create_session(Session {
                 id: None,
                 agent_type: "llm-template-variable-extractor".to_string(),
@@ -124,12 +119,12 @@ async fn main() -> Result<()> {
         let var_extractor = LlmTemplateVariableExtractorAgent::new(
             llm_client.clone(),
             storage.clone(),
-            var_type,
+            template_type,
             normalized.subject.clone(),
             normalized.body.clone(),
         );
         let extracted_vars = var_extractor
-            .execute(reverse_session_id)
+            .execute(var_session_id)
             .await
             .with_context(|| {
                 format!(
@@ -214,7 +209,11 @@ fn preferred_original_body<'a>(
     ("none", "")
 }
 
-fn reconstruct_template(subject: &str, body: &str, variables: &[TemplateVariable]) -> String {
+fn reconstruct_template(
+    subject: &str,
+    body: &str,
+    variables: &[dwata_agents::TemplateVariable],
+) -> String {
     let mut result = String::new();
     result.push_str("Subject: ");
 
@@ -238,7 +237,7 @@ fn reconstruct_template(subject: &str, body: &str, variables: &[TemplateVariable
     result
 }
 
-fn extracted_vendor_names(extracted: &std::collections::HashMap<String, String>) -> Vec<String> {
+fn extracted_vendor_names(extracted: &HashMap<String, String>) -> Vec<String> {
     let mut names = BTreeSet::new();
     for key in [
         "vendor_name",

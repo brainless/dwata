@@ -55,9 +55,12 @@ fn extract_by_sequential_search(template: &str, email_text: &str) -> HashMap<Str
         if let Ok(re) = Regex::new(&pattern) {
             if let Some(caps) = re.captures(remaining) {
                 if let Some(m) = caps.get(1) {
-                    let value = m.as_str().trim().to_string();
+                    let mut value = m.as_str().trim().to_string();
                     if !value.is_empty() {
-                        values.insert(item.name.clone(), value);
+                        value = clean_field_value(&item.name, &value);
+                        if !value.is_empty() {
+                            values.insert(item.name.clone(), value);
+                        }
                     }
                     search_from = search_from + m.end();
                 }
@@ -66,6 +69,87 @@ fn extract_by_sequential_search(template: &str, email_text: &str) -> HashMap<Str
     }
 
     values
+}
+
+fn clean_field_value(field_name: &str, value: &str) -> String {
+    let cleaned = value.trim().to_string();
+    match field_name {
+        "document_reference" | "document-reference" => clean_document_reference(&cleaned),
+        _ => cleaned,
+    }
+}
+
+fn clean_document_reference(value: &str) -> String {
+    static REFERENCE_PREFIXES: &[&str] = &[
+        "BSNL Telephone No.",
+        "BSNL Mobile No.",
+        "BSNL Phone No.",
+        "Airtel Telephone No.",
+        "Airtel Mobile No.",
+        "Airtel Phone No.",
+        "Jio Telephone No.",
+        "Jio Mobile No.",
+        "Jio Phone No.",
+        "Reliance Telephone No.",
+        "Reliance Mobile No.",
+        "Vodafone Telephone No.",
+        "Vodafone Mobile No.",
+        "Idea Telephone No.",
+        "Idea Mobile No.",
+        "Telephone No.",
+        "Mobile No.",
+        "Phone No.",
+        "Phone:",
+        "Tel No.",
+        "Tel:",
+        "Contact No.",
+        "Contact:",
+        "Reference No.",
+        "Reference:",
+        "Ref No.",
+        "Ref:",
+        "Bill No.",
+        "Bill No:",
+        "Invoice No.",
+        "Invoice No:",
+        "Account No.",
+        "Account No:",
+        "Account Number:",
+        "Acct No.",
+        "Acct No:",
+    ];
+
+    let upper = value.to_uppercase();
+    for prefix in REFERENCE_PREFIXES {
+        let upper_prefix = prefix.to_uppercase();
+        if upper.starts_with(&upper_prefix) {
+            let remaining = &value[prefix.len()..];
+            let trimmed = remaining.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+
+    static REFERENCE_PATTERNS: &[&str] = &[
+        r"(?i)^tel(?:ephone)?\s*no\.?\s*",
+        r"(?i)^mobile\s*no\.?\s*",
+        r"(?i)^phone\s*no\.?\s*",
+        r"(?i)^contact\s*no\.?\s*",
+        r"(?i)^ref(?:erence)?\s*no\.?\s*",
+        r"(?i)^bill\s*no\.?\s*",
+        r"(?i)^invoice\s*no\.?\s*",
+        r"(?i)^account\s*(?:no|number)?\.?\s*",
+    ];
+
+    let mut result = value.to_string();
+    for pattern in REFERENCE_PATTERNS {
+        if let Ok(re) = Regex::new(pattern) {
+            result = re.replace(&result, "").to_string();
+        }
+    }
+
+    result.trim().to_string()
 }
 
 fn make_flexible_regex(literal: &str) -> String {

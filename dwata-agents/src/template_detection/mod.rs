@@ -1,10 +1,46 @@
 use crate::storage::{AgentStorage, InMemoryAgentStorage, Session};
-use crate::{LlmReverseTemplateExtractorAgent, ReverseTemplateType, TemplateDocumentLabelerAgent};
+use crate::{
+    LlmTemplateVariableExtractorAgent, TemplateDocumentLabelerAgent, TemplateVariable,
+    TemplateVariableType,
+};
 use anyhow::Result;
 use nocodo_llm_sdk::client::LlmClient;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReverseTemplateType {
+    Bill,
+    Transaction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReverseTemplateField {
+    TotalAmount,
+    Currency,
+    IssuedDate,
+    DueDate,
+    BillingPeriodStart,
+    BillingPeriodEnd,
+    DocumentReference,
+    ServiceIdentifier,
+    Category,
+    Amount,
+    TransactionDate,
+    PayerVendorId,
+    PayeeVendorId,
+    TransactionReference,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReverseVariableTranslation {
+    pub placeholder_name: String,
+    pub target_field: ReverseTemplateField,
+}
 
 #[derive(Debug, Clone)]
 pub struct TemplateInputEmail {
@@ -358,21 +394,25 @@ pub async fn detect_reverse_templates_for_sender(
         };
 
         for template_type in template_types {
+            let var_type = match template_type {
+                ReverseTemplateType::Bill => TemplateVariableType::Bill,
+                ReverseTemplateType::Transaction => TemplateVariableType::Transaction,
+            };
             let reverse_output = {
                 let session_id = storage
                     .create_session(Session {
                         id: None,
-                        agent_type: "llm-reverse-template-extractor".to_string(),
-                        objective: "Reverse one sample into canonical field Jinja2".to_string(),
+                        agent_type: "llm-template-variable-extractor".to_string(),
+                        objective: "Extract template variables from email sample".to_string(),
                         context_data: None,
                         status: "running".to_string(),
                         result: None,
                     })
                     .await?;
-                let agent = LlmReverseTemplateExtractorAgent::new(
+                let agent = LlmTemplateVariableExtractorAgent::new(
                     llm_client.clone(),
                     storage.clone(),
-                    template_type,
+                    var_type,
                     sample_email.subject.clone(),
                     sample_email.body.clone(),
                 );
@@ -385,8 +425,25 @@ pub async fn detect_reverse_templates_for_sender(
                     canonical_field_aliases(template_type, TRANSACTION_FIELDS)
                 }
             };
-            let variables =
-                collect_canonical_field_mappings(&reverse_output.template_body, &field_aliases);
+
+            let variables: Vec<TemplateVariableMapping> = reverse_output
+                .variables
+                .iter()
+                .filter_map(|v| {
+                    let target_field = field_aliases.get(&v.variable_name)?.clone();
+                    Some(TemplateVariableMapping {
+                        placeholder_name: v.variable_name.clone(),
+                        target_field,
+                    })
+                })
+                .collect();
+
+            let template_body = reconstruct_template_from_variables(
+                &sample_email.subject,
+                &sample_email.body,
+                &reverse_output.variables,
+            );
+
             if matches!(template_type, ReverseTemplateType::Bill)
                 && !variables.iter().any(|v| v.target_field == "total-amount")
             {
@@ -395,8 +452,8 @@ pub async fn detect_reverse_templates_for_sender(
             }
 
             out.push(DetectedTemplateCluster {
-                template_body: reverse_output.template_body.clone(),
-                translated_template_body: reverse_output.template_body,
+                template_body: template_body.clone(),
+                translated_template_body: template_body,
                 seed_text: draft.seed_text.clone(),
                 email_ids: draft.selected_email_ids.clone(),
                 variables,
@@ -934,32 +991,30 @@ fn levenshtein_words(a: &[&str], b: &[&str]) -> usize {
     prev[b.len()]
 }
 
-fn collect_canonical_field_mappings(
-    template: &str,
-    field_aliases: &HashMap<String, String>,
-) -> Vec<TemplateVariableMapping> {
-    let re = match Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}") {
-        Ok(re) => re,
-        Err(_) => return Vec::new(),
-    };
-    let mut seen_targets = HashSet::new();
-    let mut mappings = Vec::new();
-    for caps in re.captures_iter(template) {
-        let token = match caps.get(1) {
-            Some(m) => m.as_str(),
-            None => continue,
-        };
-        let target_field = match field_aliases.get(token) {
-            Some(field) => field.clone(),
-            None => continue,
-        };
-        if !seen_targets.insert(target_field.clone()) {
-            continue;
-        }
-        mappings.push(TemplateVariableMapping {
-            placeholder_name: target_field.clone(),
-            target_field,
-        });
+fn reconstruct_template_from_variables(
+    subject: &str,
+    body: &str,
+    variables: &[TemplateVariable],
+) -> String {
+    let mut result = String::new();
+    result.push_str("Subject: ");
+
+    let mut subject_replaced = subject.to_string();
+    let mut body_replaced = body.to_string();
+
+    let mut sorted_vars: Vec<_> = variables.iter().collect();
+    sorted_vars.sort_by(|a, b| b.value.len().cmp(&a.value.len()));
+
+    for var in sorted_vars {
+        subject_replaced =
+            subject_replaced.replace(&var.value, &format!("{{{{{}}}}}", var.variable_name));
+        body_replaced =
+            body_replaced.replace(&var.value, &format!("{{{{{}}}}}", var.variable_name));
     }
-    mappings
+
+    result.push_str(&subject_replaced);
+    result.push_str("\n---\n");
+    result.push_str(&body_replaced);
+
+    result
 }
