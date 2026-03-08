@@ -1,5 +1,5 @@
-use config::{Config, ConfigError, File};
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
 
 mod oauth_defaults {
@@ -8,37 +8,49 @@ mod oauth_defaults {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ApiConfig {
-    pub ai_provider_api_keys: Option<AiProviderApiKeysConfig>,
+    pub deploy: Option<DeployConfig>,
     pub database: Option<DatabaseConfig>,
-    pub cors: Option<CorsConfig>,
     pub server: Option<ServerConfig>,
+    pub gui: Option<GuiConfig>,
+    pub jwt: Option<JwtConfig>,
+    pub cors: Option<CorsConfig>,
     pub google_oauth: Option<GoogleOAuthConfig>,
     pub downloads: Option<DownloadsConfig>,
     pub search: Option<SearchConfig>,
+    pub ai_provider_api_keys: Option<AiProviderApiKeysConfig>,
 }
 
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
-            ai_provider_api_keys: None,
+            deploy: None,
             database: None,
-            cors: Some(CorsConfig {
-                allowed_origins: vec!["http://localhost:3000".to_string()],
-            }),
             server: Some(ServerConfig {
                 host: "127.0.0.1".to_string(),
                 port: 8080,
             }),
+            gui: Some(GuiConfig { port: 3030 }),
+            jwt: Some(JwtConfig {
+                secret: "change-me-in-production".to_string(),
+                expiration_hours: 24,
+            }),
+            cors: Some(CorsConfig {
+                allowed_origins: vec!["http://localhost:3030".to_string()],
+            }),
             google_oauth: Some(GoogleOAuthConfig::default()),
             downloads: Some(DownloadsConfig::default()),
             search: Some(SearchConfig::default()),
+            ai_provider_api_keys: None,
         }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct AiProviderApiKeysConfig {
-    pub gemini_api_key: Option<String>,
+pub struct DeployConfig {
+    pub server_ip: String,
+    pub ssh_user: String,
+    pub domain_name: String,
+    pub letsencrypt_email: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -47,14 +59,25 @@ pub struct DatabaseConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct CorsConfig {
-    pub allowed_origins: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GuiConfig {
+    pub port: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct JwtConfig {
+    pub secret: String,
+    pub expiration_hours: u32,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CorsConfig {
+    pub allowed_origins: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -71,6 +94,11 @@ pub struct DownloadsConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SearchConfig {
     pub index_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AiProviderApiKeysConfig {
+    pub gemini_api_key: Option<String>,
 }
 
 impl Default for DownloadsConfig {
@@ -112,66 +140,48 @@ impl GoogleOAuthConfig {
 }
 
 impl ApiConfig {
-    pub fn load() -> Result<(Self, PathBuf), ConfigError> {
-        let config_path = get_config_path();
+    pub fn load() -> Result<(Self, PathBuf), String> {
+        let config_path = Self::find_config_file().ok_or_else(|| {
+            "Config file not found. Place project.toml in the project root or next to the binary. \
+                Copy project.example.toml as a starting point."
+                .to_string()
+        })?;
 
-        // Create config directory if it doesn't exist
-        if let Some(parent) = config_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                ConfigError::Message(format!("Failed to create config directory: {e}"))
-            })?;
-        }
+        let contents = fs::read_to_string(&config_path).map_err(|e| {
+            format!(
+                "Failed to read config file at {}: {}",
+                config_path.display(),
+                e
+            )
+        })?;
 
-        // Create default config file if it doesn't exist
-        if !config_path.exists() {
-            let default_config = r#"
-[ai_provider_api_keys]
-# gemini_api_key = "your-gemini-key"
-
-[database]
-# path = "/absolute/path/to/db.sqlite"
-
-[cors]
-allowed_origins = ["http://localhost:3030"]
-
-[server]
-host = "127.0.0.1"
-port = 8080
-
-[google_oauth]
-# Google Cloud Console OAuth2 client ID for Gmail
-# client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
-# client_secret = "YOUR_CLIENT_SECRET" # Optional, but required by Google in practice
-# Redirect URI is automatically constructed from server host and port
-
-[downloads]
-# When false, the API will not auto-start download jobs on startup.
-auto_start = false
-
-[search]
-# Optional absolute path for Tantivy index directory.
-# If omitted, defaults to OS local data dir + dwata/tantivy-index
-# index_path = "/absolute/path/to/tantivy-index"
-"#;
-            std::fs::write(&config_path, default_config).map_err(|e| {
-                ConfigError::Message(format!("Failed to write default config: {e}"))
-            })?;
-        }
-
-        let builder = Config::builder()
-            .add_source(File::from(config_path.clone()))
-            .build()?;
-
-        let config: ApiConfig = builder.try_deserialize()?;
+        let config: ApiConfig =
+            toml::from_str(&contents).map_err(|e| format!("Failed to parse TOML config: {}", e))?;
 
         Ok((config, config_path))
+    }
+
+    fn exe_dir() -> Option<PathBuf> {
+        std::env::current_exe()
+            .ok()?
+            .parent()
+            .map(|p| p.to_path_buf())
+    }
+
+    fn find_config_file() -> Option<PathBuf> {
+        let mut candidates = vec![
+            PathBuf::from("project.toml"),
+            PathBuf::from("../project.toml"),
+        ];
+        if let Some(dir) = Self::exe_dir() {
+            candidates.push(dir.join("../../project.toml"));
+            candidates.push(dir.join("../project.toml"));
+            candidates.push(dir.join("project.toml"));
+        }
+        candidates.into_iter().find(|p| p.exists())
     }
 }
 
 pub fn get_config_path() -> PathBuf {
-    if let Some(config_dir) = dirs::config_dir() {
-        config_dir.join("dwata").join("api.toml")
-    } else {
-        PathBuf::from("api.toml")
-    }
+    ApiConfig::find_config_file().unwrap_or_else(|| PathBuf::from("project.toml"))
 }
