@@ -1,8 +1,8 @@
 use crate::database::{financial_bills as bill_db, financial_transactions as txn_db, Database};
 use anyhow::Result;
 use dwata_agents::{
-    extract_values_from_email, is_valid_bill_value, is_valid_txn_value, normalize_email_content,
-    parse_amount, parse_date, TemplateEmailContent,
+    extract_values_from_email, is_valid_bill_value, is_valid_txn_value, parse_amount, parse_date,
+    simple_email_content, TemplateEmailContent,
 };
 use serde::Serialize;
 use shared_types::{
@@ -365,6 +365,5 @@ fn build_bill_from_fields(
 }
 
 fn preferred_body_text(body_text: Option<&str>, body_html: Option<&str>) -> String {
-    // Keep extraction body preparation aligned with template-detection LLM inputs.
-    normalize_email_content(None, body_text, body_html).body
+    simple_email_content(None, body_text, body_html).body
 }

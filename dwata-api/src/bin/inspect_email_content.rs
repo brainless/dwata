@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
 use dwata_agents::{
-    extract_values_from_email, normalize_email_content, LlmTemplateVariableExtractorAgent,
+    extract_values_from_email_with_values, simple_email_content, LlmTemplateVariableExtractorAgent,
     ReverseTemplateType, TemplateDocumentLabelerAgent, TemplateEmailContent, TemplateVariable,
     TemplateVariableType,
 };
@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
 
     let original_body =
         preferred_original_body(email.body_text.as_deref(), email.body_html.as_deref());
-    let normalized = normalize_email_content(
+    let simple = simple_email_content(
         email.subject.as_deref(),
         email.body_text.as_deref(),
         email.body_html.as_deref(),
@@ -48,17 +48,16 @@ async fn main() -> Result<()> {
     println!("Original Body:");
     println!("{}", original_body.1);
     println!();
-    println!("Normalized Subject:");
-    println!("{}", normalized.subject);
+    println!("Subject (simple):");
+    println!("{}", simple.subject);
     println!();
-    println!("Normalized Body:");
-    println!("{}", normalized.body);
+    println!("Body (simple):");
+    println!("{}", simple.body);
     println!();
 
     let llm_client = Arc::new(OllamaClient::new().context("Failed to initialize Ollama client")?);
     let storage = Arc::new(InMemoryAgentStorage::new());
-    let formatted_cleaned_email =
-        format!("Subject: {}\n---\n{}", normalized.subject, normalized.body);
+    let formatted_cleaned_email = format!("Subject: {}\n---\n{}", simple.subject, simple.body);
 
     let labeler_session_id = storage
         .create_session(Session {
@@ -125,8 +124,8 @@ async fn main() -> Result<()> {
             llm_client.clone(),
             storage.clone(),
             var_type,
-            normalized.subject.clone(),
-            normalized.body.clone(),
+            simple.subject.clone(),
+            simple.body.clone(),
         );
         let extracted_vars = var_extractor
             .execute(reverse_session_id)
@@ -153,11 +152,8 @@ async fn main() -> Result<()> {
         }
         println!("+---------------------------+----------------------------------+");
 
-        let reconstructed_template = reconstruct_template(
-            &normalized.subject,
-            &normalized.body,
-            &extracted_vars.variables,
-        );
+        let reconstructed_template =
+            reconstruct_template(&simple.subject, &simple.body, &extracted_vars.variables);
 
         println!();
         println!("Reconstructed Template (via value search):");
@@ -165,11 +161,11 @@ async fn main() -> Result<()> {
 
         println!();
         println!("Extracted Values (from reconstructed template):");
-        let extracted = extract_values_from_email(
-            &reconstructed_template,
+        let extracted = extract_values_from_email_with_values(
+            &extracted_vars.variables,
             &TemplateEmailContent {
-                subject: normalized.subject.clone(),
-                body: normalized.body.clone(),
+                subject: simple.subject.clone(),
+                body: simple.body.clone(),
             },
         );
         if extracted.is_empty() {

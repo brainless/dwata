@@ -9,6 +9,8 @@ pub struct TemplateEmailContent {
     pub body: String,
 }
 
+pub use crate::llm_template_variable_extractor::types::TemplateVariable;
+
 pub fn extract_values_from_email(
     template: &str,
     email: &TemplateEmailContent,
@@ -22,6 +24,47 @@ pub fn extract_values_from_email(
     extract_by_sequential_search(template, &email_text)
 }
 
+pub fn extract_values_from_email_with_values(
+    variables: &[TemplateVariable],
+    email: &TemplateEmailContent,
+) -> HashMap<String, String> {
+    let email_text = format!(
+        "Subject: {}\n---\n{}",
+        email.subject.trim(),
+        email.body.trim()
+    );
+
+    let mut result = HashMap::new();
+    for var in variables {
+        if let Some(found) = find_value_by_search(&var.value, &email_text) {
+            result.insert(var.variable_name.clone(), found);
+        }
+    }
+    result
+}
+
+fn find_value_by_search(value: &str, email_text: &str) -> Option<String> {
+    if value.is_empty() {
+        return None;
+    }
+
+    if let Some(pos) = email_text.find(value) {
+        let before = &email_text[..pos];
+        let after = &email_text[pos + value.len()..];
+
+        let valid_before = !before.is_empty() && !before.ends_with('\n');
+        let valid_after = !after.is_empty() && !after.starts_with('\n');
+
+        if valid_before || valid_after {
+            Some(value.to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 fn extract_by_sequential_search(template: &str, email_text: &str) -> HashMap<String, String> {
     let mut values = HashMap::new();
     let parsed = parse_template(template);
@@ -30,45 +73,50 @@ fn extract_by_sequential_search(template: &str, email_text: &str) -> HashMap<Str
         return values;
     }
 
-    let mut search_from = 0usize;
-
     for item in &parsed {
-        if search_from >= email_text.len() {
-            break;
-        }
-
-        let remaining = &email_text[search_from..];
-
-        let flexible_prefix = make_flexible_regex(&item.prefix);
-        let flexible_suffix = if item.suffix.is_empty() {
-            String::new()
-        } else {
-            make_flexible_regex(&item.suffix)
-        };
-
-        let pattern = if item.suffix.is_empty() {
-            format!(r"{}(.+)", flexible_prefix)
-        } else {
-            format!(r"{}(.+?){}", flexible_prefix, flexible_suffix)
-        };
-
-        if let Ok(re) = Regex::new(&pattern) {
-            if let Some(caps) = re.captures(remaining) {
-                if let Some(m) = caps.get(1) {
-                    let mut value = m.as_str().trim().to_string();
-                    if !value.is_empty() {
-                        value = clean_field_value(&item.name, &value);
-                        if !value.is_empty() {
-                            values.insert(item.name.clone(), value);
-                        }
-                    }
-                    search_from = search_from + m.end();
-                }
-            }
+        if let Some(value) = find_value_in_email(&item.name, &item.prefix, &item.suffix, email_text)
+        {
+            values.insert(item.name.clone(), value);
         }
     }
 
     values
+}
+
+fn find_value_in_email(
+    _name: &str,
+    prefix: &str,
+    suffix: &str,
+    email_text: &str,
+) -> Option<String> {
+    let clean_prefix = prefix.replace('\n', " ");
+    let clean_suffix = suffix.replace('\n', " ");
+
+    if clean_prefix.is_empty() && clean_suffix.is_empty() {
+        return None;
+    }
+
+    if !clean_suffix.is_empty() {
+        if let Some(prefix_pos) = email_text.find(&clean_prefix) {
+            let suffix_match = &email_text[prefix_pos..];
+            if let Some(suffix_pos) = suffix_match.find(&clean_suffix) {
+                let value_start = clean_prefix.len();
+                let value_end = suffix_pos;
+                let value = &suffix_match[value_start..value_end];
+                return Some(value.trim().to_string());
+            }
+        }
+    } else {
+        if let Some(prefix_pos) = email_text.find(&clean_prefix) {
+            let after_prefix = prefix_pos + clean_prefix.len();
+            let remaining = &email_text[after_prefix..];
+            let end = remaining.find('\n').unwrap_or(remaining.len());
+            let val = &remaining[..end];
+            return Some(val.trim().to_string());
+        }
+    }
+
+    None
 }
 
 fn clean_field_value(field_name: &str, value: &str) -> String {
@@ -190,7 +238,13 @@ fn parse_template(template: &str) -> Vec<ParsedItem> {
             let next_brace = template[suffix_start..]
                 .find("{{")
                 .unwrap_or(template.len() - suffix_start);
-            template[suffix_start..suffix_start + next_brace].to_string()
+            let raw_suffix = &template[suffix_start..suffix_start + next_brace];
+            let truncated_suffix = if raw_suffix.len() > 100 {
+                &raw_suffix[..100]
+            } else {
+                raw_suffix
+            };
+            truncated_suffix.to_string()
         } else {
             String::new()
         };

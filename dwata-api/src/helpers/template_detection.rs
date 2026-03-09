@@ -4,7 +4,7 @@ use crate::search::tantivy::TantivySearchIndex;
 use actix_web::web;
 use anyhow::Result;
 use dwata_agents::{
-    detect_reverse_templates_for_sender, discover_template_drafts, normalize_email_content,
+    detect_reverse_templates_for_sender, discover_template_drafts, simple_email_content,
     TemplateDetectionOptions, TemplateInputEmail,
 };
 use nocodo_llm_sdk::client::LlmClient;
@@ -322,27 +322,25 @@ fn build_llm_client(_config: &ApiConfig) -> Result<Arc<dyn LlmClient>> {
 }
 
 fn to_input_email(row: &emails_db::TemplateCandidateEmailRow) -> TemplateInputEmail {
-    // Canonical normalization path shared with preview/debug APIs and both LLM agents.
-    let normalized = normalize_email_content(
+    let simple = simple_email_content(
         row.subject.as_deref(),
         row.body_text.as_deref(),
         row.body_html.as_deref(),
     );
     TemplateInputEmail {
         id: row.email_id,
-        subject: normalized.subject,
-        body: normalized.body,
+        subject: simple.subject,
+        body: simple.body,
     }
 }
 
 fn to_matchable_email_text(row: &emails_db::TemplateCandidateEmailRow) -> String {
-    // Keep matching text aligned with the same normalization used by LLM inputs.
-    let normalized = normalize_email_content(
+    let simple = simple_email_content(
         row.subject.as_deref(),
         row.body_text.as_deref(),
         row.body_html.as_deref(),
     );
-    format!("Subject: {}\n---\n{}", normalized.subject, normalized.body)
+    format!("Subject: {}\n---\n{}", simple.subject, simple.body)
 }
 
 async fn link_matching_emails_for_sender(

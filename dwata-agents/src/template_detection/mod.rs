@@ -118,6 +118,30 @@ const TRANSACTION_FIELDS: &[&str] = &[
     "transaction-reference",
 ];
 
+/// Build plain-text subject/body from raw email content.
+///
+/// Prefer `body_text` when present, fallback to HTML→text conversion.
+/// Unlike normalize_email_content, this preserves original line structure.
+pub fn simple_email_content(
+    subject: Option<&str>,
+    body_text: Option<&str>,
+    body_html: Option<&str>,
+) -> NormalizedEmailContent {
+    let subject = subject.unwrap_or_default().trim().to_string();
+    let body = if let Some(text) = body_text {
+        let trimmed = text.trim().to_string();
+        if !trimmed.is_empty() {
+            trimmed
+        } else {
+            extract_text_from_html(body_html.unwrap_or_default())
+        }
+    } else {
+        extract_text_from_html(body_html.unwrap_or_default())
+    };
+
+    NormalizedEmailContent { subject, body }
+}
+
 /// Build normalized plain-text subject/body from raw email content.
 ///
 /// This is the canonical source for template-detection text preparation:
