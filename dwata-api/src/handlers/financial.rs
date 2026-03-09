@@ -373,10 +373,12 @@ pub async fn get_detect_sender_llm_inputs(
 
 pub async fn extract_financial(
     db: web::Data<Arc<Database>>,
+    config: web::Data<Arc<crate::config::ApiConfig>>,
     request: web::Json<ExtractFinancialRequest>,
 ) -> ActixResult<HttpResponse> {
     let result = crate::helpers::financial_extraction::extract_financial_from_templates(
         db.get_ref().clone(),
+        config.get_ref(),
         request.credential_id,
     )
     .await

@@ -191,13 +191,7 @@ fn print_db_preview(
     template_type: ReverseTemplateType,
     date_received_ms: i64,
 ) {
-    // Helper to get field by underscore or hyphen variant
-    let get = |key: &str| -> Option<&str> {
-        fields
-            .get(key)
-            .or_else(|| fields.get(&key.replace('_', "-")))
-            .map(|s| s.as_str())
-    };
+    let get = |key: &str| -> Option<&str> { fields.get(key).map(|s| s.as_str()) };
 
     let format_date = |raw: Option<&str>| -> String {
         match raw {

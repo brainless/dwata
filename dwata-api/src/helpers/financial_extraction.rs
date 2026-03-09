@@ -1,9 +1,13 @@
+use crate::config::ApiConfig;
 use crate::database::{financial_bills as bill_db, financial_transactions as txn_db, Database};
 use anyhow::Result;
+use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
 use dwata_agents::{
-    extract_values_from_email, is_valid_bill_value, is_valid_txn_value, parse_amount, parse_date,
-    simple_email_content, TemplateEmailContent,
+    extract_values_from_email_with_values, parse_amount, parse_date, simple_email_content,
+    LlmTemplateVariableExtractorAgent, TemplateEmailContent, TemplateVariableType,
 };
+use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
+use nocodo_llm_sdk::ollama::OllamaClient;
 use serde::Serialize;
 use shared_types::{
     Bill, BillStatus, DataSourceType, FinancialDocumentType, Transaction, TransactionCategory,
@@ -31,15 +35,17 @@ enum TemplateKind {
 #[derive(Debug, Clone)]
 struct TemplateRuntime {
     id: i64,
-    template_body: String,
     kind: TemplateKind,
-    placeholder_to_field: HashMap<String, String>,
 }
 
 pub async fn extract_financial_from_templates(
     db: Arc<Database>,
+    _config: &ApiConfig,
     credential_id: Option<i64>,
 ) -> Result<FinancialExtractionRunResponse> {
+    let llm_client = Arc::new(OllamaClient::new()?);
+    let storage = Arc::new(InMemoryAgentStorage::new());
+
     let mut templates = load_templates(&db, credential_id).await?;
     let mut emails_scanned = 0usize;
     let mut inserted_bills = 0usize;
@@ -47,58 +53,75 @@ pub async fn extract_financial_from_templates(
     let mut discarded_rows = 0usize;
 
     for template in templates.drain(..) {
-        if template.placeholder_to_field.is_empty() {
-            continue;
-        }
+        let var_type = match template.kind {
+            TemplateKind::Bill => TemplateVariableType::Bill,
+            TemplateKind::Transaction => TemplateVariableType::Transaction,
+        };
 
         let email_rows = load_linked_emails_for_template(&db, template.id, credential_id).await?;
         for email in email_rows {
             emails_scanned += 1;
-            let body = preferred_body_text(
-                email.try_get::<Option<String>, _>("body_text")?.as_deref(),
-                email.try_get::<Option<String>, _>("body_html")?.as_deref(),
-            );
-            let extracted = extract_values_from_email(
-                &template.template_body,
-                &TemplateEmailContent {
-                    subject: email
-                        .try_get::<Option<String>, _>("subject")?
-                        .unwrap_or_default(),
-                    body,
-                },
-            );
-            if extracted.is_empty() {
-                discarded_rows += 1;
-                continue;
-            }
 
-            let mut field_values: HashMap<String, String> = HashMap::new();
-            let mut invalid = false;
-            for (placeholder, value) in extracted {
-                if let Some(field) = template.placeholder_to_field.get(&placeholder) {
-                    let ok = match template.kind {
-                        TemplateKind::Bill => is_valid_bill_value(field, &value),
-                        TemplateKind::Transaction => is_valid_txn_value(field, &value),
-                    };
-                    if ok {
-                        field_values.insert(field.clone(), value);
-                    } else {
-                        invalid = true;
-                        break;
-                    }
-                }
-            }
-            if invalid {
-                discarded_rows += 1;
-                continue;
-            }
-
+            let subject: Option<String> = email.try_get("subject")?;
+            let body_text: Option<String> = email.try_get("body_text")?;
+            let body_html: Option<String> = email.try_get("body_html")?;
             let email_id: i64 = email.try_get("id")?;
             let received_ts: i64 = email.try_get("date_received")?;
+
+            let simple = simple_email_content(
+                subject.as_deref(),
+                body_text.as_deref(),
+                body_html.as_deref(),
+            );
+
+            let session_id = storage
+                .create_session(Session {
+                    id: None,
+                    agent_type: "llm-template-variable-extractor".to_string(),
+                    objective: format!("Extract {:?} variables", var_type),
+                    context_data: None,
+                    status: "running".to_string(),
+                    result: None,
+                })
+                .await?;
+
+            let agent = LlmTemplateVariableExtractorAgent::new(
+                llm_client.clone(),
+                storage.clone(),
+                var_type,
+                simple.subject.clone(),
+                simple.body.clone(),
+            );
+
+            let extracted_vars = match agent.execute(session_id).await {
+                Ok(v) => v,
+                Err(_) => {
+                    discarded_rows += 1;
+                    continue;
+                }
+            };
+
+            if extracted_vars.variables.is_empty() {
+                discarded_rows += 1;
+                continue;
+            }
+
+            let fields = extract_values_from_email_with_values(
+                &extracted_vars.variables,
+                &TemplateEmailContent {
+                    subject: simple.subject,
+                    body: simple.body,
+                },
+            );
+
+            if fields.is_empty() {
+                discarded_rows += 1;
+                continue;
+            }
+
             match template.kind {
                 TemplateKind::Bill => {
-                    if let Some(bill) = build_bill_from_fields(&field_values, email_id, received_ts)
-                    {
+                    if let Some(bill) = build_bill_from_fields(&fields, email_id, received_ts) {
                         bill_db::insert_financial_bill(&db.sqlx_pool, &bill).await?;
                         inserted_bills += 1;
                     } else {
@@ -106,12 +129,9 @@ pub async fn extract_financial_from_templates(
                     }
                 }
                 TemplateKind::Transaction => {
-                    if let Some(txn) = build_transaction_from_fields(
-                        &field_values,
-                        email_id,
-                        received_ts,
-                        template.id,
-                    ) {
+                    if let Some(txn) =
+                        build_transaction_from_fields(&fields, email_id, received_ts, template.id)
+                    {
                         txn_db::insert_financial_transaction(&db.sqlx_pool, &txn).await?;
                         inserted_transactions += 1;
                     } else {
@@ -137,7 +157,7 @@ async fn load_templates(
 ) -> Result<Vec<TemplateRuntime>> {
     let rows = if let Some(cred) = credential_id {
         sqlx::query(
-            "SELECT DISTINCT t.id, t.template_type, t.template_body
+            "SELECT DISTINCT t.id, t.template_type
              FROM financial_extraction_templates t
              JOIN financial_template_email_links l ON l.template_id = t.id
              JOIN emails e ON e.id = l.email_id
@@ -150,7 +170,7 @@ async fn load_templates(
         .await?
     } else {
         sqlx::query(
-            "SELECT t.id, t.template_type, t.template_body
+            "SELECT t.id, t.template_type
              FROM financial_extraction_templates t
              WHERE t.status = 'active'
                AND t.data_source_type = 'email'",
@@ -168,32 +188,7 @@ async fn load_templates(
             "transaction" => TemplateKind::Transaction,
             _ => continue,
         };
-        let vars = sqlx::query(
-            "SELECT placeholder_name, target_field
-             FROM financial_template_variables
-             WHERE template_id = ?
-             ORDER BY id ASC",
-        )
-        .bind(id)
-        .fetch_all(&db.sqlx_pool)
-        .await?;
-        let placeholder_to_field = vars
-            .into_iter()
-            .filter_map(|v| {
-                let p: Option<String> = v.try_get("placeholder_name").ok();
-                let f: Option<String> = v.try_get("target_field").ok();
-                match (p, f) {
-                    (Some(p), Some(f)) => Some((p, f)),
-                    _ => None,
-                }
-            })
-            .collect::<HashMap<_, _>>();
-        out.push(TemplateRuntime {
-            id,
-            template_body: row.try_get("template_body")?,
-            kind,
-            placeholder_to_field,
-        });
+        out.push(TemplateRuntime { id, kind });
     }
     Ok(out)
 }
@@ -265,14 +260,6 @@ fn build_transaction_from_fields(
     template_id: i64,
 ) -> Option<Transaction> {
     let extracted_at = chrono::Utc::now().timestamp_millis();
-    let default_date = chrono::DateTime::from_timestamp_millis(date_received_ms)
-        .map(|dt| dt.date_naive().format("%Y-%m-%d").to_string())
-        .unwrap_or_else(|| {
-            chrono::Utc::now()
-                .date_naive()
-                .format("%Y-%m-%d")
-                .to_string()
-        });
 
     let amount = parse_amount(fields.get("amount")?)?;
     let date_raw = fields.get("transaction_date").cloned();
@@ -298,7 +285,10 @@ fn build_transaction_from_fields(
         source_file: None,
         extracted_at,
         bill_id: None,
-        transaction_reference: Some(format!("template_id={template_id}")),
+        transaction_reference: fields
+            .get("transaction_reference")
+            .cloned()
+            .or_else(|| Some(format!("template_id={template_id}"))),
     })
 }
 
@@ -309,16 +299,16 @@ fn build_bill_from_fields(
 ) -> Option<Bill> {
     let now_ms = chrono::Utc::now().timestamp_millis();
     let now_s = chrono::Utc::now().timestamp();
-    let amount = parse_amount(fields.get("total-amount")?)?.abs();
+    let amount = parse_amount(fields.get("total_amount")?)?.abs();
 
-    let issued_date_raw = fields.get("issued-date").cloned();
+    let issued_date_raw = fields.get("issued_date").cloned();
     let issued_date = issued_date_raw
         .as_ref()
         .and_then(|v| parse_date(v))
         .and_then(|d| d.and_hms_opt(0, 0, 0))
         .map(|dt| dt.and_utc().timestamp_millis());
 
-    let due_date_raw = fields.get("due-date").cloned();
+    let due_date_raw = fields.get("due_date").cloned();
     let fallback_due = chrono::DateTime::from_timestamp_millis(date_received_ms)
         .map(|dt| dt.date_naive())
         .and_then(|d| d.and_hms_opt(0, 0, 0))
@@ -343,7 +333,7 @@ fn build_bill_from_fields(
         status,
         category: None,
         issuer_vendor_id: None,
-        document_reference: fields.get("document-reference").cloned(),
+        document_reference: fields.get("document_reference").cloned(),
         total_amount: Some(amount),
         currency: Some(
             fields
@@ -362,8 +352,4 @@ fn build_bill_from_fields(
         created_at: now_s,
         updated_at: now_s,
     })
-}
-
-fn preferred_body_text(body_text: Option<&str>, body_html: Option<&str>) -> String {
-    simple_email_content(None, body_text, body_html).body
 }

@@ -24,6 +24,5 @@ pub use template_detection::{
 };
 pub use template_document_labeler::{LabelDocumentParams, TemplateDocumentLabelerAgent};
 pub use template_value_extractor::{
-    extract_values_from_email, extract_values_from_email_with_values, is_valid_bill_value,
-    is_valid_txn_value, parse_amount, parse_date, TemplateEmailContent,
+    extract_values_from_email_with_values, parse_amount, parse_date, TemplateEmailContent,
 };
