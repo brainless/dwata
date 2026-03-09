@@ -2,15 +2,14 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
 use dwata_agents::{
-    extract_values_from_email_with_values, simple_email_content, LlmTemplateVariableExtractorAgent,
-    ReverseTemplateType, TemplateDocumentLabelerAgent, TemplateEmailContent, TemplateVariable,
-    TemplateVariableType,
+    extract_values_from_email_with_values, parse_amount, parse_date, simple_email_content,
+    LlmTemplateVariableExtractorAgent, ReverseTemplateType, TemplateDocumentLabelerAgent,
+    TemplateEmailContent, TemplateVariableType,
 };
 use dwata_api::database::emails as emails_db;
 use dwata_api::helpers::database::initialize_database;
 use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
 use nocodo_llm_sdk::ollama::OllamaClient;
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 #[derive(Debug, Parser)]
@@ -152,15 +151,6 @@ async fn main() -> Result<()> {
         }
         println!("+---------------------------+----------------------------------+");
 
-        let reconstructed_template =
-            reconstruct_template(&simple.subject, &simple.body, &extracted_vars.variables);
-
-        println!();
-        println!("Reconstructed Template (via value search):");
-        println!("{}", reconstructed_template);
-
-        println!();
-        println!("Extracted Values (from reconstructed template):");
         let extracted = extract_values_from_email_with_values(
             &extracted_vars.variables,
             &TemplateEmailContent {
@@ -168,27 +158,13 @@ async fn main() -> Result<()> {
                 body: simple.body.clone(),
             },
         );
-        if extracted.is_empty() {
-            println!("(none extracted)");
-        } else {
-            println!("+---------------------------+----------------------------------+");
-            println!("| {:<25} | {:<30} |", "Placeholder", "Extracted Value");
-            println!("+---------------------------+----------------------------------+");
-            for (key, value) in &extracted {
-                let display_value = if value.len() > 30 {
-                    format!("{}...", &value[..27])
-                } else {
-                    value.clone()
-                };
-                println!("| {:<25} | {:<30} |", key, display_value);
-            }
-            println!("+---------------------------+----------------------------------+");
 
-            let vendor_names = extracted_vendor_names(&extracted);
-            if !vendor_names.is_empty() {
-                println!();
-                println!("Vendor Name(s): {}", vendor_names.join(", "));
-            }
+        println!();
+        println!("DB Preview (as would be stored):");
+        if extracted.is_empty() {
+            println!("(no values extracted)");
+        } else {
+            print_db_preview(&extracted, template_type, email.date_received);
         }
     }
 
@@ -210,47 +186,99 @@ fn preferred_original_body<'a>(
     ("none", "")
 }
 
-fn reconstruct_template(subject: &str, body: &str, variables: &[TemplateVariable]) -> String {
-    let mut result = String::new();
-    result.push_str("Subject: ");
+fn print_db_preview(
+    fields: &std::collections::HashMap<String, String>,
+    template_type: ReverseTemplateType,
+    date_received_ms: i64,
+) {
+    // Helper to get field by underscore or hyphen variant
+    let get = |key: &str| -> Option<&str> {
+        fields
+            .get(key)
+            .or_else(|| fields.get(&key.replace('_', "-")))
+            .map(|s| s.as_str())
+    };
 
-    let mut subject_replaced = subject.to_string();
-    let mut body_replaced = body.to_string();
+    let format_date = |raw: Option<&str>| -> String {
+        match raw {
+            None => "(none)".to_string(),
+            Some(r) => match parse_date(r) {
+                Some(d) => format!("{} (raw: {})", d.format("%Y-%m-%d"), r),
+                None => format!("(unparseable: {})", r),
+            },
+        }
+    };
 
-    let mut sorted_vars: Vec<_> = variables.iter().collect();
-    sorted_vars.sort_by(|a, b| b.value.len().cmp(&a.value.len()));
+    println!("+---------------------------+------------------------------------------+");
+    println!("| {:<25} | {:<40} |", "DB Column", "Value");
+    println!("+---------------------------+------------------------------------------+");
 
-    for var in sorted_vars {
-        subject_replaced =
-            subject_replaced.replace(&var.value, &format!("{{{{{}}}}}", var.variable_name));
-        body_replaced =
-            body_replaced.replace(&var.value, &format!("{{{{{}}}}}", var.variable_name));
-    }
+    match template_type {
+        ReverseTemplateType::Transaction => {
+            let amount_str = get("amount")
+                .and_then(|v| parse_amount(v))
+                .map(|v| format!("{}", v.abs()))
+                .unwrap_or_else(|| "(missing/invalid)".to_string());
+            let currency = get("currency").unwrap_or("USD (default)");
+            let date_raw = get("transaction_date");
+            let vendor = get("vendor_name").unwrap_or("(none)");
+            let txn_ref = get("transaction_reference").unwrap_or("(none)");
 
-    result.push_str(&subject_replaced);
-    result.push_str("\n---\n");
-    result.push_str(&body_replaced);
+            println!("| {:<25} | {:<40} |", "amount", amount_str);
+            println!("| {:<25} | {:<40} |", "currency", currency);
+            println!(
+                "| {:<25} | {:<40} |",
+                "transaction_date_raw",
+                date_raw.unwrap_or("(none)")
+            );
+            println!(
+                "| {:<25} | {:<40} |",
+                "transaction_date",
+                format_date(date_raw)
+            );
+            println!("| {:<25} | {:<40} |", "vendor_name (lookup)", vendor);
+            println!("| {:<25} | {:<40} |", "transaction_reference", txn_ref);
+        }
+        ReverseTemplateType::Bill => {
+            let amount_str = get("total_amount")
+                .and_then(|v| parse_amount(v))
+                .map(|v| format!("{}", v.abs()))
+                .unwrap_or_else(|| "(missing/invalid)".to_string());
+            let currency = get("currency").unwrap_or("USD (default)");
+            let issued_raw = get("issued_date");
+            let due_raw = get("due_date");
+            let doc_ref = get("document_reference").unwrap_or("(none)");
 
-    result
-}
+            // Fallback due date from email received timestamp
+            let due_fallback = chrono::DateTime::from_timestamp_millis(date_received_ms)
+                .map(|dt| dt.date_naive().format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| "(none)".to_string());
+            let due_display = match due_raw {
+                Some(r) => format_date(Some(r)),
+                None => format!("{} (fallback: email received date)", due_fallback),
+            };
 
-fn extracted_vendor_names(extracted: &std::collections::HashMap<String, String>) -> Vec<String> {
-    let mut names = BTreeSet::new();
-    for key in [
-        "vendor_name",
-        "vendor-name",
-        "vendor",
-        "payer_vendor_name",
-        "payer-vendor-name",
-        "payee_vendor_name",
-        "payee-vendor-name",
-    ] {
-        if let Some(value) = extracted.get(key) {
-            let trimmed = value.trim();
-            if !trimmed.is_empty() {
-                names.insert(trimmed.to_string());
-            }
+            println!("| {:<25} | {:<40} |", "total_amount", amount_str);
+            println!("| {:<25} | {:<40} |", "currency", currency);
+            println!(
+                "| {:<25} | {:<40} |",
+                "issued_date_raw",
+                issued_raw.unwrap_or("(none)")
+            );
+            println!(
+                "| {:<25} | {:<40} |",
+                "issued_date",
+                format_date(issued_raw)
+            );
+            println!(
+                "| {:<25} | {:<40} |",
+                "due_date_raw",
+                due_raw.unwrap_or("(none)")
+            );
+            println!("| {:<25} | {:<40} |", "due_date", due_display);
+            println!("| {:<25} | {:<40} |", "document_reference", doc_ref);
         }
     }
-    names.into_iter().collect()
+
+    println!("+---------------------------+------------------------------------------+");
 }

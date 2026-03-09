@@ -49,8 +49,10 @@ Rules:
 1. Extract the EXACT value as it appears in the email - do not reformat or parse it
 2. If a value contains multiple pieces of data (e.g., "03325490439 (Account No. 8006515265)"), extract the ENTIRE thing as one variable
 3. Use only fields listed below; if no matching field exists, skip that data
-4. For transaction vendor details, extract only `vendor_name`. Never use vendor IDs
+4. For transaction vendor details, extract only `vendor_name`. Never extract internal vendor/merchant IDs as a field. But DO extract order IDs, transaction IDs, reference codes, or any unique identifier for the transaction itself as `transaction_reference`
 5. When calling `submit_template_variables`, the values must be valid JSON strings
+6. For `amount` and `total_amount`: extract the NUMERIC value only (digits, decimal point, commas). Strip all currency symbols, codes, and text (e.g. "Rs.", "INR", "₹"). Example: "Rs.299.00" → "299.00", "INR 1,299.50" → "1,299.50"
+7. For `currency`: extract only the ISO code or symbol (e.g. "INR", "USD", "$", "₹"). Do not include amounts
 
 {allowed_fields}
 

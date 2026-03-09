@@ -36,11 +36,43 @@ pub fn extract_values_from_email_with_values(
 
     let mut result = HashMap::new();
     for var in variables {
+        // For currency, the LLM value may already be normalized (e.g. "INR") while the email
+        // uses a different form (e.g. "Rs."). Normalize the LLM value directly instead of
+        // searching for it in the email text.
+        if var.variable_name == "currency" {
+            let normalized = extract_currency_code(&var.value).unwrap_or_else(|| var.value.clone());
+            result.insert(var.variable_name.clone(), normalized);
+            continue;
+        }
         if let Some(found) = find_value_by_search(&var.value, &email_text) {
-            result.insert(var.variable_name.clone(), found);
+            let processed = process_field_value(&var.variable_name, &found);
+            result.insert(var.variable_name.clone(), processed);
         }
     }
     result
+}
+
+fn process_field_value(field_name: &str, value: &str) -> String {
+    match field_name {
+        "amount" | "total_amount" | "total-amount" => parse_amount(value)
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| value.to_string()),
+        "currency" => extract_currency_code(value).unwrap_or_else(|| value.to_string()),
+        _ => value.to_string(),
+    }
+}
+
+fn extract_currency_code(value: &str) -> Option<String> {
+    let cleaned = value.trim();
+    if cleaned.eq_ignore_ascii_case("Rs.") || cleaned.eq_ignore_ascii_case("Rs") {
+        Some("INR".to_string())
+    } else if cleaned.len() == 3 && cleaned.chars().all(|c| c.is_ascii_alphabetic()) {
+        Some(cleaned.to_uppercase())
+    } else if let Some(code) = cleaned.get(0..3) {
+        Some(code.to_uppercase())
+    } else {
+        None
+    }
 }
 
 fn find_value_by_search(value: &str, email_text: &str) -> Option<String> {
@@ -291,11 +323,11 @@ pub fn is_valid_txn_value(field: &str, value: &str) -> bool {
 }
 
 pub fn parse_amount(raw: &str) -> Option<f64> {
-    let re = Regex::new(r"[^\d,\.\-]").ok()?;
-    let cleaned = re.replace_all(raw, "").replace(',', "");
-    if cleaned.is_empty() || cleaned == "-" || cleaned == "." || cleaned == "-." {
-        return None;
-    }
+    // Capture the first numeric token: optional leading minus, digits with optional
+    // comma-grouping, optional single decimal part. Handles "Rs.299.00", "INR 1,299.50", etc.
+    let re = Regex::new(r"-?\d[\d,]*(?:\.\d+)?").unwrap();
+    let m = re.find(raw)?;
+    let cleaned = m.as_str().replace(',', "");
     cleaned.parse::<f64>().ok()
 }
 
