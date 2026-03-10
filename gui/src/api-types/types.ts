@@ -144,7 +144,7 @@ export type SettingsResponse = { config_file_path: string, ai_provider_api_keys:
 /**
  * Request to update AI provider API keys
  */
-export type UpdateAiProviderApiKeysRequest = { gemini_api_key: string | null, };
+export type UpdateAiProviderApiKeysRequest = { openai_api_key: string | null, gemini_api_key: string | null, };
 
 
 /**
@@ -631,10 +631,11 @@ export type FinancialDocumentType = "invoice" | "bill" | "bank-statement" | "rec
 import type { BillStatus } from "./BillStatus";
 import type { DataSourceType } from "./DataSourceType";
 import type { FinancialDocumentType } from "./FinancialDocumentType";
+import type { TransactionCategory } from "./TransactionCategory";
 
 /**
  * A financial document (bill, invoice, receipt, statement) extracted from an email or file.
- * One Bill may be the source for zero (unpaid) or more FinancialTransactions.
+ * One Bill may be the source for zero (unpaid) or more Transactions.
  *
  * ## Date Column Conventions
  *
@@ -645,7 +646,7 @@ import type { FinancialDocumentType } from "./FinancialDocumentType";
  *                    For date-only values, use 00:00:00 UTC for that calendar day.
  *                    Nullable when parsing fails.
  */
-export type Bill = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: BillStatus, issuer_vendor_id: bigint | null, document_reference: string | null, total_amount: number | null, currency: string | null, 
+export type Bill = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: BillStatus, category: TransactionCategory | null, issuer_vendor_id: bigint | null, document_reference: string | null, total_amount: number | null, currency: string | null, 
 /**
  * Date the bill or invoice was generated or issued by the vendor.
  * Distinct from due_date (when payment is expected) and billing_period (service window).
@@ -676,24 +677,12 @@ export type ServiceIdentifierKind = "phone-number" | "account-number" | "policy-
 
 
 import type { DataSourceType } from "./DataSourceType";
-import type { TransactionCategory } from "./TransactionCategory";
-import type { TransactionParty } from "./TransactionParty";
 import type { TransactionStatus } from "./TransactionStatus";
 
 /**
  * Financial transaction extracted from documents
  */
-export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, payer: TransactionParty, payee: TransactionParty, status: TransactionStatus, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
-
-
-/**
- * Strongly typed transaction endpoint. Always present for both payer and payee.
- */
-export type TransactionParty = { 
-/**
- * Canonical vendor reference. Null means unresolved.
- */
-vendor_id: bigint | null, };
+export type Transaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, amount: number, currency: string, transaction_date_raw: string | null, transaction_date: bigint | null, status: TransactionStatus, payer_vendor_id: bigint | null, payee_vendor_id: bigint | null, transaction_reference: string | null, bill_id: bigint | null, source_file: string | null, extracted_at: bigint, };
 
 
 export type TransactionCategory = "income" | "expense" | "investment" | "tax" | "utility" | "subscription" | "entertainment" | "travel" | "healthcare" | "education" | "other";
@@ -728,12 +717,12 @@ export type FinancialExtractionSummary = { source_count: bigint, transaction_cou
 import type { Bill } from "./Bill";
 import type { CategoryBreakdown } from "./CategoryBreakdown";
 import type { FinancialSummary } from "./FinancialSummary";
-import type { FinancialTransaction } from "./FinancialTransaction";
+import type { Transaction } from "./Transaction";
 
 /**
  * Financial health metrics
  */
-export type FinancialHealth = { summary: FinancialSummary, recent_transactions: Array<FinancialTransaction>, upcoming_bills: Array<Bill>, category_breakdown: Array<CategoryBreakdown>, };
+export type FinancialHealth = { summary: FinancialSummary, recent_transactions: Array<Transaction>, upcoming_bills: Array<Bill>, category_breakdown: Array<CategoryBreakdown>, };
 
 
 import type { TransactionCategory } from "./TransactionCategory";

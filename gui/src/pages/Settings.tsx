@@ -1,5 +1,7 @@
 import { A, useLocation } from "@solidjs/router";
-import { Show } from "solid-js";
+import { Show, createSignal, onMount } from "solid-js";
+import { getApiUrl } from "../config/api";
+import type { SettingsResponse } from "../api-types/types";
 import SettingsGeneral from "./settings/General";
 import SettingsApiKeys from "./settings/ApiKeys";
 import SettingsOAuthClientApps from "./settings/OAuthClientApps";
@@ -9,6 +11,7 @@ import SettingsPrivacy from "./settings/Privacy";
 
 export default function Settings() {
   const location = useLocation();
+  const [configPath, setConfigPath] = createSignal("");
 
   // Determine active tab from URL path
   const activeTab = () => {
@@ -21,9 +24,28 @@ export default function Settings() {
     return "general";
   };
 
+  const fetchSettings = async () => {
+    try {
+      const response = await fetch(getApiUrl("/api/settings"));
+      if (response.ok) {
+        const data: SettingsResponse = await response.json();
+        setConfigPath(data.config_file_path || "");
+      }
+    } catch (error) {
+      console.error("Failed to fetch settings:", error);
+    }
+  };
+
+  onMount(async () => {
+    await fetchSettings();
+  });
+
   return (
     <div class="p-8 min-h-screen">
       <h1 class="text-3xl font-bold mb-6">Settings</h1>
+      <p class="text-sm text-gray-500 mb-6">
+        Config file: {configPath() || "Loading..."}
+      </p>
 
       {/* Tab Navigation */}
       <div class="tabs tabs-bordered mb-6">

@@ -192,6 +192,9 @@ impl ApiConfig {
             PathBuf::from("project.toml"),
             PathBuf::from("../project.toml"),
         ];
+        if let Some(config_dir) = dirs::config_dir() {
+            candidates.push(config_dir.join("dwata").join("project.toml"));
+        }
         if let Some(dir) = Self::exe_dir() {
             candidates.push(dir.join("../../project.toml"));
             candidates.push(dir.join("../project.toml"));

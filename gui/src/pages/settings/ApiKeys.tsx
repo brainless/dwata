@@ -4,6 +4,7 @@ import type { AiProviderApiKeyConfig, SettingsResponse, UpdateAiProviderApiKeysR
 
 export default function SettingsApiKeys() {
   const [apiKeys, setApiKeys] = createSignal<AiProviderApiKeyConfig[]>([]);
+  const [openaiKey, setOpenaiKey] = createSignal("");
   const [geminiKey, setGeminiKey] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(false);
   const [message, setMessage] = createSignal("");
@@ -29,6 +30,7 @@ export default function SettingsApiKeys() {
     setMessage("");
     try {
       const requestBody: UpdateAiProviderApiKeysRequest = {
+        openai_api_key: openaiKey() || null,
         gemini_api_key: geminiKey() || null,
       };
 
@@ -41,6 +43,7 @@ export default function SettingsApiKeys() {
       });
       if (response.ok) {
         setMessage("API keys saved successfully!");
+        setOpenaiKey("");
         setGeminiKey("");
         await fetchSettings();
       } else {
@@ -55,6 +58,7 @@ export default function SettingsApiKeys() {
   };
 
   const getGeminiKey = () => apiKeys().find((k) => k.name === "gemini");
+  const getOpenaiKey = () => apiKeys().find((k) => k.name === "openai");
 
   return (
     <div class="card bg-base-100 shadow-xl">
@@ -62,6 +66,30 @@ export default function SettingsApiKeys() {
         <h2 class="card-title">API Keys</h2>
 
         <div class="space-y-4">
+          {/* OpenAI API Key */}
+          <div class="form-control w-full max-w-md">
+            <label class="label">
+              <span class="label-text">OpenAI API Key</span>
+              <span class="label-text-alt">
+                {getOpenaiKey()?.is_configured
+                  ? "Configured"
+                  : "Not configured"}
+              </span>
+            </label>
+            {getOpenaiKey()?.is_configured && getOpenaiKey()?.key && (
+              <div class="text-sm text-gray-500 mb-2">
+                Current: {getOpenaiKey()?.key}
+              </div>
+            )}
+            <input
+              type="password"
+              placeholder="Enter your OpenAI API key"
+              class="input input-bordered w-full"
+              value={openaiKey()}
+              onInput={(e) => setOpenaiKey(e.target.value)}
+            />
+          </div>
+
           {/* Gemini API Key */}
           <div class="form-control w-full max-w-md">
             <label class="label">
