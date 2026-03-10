@@ -41,7 +41,7 @@ export default function Settings() {
   });
 
   return (
-    <div class="p-8 min-h-screen">
+    <div class="settings-page p-8 h-full min-h-0 overflow-y-auto">
       <h1 class="text-3xl font-bold mb-6">Settings</h1>
       <p class="text-sm text-gray-500 mb-6">
         Config file: {configPath() || "Loading..."}

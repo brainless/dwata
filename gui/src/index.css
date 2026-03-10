@@ -28,4 +28,16 @@
   .privacy-blur {
     filter: blur(3px);
   }
+
+  .settings-page .input,
+  .settings-page .textarea,
+  .settings-page .select {
+    --input-color: color-mix(
+      in oklab,
+      var(--color-base-content) 35%,
+      #0000
+    );
+    border-width: 1px;
+    border-color: var(--input-color);
+  }
 }

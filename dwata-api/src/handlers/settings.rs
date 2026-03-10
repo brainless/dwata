@@ -73,6 +73,15 @@ pub async fn get_settings(data: web::Data<SettingsAppState>) -> Result<HttpRespo
     };
 
     let config_path = crate::config::get_config_path();
+    let config_path = if config_path.is_absolute() {
+        config_path
+    } else {
+        std::fs::canonicalize(&config_path).unwrap_or_else(|_| {
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join(&config_path)
+        })
+    };
     let response = SettingsResponse {
         config_file_path: config_path.to_string_lossy().to_string(),
         ai_provider_api_keys,
