@@ -1,3 +1,4 @@
+use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -18,6 +19,7 @@ pub struct ApiConfig {
     pub downloads: Option<DownloadsConfig>,
     pub search: Option<SearchConfig>,
     pub ai_provider_api_keys: Option<AiProviderApiKeysConfig>,
+    pub selected_llm: Option<SelectedLlmConfig>,
 }
 
 impl Default for ApiConfig {
@@ -41,6 +43,7 @@ impl Default for ApiConfig {
             downloads: Some(DownloadsConfig::default()),
             search: Some(SearchConfig::default()),
             ai_provider_api_keys: None,
+            selected_llm: Some(SelectedLlmConfig::default()),
         }
     }
 }
@@ -98,7 +101,23 @@ pub struct SearchConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AiProviderApiKeysConfig {
+    pub openai_api_key: Option<String>,
     pub gemini_api_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SelectedLlmConfig {
+    pub provider: String,
+    pub model: String,
+}
+
+impl Default for SelectedLlmConfig {
+    fn default() -> Self {
+        Self {
+            provider: "ollama".to_string(),
+            model: MINISTRAL_3_3B_ID.to_string(),
+        }
+    }
 }
 
 impl Default for DownloadsConfig {

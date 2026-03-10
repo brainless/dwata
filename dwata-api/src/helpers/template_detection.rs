@@ -8,8 +8,12 @@ use dwata_agents::{
     TemplateDetectionOptions, TemplateInputEmail,
 };
 use nocodo_llm_sdk::client::LlmClient;
-use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
+use nocodo_llm_sdk::gemini::GeminiClient;
+use nocodo_llm_sdk::models::{
+    gemini::GEMINI_3_FLASH_ID, ollama::MINISTRAL_3_3B_ID, openai::GPT_5_MINI_ID,
+};
 use nocodo_llm_sdk::ollama::OllamaClient;
+use nocodo_llm_sdk::openai::OpenAIClient;
 use regex::Regex;
 use shared_types::{
     DataSourceType, DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse,
@@ -317,8 +321,69 @@ fn to_template_type(has_bill: bool) -> FinancialTemplateType {
     }
 }
 
-fn build_llm_client(_config: &ApiConfig) -> Result<Arc<dyn LlmClient>> {
-    Ok(Arc::new(OllamaClient::new()?))
+fn build_llm_client(config: &ApiConfig) -> Result<Arc<dyn LlmClient>> {
+    let provider = selected_provider(config);
+
+    match provider {
+        "ollama" => Ok(Arc::new(OllamaClient::new()?)),
+        "openai" => {
+            let api_key = config
+                .ai_provider_api_keys
+                .as_ref()
+                .and_then(|cfg| cfg.openai_api_key.as_ref())
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Missing OpenAI API key in [ai_provider_api_keys]")
+                })?;
+            Ok(Arc::new(OpenAIClient::new(api_key.clone())?))
+        }
+        "gemini" => {
+            let api_key = config
+                .ai_provider_api_keys
+                .as_ref()
+                .and_then(|cfg| cfg.gemini_api_key.as_ref())
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Missing Gemini API key in [ai_provider_api_keys]")
+                })?;
+            Ok(Arc::new(GeminiClient::new(api_key.clone())?))
+        }
+        other => Err(anyhow::anyhow!("Unsupported LLM provider: {}", other)),
+    }
+}
+
+fn selected_provider(config: &ApiConfig) -> &str {
+    config
+        .selected_llm
+        .as_ref()
+        .map(|cfg| cfg.provider.as_str())
+        .unwrap_or("ollama")
+}
+
+fn selected_model(config: &ApiConfig, provider: &str) -> Result<String> {
+    let model = config
+        .selected_llm
+        .as_ref()
+        .map(|cfg| cfg.model.as_str())
+        .unwrap_or(MINISTRAL_3_3B_ID);
+
+    match provider {
+        "ollama" => Ok(model.to_string()),
+        "openai" => match model {
+            "gpt-5-mini" | GPT_5_MINI_ID => Ok(GPT_5_MINI_ID.to_string()),
+            other => Err(anyhow::anyhow!(
+                "Unsupported OpenAI model: {} (only gpt-5-mini is allowed)",
+                other
+            )),
+        },
+        "gemini" => match model {
+            GEMINI_3_FLASH_ID => Ok(GEMINI_3_FLASH_ID.to_string()),
+            other => Err(anyhow::anyhow!(
+                "Unsupported Gemini model: {} (only {} is allowed)",
+                other,
+                GEMINI_3_FLASH_ID
+            )),
+        },
+        other => Err(anyhow::anyhow!("Unsupported LLM provider: {}", other)),
+    }
 }
 
 fn to_input_email(row: &emails_db::TemplateCandidateEmailRow) -> TemplateInputEmail {
@@ -646,8 +711,9 @@ where
         debug: Some(debug_state.clone()),
     });
 
+    let provider = selected_provider(&config);
     let llm_client = build_llm_client(&config)?;
-    let model = MINISTRAL_3_3B_ID.to_string();
+    let model = selected_model(&config, provider)?;
     let mut templates = Vec::new();
     for (sender_idx, ranked_sender) in ranked_senders.iter().enumerate() {
         let sender_email = &ranked_sender.sender_email;

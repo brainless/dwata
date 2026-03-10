@@ -436,6 +436,7 @@ pub async fn detect_reverse_templates_for_sender(
                 let agent = LlmTemplateVariableExtractorAgent::new(
                     llm_client.clone(),
                     storage.clone(),
+                    model.clone(),
                     var_type,
                     sample_email.subject.clone(),
                     sample_email.body.clone(),
