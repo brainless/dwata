@@ -63,18 +63,18 @@ Run the dwata API server and open the GUI in your browser at `http://localhost:3
 
 dwata supports Gmail via OAuth. Set your Google OAuth `client_id` and `client_secret` in the config file:
 
-- **macOS**: `~/Library/Application Support/dwata/api.toml`
-- **Linux**: `~/.config/dwata/api.toml`
-- **Windows**: `%APPDATA%\dwata\api.toml`
+- **macOS**: `~/Library/Application Support/dwata/project.toml`
+- **Linux**: `~/.config/dwata/project.toml`
+- **Windows**: `%APPDATA%\dwata\project.toml`
 
 You can use your own Google OAuth app (bring-your-own credentials).
 
 ### Using Ollama
 
-Install [Ollama](https://ollama.com) and pull a model:
+Install [Ollama](https://ollama.com) and pull model [Ministral 3:3b](https://ollama.com/library/ministral-3:3b):
 
 ```bash
-ollama pull ministral:3b
+ollama pull ministral-3:3b
 ```
 
 Then set the model in dwata's settings page.
@@ -84,6 +84,7 @@ Then set the model in dwata's settings page.
 - **Backend**: Rust + Actix-web
 - **Database**: SQLite (local)
 - **Frontend**: SolidJS
+- **UI Components**: DaisyUI
 - **LLM**: Ollama (local), OpenAI, or Google Gemini
 
 ## Support
