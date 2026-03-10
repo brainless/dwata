@@ -1,6 +1,15 @@
 import { createSignal, onMount } from "solid-js";
 import { getApiUrl } from "../../config/api";
-import type { AiProviderApiKeyConfig, SettingsResponse, UpdateAiProviderApiKeysRequest } from "../../api-types/types";
+import type {
+  AiProviderApiKeyConfig,
+  OllamaModelsResponse,
+  OllamaStatusResponse,
+  SettingsResponse,
+  UpdateAiProviderApiKeysRequest,
+} from "../../api-types/types";
+
+const OLLAMA_MODEL_ID = "ministral-3:3b";
+const OLLAMA_MODEL_LABEL = "Ministral 3:3b";
 
 export default function SettingsApiKeys() {
   const [apiKeys, setApiKeys] = createSignal<AiProviderApiKeyConfig[]>([]);
@@ -8,9 +17,16 @@ export default function SettingsApiKeys() {
   const [geminiKey, setGeminiKey] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(false);
   const [message, setMessage] = createSignal("");
+  const [ollamaRunning, setOllamaRunning] = createSignal<boolean | null>(null);
+  const [ollamaModels, setOllamaModels] = createSignal<string[]>([]);
+  const [ollamaLoading, setOllamaLoading] = createSignal(false);
+  const [ollamaMessage, setOllamaMessage] = createSignal("");
+  const [ollamaError, setOllamaError] = createSignal("");
 
   onMount(async () => {
     await fetchSettings();
+    await fetchOllamaStatus();
+    await fetchOllamaModels();
   });
 
   const fetchSettings = async () => {
@@ -59,6 +75,63 @@ export default function SettingsApiKeys() {
 
   const getGeminiKey = () => apiKeys().find((k) => k.name === "gemini");
   const getOpenaiKey = () => apiKeys().find((k) => k.name === "openai");
+  const hasOllamaModel = () =>
+    ollamaModels().some((name) => name === OLLAMA_MODEL_ID);
+
+  const fetchOllamaStatus = async () => {
+    try {
+      const response = await fetch(getApiUrl("/api/ollama/status"));
+      if (response.ok) {
+        const data: OllamaStatusResponse = await response.json();
+        setOllamaRunning(data.running);
+      } else {
+        setOllamaRunning(false);
+      }
+    } catch (error) {
+      console.error("Failed to fetch Ollama status:", error);
+      setOllamaRunning(false);
+    }
+  };
+
+  const fetchOllamaModels = async () => {
+    try {
+      const response = await fetch(getApiUrl("/api/ollama/models"));
+      if (response.ok) {
+        const data: OllamaModelsResponse = await response.json();
+        const names = data.models.map((model) => model.name || model.model);
+        setOllamaModels(names);
+      }
+    } catch (error) {
+      console.error("Failed to fetch Ollama models:", error);
+    }
+  };
+
+  const pullOllamaModel = async () => {
+    setOllamaLoading(true);
+    setOllamaError("");
+    setOllamaMessage(
+      "Please wait, it may take some time. Come back in a few minutes"
+    );
+    try {
+      const response = await fetch(getApiUrl("/api/ollama/pull"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: OLLAMA_MODEL_ID }),
+      });
+      if (response.ok) {
+        await fetchOllamaModels();
+      } else {
+        setOllamaError("Failed to start Ollama model pull.");
+      }
+    } catch (error) {
+      console.error("Failed to pull Ollama model:", error);
+      setOllamaError("Failed to start Ollama model pull.");
+    } finally {
+      setOllamaLoading(false);
+    }
+  };
 
   return (
     <div class="card bg-base-100 shadow-xl">
@@ -66,6 +139,40 @@ export default function SettingsApiKeys() {
         <h2 class="card-title">API Keys</h2>
 
         <div class="space-y-4">
+          {/* Ollama */}
+          <div class="form-control w-full max-w-md">
+            <label class="label">
+              <span class="label-text">Ollama</span>
+              <span class="label-text-alt">
+                {ollamaRunning() === null
+                  ? "Checking..."
+                  : ollamaRunning()
+                    ? "Running"
+                    : "Not running"}
+              </span>
+            </label>
+            <div class="text-sm text-gray-500">
+              {OLLAMA_MODEL_LABEL}: {hasOllamaModel() ? "Installed" : "Not installed"}
+            </div>
+            {!hasOllamaModel() && (
+              <div class="mt-3">
+                <button
+                  class="btn btn-outline btn-sm"
+                  onClick={pullOllamaModel}
+                  disabled={ollamaLoading() || ollamaRunning() === false}
+                >
+                  {ollamaLoading() ? "Starting..." : `Pull ${OLLAMA_MODEL_LABEL}`}
+                </button>
+              </div>
+            )}
+            {ollamaMessage() && (
+              <div class="text-sm text-gray-500 mt-3">{ollamaMessage()}</div>
+            )}
+            {ollamaError() && (
+              <div class="text-sm text-red-600 mt-2">{ollamaError()}</div>
+            )}
+          </div>
+
           {/* OpenAI API Key */}
           <div class="form-control w-full max-w-md">
             <label class="label">
