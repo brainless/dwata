@@ -29,10 +29,10 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Checkout nocodo dependency
+      - name: Checkout llm-sdk dependency
         shell: bash
         run: |
-          git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/brainless/nocodo.git "$GITHUB_WORKSPACE/../nocodo"
+          git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/brainless/llm-sdk.git "$GITHUB_WORKSPACE/../llm-sdk"
 
       - name: Build production artifacts
         shell: bash
