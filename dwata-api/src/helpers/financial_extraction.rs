@@ -1,17 +1,10 @@
 use crate::config::ApiConfig;
 use crate::database::{financial_bills as bill_db, financial_transactions as txn_db, Database};
 use anyhow::Result;
-use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
-use dwata_agents::{
-    extract_values_from_email_with_values, parse_amount, parse_date, simple_email_content,
-    LlmTemplateVariableExtractorAgent, TemplateEmailContent, TemplateVariableType,
-};
-use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
-use nocodo_llm_sdk::ollama::OllamaClient;
+use dwata_agents::{extract_values_using_template, parse_amount, parse_date, simple_email_content};
 use serde::Serialize;
 use shared_types::{
-    Bill, BillStatus, DataSourceType, FinancialDocumentType, Transaction, TransactionCategory,
-    TransactionStatus,
+    Bill, BillStatus, DataSourceType, FinancialDocumentType, Transaction, TransactionStatus,
 };
 use sqlx::Row;
 use std::collections::HashMap;
@@ -36,6 +29,9 @@ enum TemplateKind {
 struct TemplateRuntime {
     id: i64,
     kind: TemplateKind,
+    template_body: String,
+    /// Canonical field names (target_field) stored in financial_template_variables.
+    variable_names: Vec<String>,
 }
 
 pub async fn extract_financial_from_templates(
@@ -43,9 +39,6 @@ pub async fn extract_financial_from_templates(
     _config: &ApiConfig,
     credential_id: Option<i64>,
 ) -> Result<FinancialExtractionRunResponse> {
-    let llm_client = Arc::new(OllamaClient::new()?);
-    let storage = Arc::new(InMemoryAgentStorage::new());
-
     let mut templates = load_templates(&db, credential_id).await?;
     let mut emails_scanned = 0usize;
     let mut inserted_bills = 0usize;
@@ -53,10 +46,9 @@ pub async fn extract_financial_from_templates(
     let mut discarded_rows = 0usize;
 
     for template in templates.drain(..) {
-        let var_type = match template.kind {
-            TemplateKind::Bill => TemplateVariableType::Bill,
-            TemplateKind::Transaction => TemplateVariableType::Transaction,
-        };
+        if template.template_body.is_empty() || template.variable_names.is_empty() {
+            continue;
+        }
 
         let email_rows = load_linked_emails_for_template(&db, template.id, credential_id).await?;
         for email in email_rows {
@@ -73,45 +65,12 @@ pub async fn extract_financial_from_templates(
                 body_text.as_deref(),
                 body_html.as_deref(),
             );
+            let email_text = format!("Subject: {}\n---\n{}", simple.subject, simple.body);
 
-            let session_id = storage
-                .create_session(Session {
-                    id: None,
-                    agent_type: "llm-template-variable-extractor".to_string(),
-                    objective: format!("Extract {:?} variables", var_type),
-                    context_data: None,
-                    status: "running".to_string(),
-                    result: None,
-                })
-                .await?;
-
-            let agent = LlmTemplateVariableExtractorAgent::new(
-                llm_client.clone(),
-                storage.clone(),
-                var_type,
-                simple.subject.clone(),
-                simple.body.clone(),
-            );
-
-            let extracted_vars = match agent.execute(session_id).await {
-                Ok(v) => v,
-                Err(_) => {
-                    discarded_rows += 1;
-                    continue;
-                }
-            };
-
-            if extracted_vars.variables.is_empty() {
-                discarded_rows += 1;
-                continue;
-            }
-
-            let fields = extract_values_from_email_with_values(
-                &extracted_vars.variables,
-                &TemplateEmailContent {
-                    subject: simple.subject,
-                    body: simple.body,
-                },
+            let fields = extract_values_using_template(
+                &template.template_body,
+                &template.variable_names,
+                &email_text,
             );
 
             if fields.is_empty() {
@@ -155,41 +114,64 @@ async fn load_templates(
     db: &Arc<Database>,
     credential_id: Option<i64>,
 ) -> Result<Vec<TemplateRuntime>> {
+    // Fetch templates with their variables in one query.  Each template may produce multiple rows
+    // (one per variable); we group them by template id.
     let rows = if let Some(cred) = credential_id {
         sqlx::query(
-            "SELECT DISTINCT t.id, t.template_type
+            "SELECT DISTINCT t.id, t.template_type, t.template_body, v.placeholder_name
              FROM financial_extraction_templates t
              JOIN financial_template_email_links l ON l.template_id = t.id
              JOIN emails e ON e.id = l.email_id
+             LEFT JOIN financial_template_variables v ON v.template_id = t.id
              WHERE t.status = 'active'
                AND t.data_source_type = 'email'
-               AND e.credential_id = ?",
+               AND e.credential_id = ?
+             ORDER BY t.id, v.id",
         )
         .bind(cred)
         .fetch_all(&db.sqlx_pool)
         .await?
     } else {
         sqlx::query(
-            "SELECT t.id, t.template_type
+            "SELECT t.id, t.template_type, t.template_body, v.placeholder_name
              FROM financial_extraction_templates t
+             LEFT JOIN financial_template_variables v ON v.template_id = t.id
              WHERE t.status = 'active'
-               AND t.data_source_type = 'email'",
+               AND t.data_source_type = 'email'
+             ORDER BY t.id, v.id",
         )
         .fetch_all(&db.sqlx_pool)
         .await?
     };
 
-    let mut out = Vec::with_capacity(rows.len());
+    let mut map: std::collections::HashMap<i64, TemplateRuntime> = std::collections::HashMap::new();
     for row in rows {
         let id: i64 = row.try_get("id")?;
         let template_type: String = row.try_get("template_type")?;
-        let kind = match template_type.as_str() {
-            "bill" => TemplateKind::Bill,
-            "transaction" => TemplateKind::Transaction,
-            _ => continue,
-        };
-        out.push(TemplateRuntime { id, kind });
+        let template_body: String = row.try_get("template_body")?;
+        let placeholder_name: Option<String> = row.try_get("placeholder_name")?;
+
+        let entry = map.entry(id).or_insert_with(|| {
+            let kind = match template_type.as_str() {
+                "bill" => TemplateKind::Bill,
+                _ => TemplateKind::Transaction,
+            };
+            TemplateRuntime {
+                id,
+                kind,
+                template_body,
+                variable_names: Vec::new(),
+            }
+        });
+        if let Some(name) = placeholder_name {
+            if !name.is_empty() {
+                entry.variable_names.push(name);
+            }
+        }
     }
+
+    let mut out: Vec<TemplateRuntime> = map.into_values().collect();
+    out.sort_by_key(|t| t.id);
     Ok(out)
 }
 

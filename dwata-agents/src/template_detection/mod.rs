@@ -1015,7 +1015,7 @@ fn levenshtein_words(a: &[&str], b: &[&str]) -> usize {
     prev[b.len()]
 }
 
-fn reconstruct_template_from_variables(
+pub fn reconstruct_template_from_variables(
     subject: &str,
     body: &str,
     variables: &[TemplateVariable],

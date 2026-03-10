@@ -1,7 +1,7 @@
 use chrono::{Datelike, NaiveDate};
 use dateparser::parse as parse_datetime;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
 pub struct TemplateEmailContent {
@@ -137,4 +137,157 @@ pub fn parse_date(raw: &str) -> Option<NaiveDate> {
 
     normalized = upper;
     parse_datetime(normalized).ok().map(|dt| dt.date_naive())
+}
+
+/// Extract field values from an email by using a saved template as a positional anchor map.
+///
+/// For each `{{variable_name}}` placeholder in the template, find the fixed text immediately
+/// before and after it (the "anchors"), then locate those anchors in the email and extract
+/// whatever text sits between them. This is the extraction half of the reverse-template pipeline
+/// and requires no LLM call.
+pub fn extract_values_using_template(
+    template_body: &str,
+    variable_names: &[String],
+    email_text: &str,
+) -> HashMap<String, String> {
+    let re = Regex::new(r"\{\{([a-zA-Z0-9_-]+)\}\}").unwrap();
+
+    // Walk template once, building an ordered list of (var_name, left_segment, right_segment).
+    let mut entries: Vec<(&str, &str, &str)> = Vec::new();
+    let mut last_end = 0usize;
+
+    for cap in re.captures_iter(template_body) {
+        let full_match = cap.get(0).unwrap();
+        let var_name = cap.get(1).unwrap().as_str();
+        let left_segment = &template_body[last_end..full_match.start()];
+        last_end = full_match.end();
+        // right_segment will be filled after we know the next capture start
+        entries.push((var_name, left_segment, ""));
+    }
+    // Fill right_segment for each entry using the left_segment of the next entry (or the tail).
+    let tail = &template_body[last_end..];
+    let entry_count = entries.len();
+    let mut entries_with_right: Vec<(&str, &str, &str)> = entries
+        .into_iter()
+        .enumerate()
+        .map(|(i, (var, left, _))| {
+            let right = if i + 1 < entry_count {
+                // placeholder: we re-derive from the raw template below
+                ""
+            } else {
+                tail
+            };
+            (var, left, right)
+        })
+        .collect();
+
+    // Re-derive right segments by scanning captures a second time (simpler than threading state).
+    {
+        let caps: Vec<_> = re.captures_iter(template_body).collect();
+        for i in 0..entry_count {
+            let right_start = caps[i].get(0).unwrap().end();
+            let right_end = if i + 1 < entry_count {
+                caps[i + 1].get(0).unwrap().start()
+            } else {
+                template_body.len()
+            };
+            entries_with_right[i].2 = &template_body[right_start..right_end];
+        }
+    }
+
+    let var_name_set: HashSet<&str> = variable_names.iter().map(|s| s.as_str()).collect();
+    let mut result = HashMap::new();
+    // Cursor into email_text — each variable search starts from where the previous one ended,
+    // preventing short anchors like " at " from matching an earlier occurrence.
+    let mut email_cursor = 0usize;
+
+    for (entry_idx, (var_name, left_seg, right_seg)) in entries_with_right.iter().enumerate() {
+        if !var_name_set.contains(*var_name) {
+            continue;
+        }
+
+        // Left anchor: up to 60 chars of the tail of the left segment (crosses line boundaries).
+        // When left_seg is empty (adjacent placeholders like {{currency}}{{amount}}), walk back
+        // through previous entries to find a non-empty left segment to anchor against.
+        let left_trimmed = left_seg.trim_end();
+        let effective_left = if left_trimmed.is_empty() {
+            let mut found = "";
+            for prev_idx in (0..entry_idx).rev() {
+                let prev_left = entries_with_right[prev_idx].1.trim_end();
+                if !prev_left.is_empty() {
+                    found = prev_left;
+                    break;
+                }
+            }
+            found
+        } else {
+            left_trimmed
+        };
+        let left_anchor = {
+            let char_count = effective_left.chars().count();
+            if char_count <= 60 {
+                effective_left
+            } else {
+                // Walk to the correct byte offset — slicing by bytes is unsafe on multibyte chars.
+                let byte_offset = effective_left
+                    .char_indices()
+                    .nth(char_count - 60)
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                &effective_left[byte_offset..]
+            }
+        };
+
+        // Right anchor: first line of the right segment with at least 3 chars.
+        // Short right anchors (e.g. just ".") cause false positives; using a longer line is safer.
+        let right_anchor = right_seg
+            .split('\n')
+            .map(|l| l.trim_end())
+            .find(|l| l.len() >= 3)
+            .unwrap_or_else(|| right_seg.split('\n').next().unwrap_or("").trim_end());
+
+        let search_slice = &email_text[email_cursor..];
+        if let Some((raw_value, consumed)) =
+            find_value_between_anchors(search_slice, left_anchor, right_anchor)
+        {
+            email_cursor += consumed;
+            let processed = process_field_value(var_name, &raw_value);
+            result.insert(var_name.to_string(), processed);
+        }
+    }
+
+    result
+}
+
+/// Returns the extracted value and the byte offset into `email` just past the found value,
+/// so the caller can advance a cursor and avoid re-matching earlier occurrences.
+fn find_value_between_anchors(
+    email: &str,
+    left_anchor: &str,
+    right_anchor: &str,
+) -> Option<(String, usize)> {
+    let value_start = if left_anchor.is_empty() {
+        0
+    } else {
+        let pos = email.find(left_anchor)?;
+        pos + left_anchor.len()
+    };
+
+    let search_text = &email[value_start..];
+
+    let (value, consumed_after_start) = if right_anchor.is_empty() {
+        let v = search_text.lines().next().unwrap_or("").trim().to_string();
+        let c = v.len();
+        (v, c)
+    } else {
+        let end = search_text.find(right_anchor)?;
+        let v = search_text[..end].trim().to_string();
+        (v, end)
+    };
+
+    if value.is_empty() {
+        None
+    } else {
+        Some((value, value_start + consumed_after_start))
+    }
 }

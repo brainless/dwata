@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
 use dwata_agents::{
-    extract_values_from_email_with_values, parse_amount, parse_date, simple_email_content,
-    LlmTemplateVariableExtractorAgent, ReverseTemplateType, TemplateDocumentLabelerAgent,
-    TemplateEmailContent, TemplateVariableType,
+    extract_values_using_template, parse_amount, parse_date, reconstruct_template_from_variables,
+    simple_email_content, LlmTemplateVariableExtractorAgent, ReverseTemplateType,
+    TemplateDocumentLabelerAgent, TemplateVariableType,
 };
 use dwata_api::database::emails as emails_db;
 use dwata_api::helpers::database::initialize_database;
@@ -151,13 +151,37 @@ async fn main() -> Result<()> {
         }
         println!("+---------------------------+----------------------------------+");
 
-        let extracted = extract_values_from_email_with_values(
+        // Build template: replace LLM-extracted values with {{variable_name}} placeholders.
+        let template_body = reconstruct_template_from_variables(
+            &simple.subject,
+            &simple.body,
             &extracted_vars.variables,
-            &TemplateEmailContent {
-                subject: simple.subject.clone(),
-                body: simple.body.clone(),
-            },
         );
+
+        println!();
+        println!("Generated Template:");
+        println!("{}", template_body);
+
+        // Extract values from the same email using the template as a positional guide.
+        let email_text = format!("Subject: {}\n---\n{}", simple.subject, simple.body);
+        // All variables except currency — currency may be normalized by LLM (e.g. "Rs." → "INR")
+        // and may not appear verbatim in the email, so we carry the LLM value through directly.
+        let non_currency_names: Vec<String> = extracted_vars
+            .variables
+            .iter()
+            .filter(|v| v.variable_name != "currency")
+            .map(|v| v.variable_name.clone())
+            .collect();
+        let mut extracted =
+            extract_values_using_template(&template_body, &non_currency_names, &email_text);
+        // Re-insert currency from LLM value (already normalized).
+        if let Some(currency_var) = extracted_vars
+            .variables
+            .iter()
+            .find(|v| v.variable_name == "currency")
+        {
+            extracted.insert("currency".to_string(), currency_var.value.clone());
+        }
 
         println!();
         println!("DB Preview (as would be stored):");
