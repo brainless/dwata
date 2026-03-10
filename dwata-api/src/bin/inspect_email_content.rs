@@ -122,6 +122,7 @@ async fn main() -> Result<()> {
         let var_extractor = LlmTemplateVariableExtractorAgent::new(
             llm_client.clone(),
             storage.clone(),
+            MINISTRAL_3_3B_ID.to_string(),
             var_type,
             simple.subject.clone(),
             simple.body.clone(),
