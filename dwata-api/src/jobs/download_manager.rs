@@ -1,18 +1,20 @@
-use crate::database::downloads as db;
 use crate::database::credentials::get_credential;
+use crate::database::downloads as db;
 use crate::database::emails;
 use crate::database::folders;
 use crate::database::AsyncDbConnection;
+use crate::helpers::imap_oauth::get_access_token_for_imap;
 use crate::helpers::keyring_service::KeyringService;
 use crate::integrations::real_imap_client::RealImapClient;
-use crate::helpers::imap_oauth::get_access_token_for_imap;
 use anyhow::Result;
-use shared_types::download::{DownloadJob, DownloadJobStatus, ImapDownloadState, SourceType, JobType};
 use shared_types::credential::CredentialType;
+use shared_types::download::{
+    DownloadJob, DownloadJobStatus, ImapDownloadState, JobType, SourceType,
+};
 use shared_types::email::EmailAddress;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
 use tokio::task::{JoinHandle, JoinSet};
 
@@ -97,12 +99,15 @@ impl DownloadManager {
                         keyring_service,
                         credential_semaphores,
                         shutdown_flag.clone(),
-                    ).await {
+                    )
+                    .await
+                    {
                         // Get credential info for better error logging
-                        let credential_info = match get_credential(db_conn.clone(), job_clone.credential_id).await {
-                            Ok(cred) => format!("{} ({})", cred.username, cred.identifier),
-                            Err(_) => format!("credential_id {}", job_clone.credential_id),
-                        };
+                        let credential_info =
+                            match get_credential(db_conn.clone(), job_clone.credential_id).await {
+                                Ok(cred) => format!("{} ({})", cred.username, cred.identifier),
+                                Err(_) => format!("credential_id {}", job_clone.credential_id),
+                            };
 
                         let error_str = e.to_string();
 
@@ -261,11 +266,7 @@ impl DownloadManager {
             return Ok(());
         }
 
-        let credential = get_credential(
-            db_conn.clone(),
-            job.credential_id,
-        )
-        .await?;
+        let credential = get_credential(db_conn.clone(), job.credential_id).await?;
 
         tracing::info!(
             "Starting IMAP download for job {} - Account: {} ({}), Type: {:?}, Server: {}, Job Type: {:?}",
@@ -277,7 +278,10 @@ impl DownloadManager {
             job.job_type
         );
 
-        let server = credential.service_name.clone().unwrap_or_else(|| "imap.gmail.com".to_string());
+        let server = credential
+            .service_name
+            .clone()
+            .unwrap_or_else(|| "imap.gmail.com".to_string());
         let port = credential.port.unwrap_or(993) as u16;
         let username = credential.username.clone();
 
@@ -308,8 +312,12 @@ impl DownloadManager {
         };
 
         let mut imap_client = match &auth_info {
-            AuthInfo::OAuth(token) => RealImapClient::connect_with_oauth(&server, port, &username, token)?,
-            AuthInfo::Password(password) => RealImapClient::connect_with_password(&server, port, &username, password)?,
+            AuthInfo::OAuth(token) => {
+                RealImapClient::connect_with_oauth(&server, port, &username, token)?
+            }
+            AuthInfo::Password(password) => {
+                RealImapClient::connect_with_password(&server, port, &username, password)?
+            }
         };
 
         let state_value = if job.source_state.is_null() {
@@ -329,7 +337,11 @@ impl DownloadManager {
             let mailbox_status = match imap_client.mailbox_status(&folder.imap_path) {
                 Ok(status) => status,
                 Err(e) => {
-                    tracing::warn!("Failed to get status for folder '{}': {}. Skipping.", folder.imap_path, e);
+                    tracing::warn!(
+                        "Failed to get status for folder '{}': {}. Skipping.",
+                        folder.imap_path,
+                        e
+                    );
                     continue;
                 }
             };
@@ -343,16 +355,22 @@ impl DownloadManager {
                 folder.is_subscribed,
                 None,
                 mailbox_status,
-            ).await?;
+            )
+            .await?;
 
             // TODO: Handle UIDVALIDITY changes
             // If folder.uidvalidity changes, we should reset last_synced_uid to 0
             // and re-sync all emails in this folder
         }
 
-        let db_folders = folders::list_folders_for_credential(db_conn.clone(), job.credential_id).await?;
+        let db_folders =
+            folders::list_folders_for_credential(db_conn.clone(), job.credential_id).await?;
 
-        tracing::info!("Found {} folders for credential {}", db_folders.len(), job.credential_id);
+        tracing::info!(
+            "Found {} folders for credential {}",
+            db_folders.len(),
+            job.credential_id
+        );
 
         // Per-credential folder concurrency limiter.
         let semaphore = {
@@ -715,13 +733,7 @@ impl DownloadManager {
             return Ok(());
         }
 
-        db::update_job_status(
-            db_conn,
-            job.id,
-            DownloadJobStatus::Completed,
-            None,
-        )
-        .await?;
+        db::update_job_status(db_conn, job.id, DownloadJobStatus::Completed, None).await?;
 
         tracing::info!("IMAP download completed for job {}", job.id);
         Ok(())
@@ -738,7 +750,8 @@ impl DownloadManager {
             }
 
             // Sync jobs that are completed or paused (but not failed or cancelled)
-            if job.status == DownloadJobStatus::Completed || job.status == DownloadJobStatus::Paused {
+            if job.status == DownloadJobStatus::Completed || job.status == DownloadJobStatus::Paused
+            {
                 // Check if job is already running
                 let active_jobs = self.active_jobs.lock().await;
                 let is_running = active_jobs.contains_key(&job.id);
@@ -757,12 +770,17 @@ impl DownloadManager {
     }
 
     pub async fn start_historical_backfill(&self, credential_id: i64) -> Result<()> {
-        tracing::info!("Starting historical backfill for credential {}", credential_id);
+        tracing::info!(
+            "Starting historical backfill for credential {}",
+            credential_id
+        );
 
         let jobs = db::list_download_jobs(self.db_conn.clone(), None, 100).await?;
 
         for job in jobs {
-            if job.credential_id == credential_id && matches!(job.job_type, JobType::HistoricalBackfill) {
+            if job.credential_id == credential_id
+                && matches!(job.job_type, JobType::HistoricalBackfill)
+            {
                 // Check if job is already running
                 let active_jobs = self.active_jobs.lock().await;
                 let is_running = active_jobs.contains_key(&job.id);
@@ -775,14 +793,18 @@ impl DownloadManager {
             }
         }
 
-        Err(anyhow::anyhow!("No historical backfill job found for credential {}", credential_id))
+        Err(anyhow::anyhow!(
+            "No historical backfill job found for credential {}",
+            credential_id
+        ))
     }
 
     pub async fn sync_all_historical_backfill(&self) -> Result<()> {
         tracing::info!("Starting sync for all historical-backfill jobs");
         let jobs = db::list_download_jobs(self.db_conn.clone(), None, 100).await?;
 
-        let backfill_jobs: Vec<_> = jobs.iter()
+        let backfill_jobs: Vec<_> = jobs
+            .iter()
             .filter(|j| matches!(j.job_type, JobType::HistoricalBackfill))
             .collect();
 
@@ -816,7 +838,11 @@ impl DownloadManager {
                         job.status
                     );
                     if let Err(e) = self.start_job(job.id).await {
-                        tracing::error!("Failed to start historical-backfill job {} during sync: {}", job.id, e);
+                        tracing::error!(
+                            "Failed to start historical-backfill job {} during sync: {}",
+                            job.id,
+                            e
+                        );
                     }
                 }
             } else {
@@ -853,8 +879,10 @@ impl DownloadManager {
         let all_jobs = db::list_download_jobs(self.db_conn.clone(), None, 1000).await?;
 
         // Build a map of credential IDs to their jobs
-        let mut jobs_by_credential: std::collections::HashMap<i64, Vec<&shared_types::download::DownloadJob>> =
-            std::collections::HashMap::new();
+        let mut jobs_by_credential: std::collections::HashMap<
+            i64,
+            Vec<&shared_types::download::DownloadJob>,
+        > = std::collections::HashMap::new();
         for job in &all_jobs {
             jobs_by_credential
                 .entry(job.credential_id)
@@ -865,20 +893,27 @@ impl DownloadManager {
         for credential in credentials {
             // Only create jobs for IMAP and OAuth credentials (email accounts)
             if credential.credential_type != CredentialType::Imap
-                && credential.credential_type != CredentialType::OAuth {
+                && credential.credential_type != CredentialType::OAuth
+            {
                 continue;
             }
 
             // Check if this credential has any jobs
             if let Some(existing_jobs) = jobs_by_credential.get(&credential.id) {
                 // Check if we have both job types
-                let has_recent_sync = existing_jobs.iter().any(|j| matches!(j.job_type, JobType::RecentSync));
-                let has_historical = existing_jobs.iter().any(|j| matches!(j.job_type, JobType::HistoricalBackfill));
+                let has_recent_sync = existing_jobs
+                    .iter()
+                    .any(|j| matches!(j.job_type, JobType::RecentSync));
+                let has_historical = existing_jobs
+                    .iter()
+                    .any(|j| matches!(j.job_type, JobType::HistoricalBackfill));
 
                 if has_recent_sync && has_historical {
                     // Reset any that are in "running" or "failed" state to "completed"
                     for job in existing_jobs {
-                        if job.status == DownloadJobStatus::Running || job.status == DownloadJobStatus::Failed {
+                        if job.status == DownloadJobStatus::Running
+                            || job.status == DownloadJobStatus::Failed
+                        {
                             tracing::info!(
                                 "Resetting job {} (credential {}) from {:?} to completed",
                                 job.id,
@@ -919,7 +954,8 @@ impl DownloadManager {
                 source_config: default_config.clone(),
             };
 
-            match db::insert_download_job(self.db_conn.clone(), &request, JobType::RecentSync).await {
+            match db::insert_download_job(self.db_conn.clone(), &request, JobType::RecentSync).await
+            {
                 Ok(job) => {
                     tracing::info!(
                         "Created recent-sync job {} for credential {}",
@@ -928,11 +964,7 @@ impl DownloadManager {
                     );
                     // Start recent-sync job immediately
                     if let Err(e) = self.start_job(job.id).await {
-                        tracing::error!(
-                            "Failed to start recent-sync job {}: {}",
-                            job.id,
-                            e
-                        );
+                        tracing::error!("Failed to start recent-sync job {}: {}", job.id, e);
                     }
                 }
                 Err(e) => {
@@ -945,7 +977,13 @@ impl DownloadManager {
             }
 
             // Create HistoricalBackfill job
-            match db::insert_download_job(self.db_conn.clone(), &request, JobType::HistoricalBackfill).await {
+            match db::insert_download_job(
+                self.db_conn.clone(),
+                &request,
+                JobType::HistoricalBackfill,
+            )
+            .await
+            {
                 Ok(job) => {
                     tracing::info!(
                         "Created historical-backfill job {} for credential {}",
@@ -976,12 +1014,8 @@ impl DownloadManager {
         uidvalidity: u32,
         highest_uid: u32,
     ) -> Result<()> {
-        folders::update_folder_sync_state(
-            db_conn.clone(),
-            folder_id,
-            uidvalidity,
-            highest_uid,
-        ).await?;
+        folders::update_folder_sync_state(db_conn.clone(), folder_id, uidvalidity, highest_uid)
+            .await?;
 
         tracing::info!(
             "Updated folder {} recent sync state to UID {} (UIDVALIDITY: {})",
@@ -1001,11 +1035,7 @@ impl DownloadManager {
         folder_path: &str,
         lowest_uid: u32,
     ) -> Result<()> {
-        folders::update_folder_backfill_state(
-            db_conn.clone(),
-            folder_id,
-            lowest_uid,
-        ).await?;
+        folders::update_folder_backfill_state(db_conn.clone(), folder_id, lowest_uid).await?;
 
         tracing::info!(
             "Updated folder {} backfill state to UID {}",

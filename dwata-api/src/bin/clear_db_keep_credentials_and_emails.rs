@@ -2,8 +2,8 @@ use anyhow::Context;
 use rusqlite::Connection;
 
 fn main() -> anyhow::Result<()> {
-    let db_path = dwata_api::helpers::database::get_db_path()
-        .context("Failed to determine database path")?;
+    let db_path =
+        dwata_api::helpers::database::get_db_path().context("Failed to determine database path")?;
 
     if !db_path.exists() {
         println!("Database not found at: {:?}", db_path);
@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
     conn.execute("PRAGMA foreign_keys = OFF", [])?;
 
     // Tables to keep: credentials_metadata, emails, email_attachments, email_folders,
-    // email_labels, email_label_associations, emails_fts (FTS virtual table)
+    // email_labels, email_label_associations
     let tables_to_keep = vec![
         "credentials_metadata",
         "emails",
@@ -24,11 +24,9 @@ fn main() -> anyhow::Result<()> {
         "email_folders",
         "email_labels",
         "email_label_associations",
-        "emails_fts",
     ];
 
     // Get all tables except the ones we want to keep
-    // IMPORTANT: Also exclude FTS shadow tables (e.g., emails_fts_data, emails_fts_idx, etc.)
     let table_names: Vec<String> = {
         let placeholders = tables_to_keep
             .iter()
@@ -41,7 +39,6 @@ fn main() -> anyhow::Result<()> {
              FROM sqlite_master
              WHERE type = 'table'
                AND name NOT LIKE 'sqlite_%'
-               AND name NOT LIKE 'emails_fts_%'
                AND name NOT IN ({})",
             placeholders
         );
@@ -58,13 +55,11 @@ fn main() -> anyhow::Result<()> {
         names
     };
 
-    let has_sequence_table: bool = conn
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'",
-            [],
-            |row| row.get::<_, i64>(0),
-        )?
-        > 0;
+    let has_sequence_table: bool = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? > 0;
 
     if table_names.is_empty() {
         println!("No tables to clear (all tables are in the keep list)");
@@ -106,10 +101,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     tx.commit()?;
-
-    // Rebuild the FTS index to ensure it's properly synchronized
-    println!("Rebuilding FTS index...");
-    conn.execute("INSERT INTO emails_fts(emails_fts) VALUES('rebuild')", [])?;
 
     println!(
         "✓ Cleared {} tables (kept credentials + emails) in {:?}",

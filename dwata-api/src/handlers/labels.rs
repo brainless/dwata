@@ -2,8 +2,8 @@ use actix_web::{web, HttpResponse, Result as ActixResult};
 use shared_types::{EmailLabel, ListEmailsResponse, ListLabelsResponse};
 use std::sync::Arc;
 
-use crate::database::{emails as emails_db, labels as labels_db};
 use crate::database::Database;
+use crate::database::{emails as emails_db, labels as labels_db};
 
 pub async fn list_labels(
     db: web::Data<Arc<Database>>,
@@ -41,14 +41,10 @@ pub async fn list_label_emails(
     let limit = query.limit.unwrap_or(50);
     let offset = query.offset.unwrap_or(0);
 
-    let emails = emails_db::list_emails_by_label(
-        db.async_connection.clone(),
-        label_id,
-        limit,
-        offset,
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let emails =
+        emails_db::list_emails_by_label(db.async_connection.clone(), label_id, limit, offset)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     let total_count = emails.len() as i64;
     let has_more = emails.len() == limit;

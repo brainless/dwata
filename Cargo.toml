@@ -22,15 +22,13 @@ config = "0.14"
 anyhow = "1.0"
 thiserror = "1.0"
 clap = { version = "4.0", features = ["derive"] }
-# nocodo-llm-sdk = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
-# nocodo-agents = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
-# nocodo-tools = { git = "https://github.com/brainless/nocodo.git", branch = "main" }
+# llm-sdk = { git = "https://github.com/brainless/llm-sdk", branch = "main" }
 
 [workspace.package]
 version = "0.3.7"
 edition = "2021"
 authors = ["dwata"]
-license = "MIT"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/brainless/dwata"
 
 [profile.dev]

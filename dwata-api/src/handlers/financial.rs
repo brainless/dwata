@@ -1,31 +1,34 @@
-use actix_web::{web, HttpResponse, Result as ActixResult};
+use crate::config::ApiConfig;
 use crate::database::{
-    financial_extraction_attempts as attempts_db,
-    financial_extraction_sources as sources_db,
-    financial_patterns as patterns_db,
-    financial_transactions as db,
+    financial_bills as bills_db, financial_templates as templates_db, financial_transactions as db,
+    Database,
 };
-use crate::database::Database;
-use crate::helpers::pattern_validator;
-use crate::jobs::financial_extraction_manager::FinancialExtractionManager;
+use crate::helpers::template_detection_job::TemplateDetectionJobState;
+use crate::search::tantivy::TantivySearchIndex;
+use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
 use shared_types::{
-    FinancialEmailScanRequest, FinancialEmailScanResponse, FinancialEmailScanSender,
-    FinancialExtractionAttemptsResponse, FinancialExtractionSummary, FinancialPattern,
+    BillStatus, DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,
+    DetectFinancialTemplatesRequest, FinancialExtractionTemplate, FinancialPagination,
+    FinancialSummary, FinancialTemplateDetectionJobStatus, FinancialTemplateFieldMapping,
+    FinancialTemplateWithVariables, ListFinancialBillsResponse, ListFinancialTemplatesResponse,
+    TemplateDetectionSenderLlmInputsResponse,
 };
 use std::sync::Arc;
-use std::collections::HashMap;
-use tracing::{error, info};
-use crate::financial_keywords::{DEFAULT_FINANCIAL_KEYWORDS, build_fts_query};
+#[derive(Deserialize)]
+pub struct ExtractFinancialRequest {
+    #[serde(default)]
+    pub credential_id: Option<i64>,
+}
 
 #[derive(Deserialize)]
 pub struct TransactionFilters {
     #[serde(default)]
-    pub source_vendor_id: Option<i64>,
+    pub payer_vendor_id: Option<i64>,
     #[serde(default)]
-    pub destination_vendor_id: Option<i64>,
+    pub payee_vendor_id: Option<i64>,
     #[serde(default)]
-    pub document_type: Option<String>,
+    pub bill_id: Option<i64>,
     #[serde(default)]
     pub start_date: Option<String>,
     #[serde(default)]
@@ -48,19 +51,78 @@ fn default_limit() -> usize {
     500
 }
 
+#[derive(Deserialize)]
+pub struct BillFilters {
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub start_due_date: Option<String>,
+    #[serde(default)]
+    pub end_due_date: Option<String>,
+    #[serde(default = "default_page")]
+    pub page: usize,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+}
+
+#[derive(Deserialize)]
+pub struct TemplatesQuery {
+    #[serde(default = "default_templates_limit")]
+    pub limit: usize,
+}
+
+fn default_templates_limit() -> usize {
+    200
+}
+
+#[derive(Deserialize)]
+pub struct DetectStatusQuery {
+    #[serde(default)]
+    pub since_version: Option<u64>,
+    #[serde(default = "default_detect_status_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+#[derive(Deserialize)]
+pub struct DetectSenderLlmInputsQuery {
+    pub sender_email: String,
+    #[serde(default)]
+    pub credential_id: Option<i64>,
+    #[serde(default)]
+    pub max_candidate_emails: Option<usize>,
+    #[serde(default)]
+    pub max_templates_per_sender: Option<usize>,
+}
+
+fn default_detect_status_timeout_ms() -> u64 {
+    25_000
+}
+
 pub async fn list_transactions(
     db: web::Data<Arc<Database>>,
     query: web::Query<TransactionFilters>,
 ) -> ActixResult<HttpResponse> {
     let offset = (query.page.saturating_sub(1)) * query.limit;
+    let start_date_ms = query
+        .start_date
+        .as_deref()
+        .map(bills_db::date_string_to_utc_ms)
+        .transpose()
+        .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
+    let end_date_ms = query
+        .end_date
+        .as_deref()
+        .map(bills_db::date_string_to_utc_ms)
+        .transpose()
+        .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
 
     let (transactions, total_count) = db::list_financial_transactions_filtered(
-        db.async_connection.clone(),
-        query.source_vendor_id,
-        query.destination_vendor_id,
-        query.document_type.as_deref(),
-        query.start_date.as_deref(),
-        query.end_date.as_deref(),
+        &db.sqlx_pool,
+        query.payer_vendor_id,
+        query.payee_vendor_id,
+        query.bill_id,
+        start_date_ms,
+        end_date_ms,
         query.min_amount,
         query.max_amount,
         query.limit,
@@ -82,6 +144,112 @@ pub async fn list_transactions(
     })))
 }
 
+pub async fn list_bills(
+    db: web::Data<Arc<Database>>,
+    query: web::Query<BillFilters>,
+) -> ActixResult<HttpResponse> {
+    let offset = (query.page.saturating_sub(1)) * query.limit;
+    let parsed_status = match query.status.as_deref() {
+        Some("received") => Some(BillStatus::Received),
+        Some("unpaid") => Some(BillStatus::Unpaid),
+        Some("paid") => Some(BillStatus::Paid),
+        Some("overdue") => Some(BillStatus::Overdue),
+        Some("cancelled") => Some(BillStatus::Cancelled),
+        Some(other) => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Unsupported bill status filter: {other}")
+            })))
+        }
+        None => None,
+    };
+
+    let start_due_date_ms = query
+        .start_due_date
+        .as_deref()
+        .map(bills_db::date_string_to_utc_ms)
+        .transpose()
+        .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
+    let end_due_date_ms = query
+        .end_due_date
+        .as_deref()
+        .map(bills_db::date_string_to_utc_ms)
+        .transpose()
+        .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
+
+    let (bills, total_count) = bills_db::list_financial_bills_filtered(
+        &db.sqlx_pool,
+        parsed_status,
+        start_due_date_ms,
+        end_due_date_ms,
+        query.limit,
+        offset,
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    let total_pages = (total_count as f64 / query.limit as f64).ceil() as usize;
+
+    Ok(HttpResponse::Ok().json(ListFinancialBillsResponse {
+        bills,
+        pagination: FinancialPagination {
+            page: query.page,
+            limit: query.limit,
+            total_count,
+            total_pages,
+        },
+    }))
+}
+
+pub async fn list_templates(
+    db: web::Data<Arc<Database>>,
+    query: web::Query<TemplatesQuery>,
+) -> ActixResult<HttpResponse> {
+    let limit = query.limit.clamp(1, 500);
+    let rows =
+        templates_db::list_active_templates_with_variables(db.async_connection.clone(), limit)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    let templates = rows
+        .into_iter()
+        .map(|row| FinancialTemplateWithVariables {
+            template: FinancialExtractionTemplate {
+                id: row.id,
+                data_source_type: row.data_source_type,
+                data_source_id: row.data_source_id,
+                template_type: row.template_type,
+                template_body: row.template_body,
+                status: row.status,
+                version: row.version,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            },
+            variables: row
+                .variables
+                .into_iter()
+                .map(|v| FinancialTemplateFieldMapping {
+                    placeholder_name: v.placeholder_name,
+                    target_field: v.target_field,
+                })
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(ListFinancialTemplatesResponse { templates }))
+}
+
+pub async fn delete_templates(
+    db: web::Data<Arc<Database>>,
+    request: web::Json<DeleteFinancialTemplatesRequest>,
+) -> ActixResult<HttpResponse> {
+    let deleted_count =
+        templates_db::delete_templates_by_ids(db.async_connection.clone(), &request.template_ids)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(DeleteFinancialTemplatesResponse { deleted_count }))
+}
+
 #[derive(Deserialize)]
 pub struct SummaryQuery {
     start_date: String,
@@ -92,500 +260,141 @@ pub async fn get_summary(
     db: web::Data<Arc<Database>>,
     query: web::Query<SummaryQuery>,
 ) -> ActixResult<HttpResponse> {
-    let summary = db::get_financial_summary(
-        db.async_connection.clone(),
-        &query.start_date,
-        &query.end_date,
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let summary: FinancialSummary =
+        db::get_financial_summary(&db.sqlx_pool, &query.start_date, &query.end_date)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(summary))
 }
 
-#[derive(Deserialize)]
-pub struct ExtractionRequest {
-    email_ids: Option<Vec<i64>>,
-    credential_id: Option<i64>,
-}
-
-pub async fn trigger_extraction(
-    manager: web::Data<Arc<FinancialExtractionManager>>,
-    request: web::Json<ExtractionRequest>,
-) -> ActixResult<HttpResponse> {
-    info!(
-        "Triggering financial extraction: email_ids={:?}, credential_id={:?}",
-        request.email_ids, request.credential_id
-    );
-
-    let count = manager
-        .extract_from_emails(request.email_ids.clone(), request.credential_id.clone())
-        .await
-        .map_err(|e| {
-            error!(
-                "Financial extraction failed: error={}, email_ids={:?}, credential_id={:?}",
-                e,
-                request.email_ids,
-                request.credential_id
-            );
-            actix_web::error::ErrorInternalServerError(e.to_string())
-        })?;
-
-    info!(
-        "Financial extraction completed: extracted_count={}",
-        count
-    );
-
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "extracted_count": count,
-        "status": "completed"
-    })))
-}
-
-pub async fn get_extraction_summary(
+pub async fn detect_templates(
+    detection_job: web::Data<TemplateDetectionJobState>,
     db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
+    config: web::Data<Arc<ApiConfig>>,
+    request: web::Json<DetectFinancialTemplatesRequest>,
 ) -> ActixResult<HttpResponse> {
-    let summary: FinancialExtractionSummary = sources_db::get_extraction_summary(
-        db.async_connection.clone(),
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(summary))
-}
-
-pub async fn list_extraction_attempts(
-    db: web::Data<Arc<Database>>,
-) -> ActixResult<HttpResponse> {
-    let attempts = attempts_db::list_attempts(db.async_connection.clone(), 50)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(FinancialExtractionAttemptsResponse {
-        attempts,
-    }))
-}
-
-#[derive(Deserialize)]
-pub struct ListPatternsQuery {
-    active_only: Option<bool>,
-    is_default: Option<bool>,
-    document_type: Option<String>,
-}
-
-pub async fn list_patterns(
-    db: web::Data<Arc<Database>>,
-    query: web::Query<ListPatternsQuery>,
-) -> ActixResult<HttpResponse> {
-    let patterns = patterns_db::list_patterns(
-        db.async_connection.clone(),
-        query.active_only.unwrap_or(true),
-        query.is_default,
-        query.document_type.clone(),
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "patterns": patterns,
-        "total": patterns.len()
-    })))
-}
-
-pub async fn get_pattern(
-    db: web::Data<Arc<Database>>,
-    path: web::Path<i64>,
-) -> ActixResult<HttpResponse> {
-    let pattern = patterns_db::get_pattern(db.async_connection.clone(), *path)
-        .await
-        .map_err(|e| actix_web::error::ErrorNotFound(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "pattern": pattern
-    })))
-}
-
-#[derive(Deserialize)]
-pub struct CreatePatternRequest {
-    pub name: String,
-    pub regex_pattern: String,
-    pub description: Option<String>,
-    pub sender_email: Option<String>,
-    pub document_type: String,
-    pub status: String,
-    pub amount_group: usize,
-    pub vendor_group: Option<usize>,
-    pub source_vendor_group: Option<usize>,
-    pub destination_vendor_group: Option<usize>,
-    pub date_group: Option<usize>,
-    pub reference_group: Option<usize>,
-    pub currency_group: Option<usize>,
-    pub is_active: Option<bool>,
-}
-
-pub async fn create_pattern(
-    db: web::Data<Arc<Database>>,
-    request: web::Json<CreatePatternRequest>,
-) -> ActixResult<HttpResponse> {
-    pattern_validator::validate_pattern(
-        &request.name,
-        &request.regex_pattern,
-        request.amount_group,
-        request.vendor_group,
-        request.source_vendor_group,
-        request.destination_vendor_group,
-        request.date_group,
-        request.reference_group,
-        request.currency_group,
-        &request.document_type,
-        &request.status,
-    )
-    .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
-
-    let name_exists = patterns_db::pattern_name_exists(
-        db.async_connection.clone(),
-        &request.name,
-        None,
-    )
-    .await
-    .unwrap_or(false);
-
-    if name_exists {
-        return Err(actix_web::error::ErrorBadRequest("Pattern name already exists"));
+    let snapshot = detection_job.snapshot();
+    if snapshot.status == FinancialTemplateDetectionJobStatus::Running {
+        return Ok(HttpResponse::Ok().json(snapshot));
     }
 
-    let regex_exists = patterns_db::pattern_regex_exists(
-        db.async_connection.clone(),
-        &request.regex_pattern,
-        request.sender_email.as_deref(),
-        None,
-    )
-    .await
-    .unwrap_or(false);
+    let request_payload = request.into_inner();
+    let now = chrono::Utc::now().timestamp_millis();
+    let run_state = detection_job.with_mut(|state| {
+        state.run_id += 1;
+        state.status = FinancialTemplateDetectionJobStatus::Running;
+        state.started_at = Some(now);
+        state.finished_at = None;
+        state.total_senders = 0;
+        state.processed_senders = 0;
+        state.current_sender = None;
+        state.candidate_sender_count = 0;
+        state.candidate_email_count = 0;
+        state.new_templates_count = 0;
+        state.error = None;
+        state.debug = None;
+    });
 
-    if regex_exists {
-        return Err(actix_web::error::ErrorBadRequest(
-            "Pattern with this regex already exists"
-        ));
-    }
+    let job_state = detection_job.get_ref().clone();
+    let db_clone = db.clone();
+    let search_index_clone = search_index.clone();
+    let config_clone = config.clone();
+    tokio::spawn(async move {
+        let result = crate::helpers::template_detection::detect_and_store_templates_with_progress(
+            db_clone,
+            search_index_clone,
+            config_clone,
+            request_payload,
+            |progress| {
+                job_state.with_mut(|state| {
+                    state.total_senders = progress.total_senders;
+                    state.processed_senders = progress.processed_senders;
+                    state.current_sender = progress.current_sender;
+                    state.candidate_sender_count = progress.candidate_sender_count;
+                    state.candidate_email_count = progress.candidate_email_count;
+                    state.debug = progress.debug;
+                });
+            },
+        )
+        .await;
 
-    let pattern = FinancialPattern {
-        id: 0,
-        name: request.name.clone(),
-        regex_pattern: request.regex_pattern.clone(),
-        description: request.description.clone(),
-        sender_email: request.sender_email.clone(),
-        document_type: request.document_type.clone(),
-        status: request.status.clone(),
-        amount_group: request.amount_group,
-        vendor_group: request.vendor_group,
-        source_vendor_group: request.source_vendor_group,
-        destination_vendor_group: request.destination_vendor_group,
-        date_group: request.date_group,
-        reference_group: request.reference_group,
-        currency_group: request.currency_group,
-        is_default: false,
-        is_active: request.is_active.unwrap_or(true),
-        match_count: 0,
-        last_matched_at: None,
-        created_at: chrono::Utc::now().timestamp(),
-        updated_at: chrono::Utc::now().timestamp(),
-    };
-
-    let id = patterns_db::insert_pattern(db.async_connection.clone(), &pattern)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    let created_pattern = patterns_db::get_pattern(db.async_connection.clone(), id)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Created().json(serde_json::json!({
-        "pattern": created_pattern,
-        "message": "Pattern created successfully"
-    })))
-}
-
-#[derive(Deserialize)]
-pub struct UpdatePatternRequest {
-    pub name: Option<String>,
-    pub regex_pattern: Option<String>,
-    pub description: Option<String>,
-    pub sender_email: Option<String>,
-    pub document_type: Option<String>,
-    pub status: Option<String>,
-    pub amount_group: Option<usize>,
-    pub vendor_group: Option<usize>,
-    pub source_vendor_group: Option<usize>,
-    pub destination_vendor_group: Option<usize>,
-    pub date_group: Option<usize>,
-    pub reference_group: Option<usize>,
-    pub currency_group: Option<usize>,
-    pub is_active: Option<bool>,
-}
-
-pub async fn update_pattern(
-    db: web::Data<Arc<Database>>,
-    path: web::Path<i64>,
-    request: web::Json<UpdatePatternRequest>,
-) -> ActixResult<HttpResponse> {
-    let pattern_id = *path;
-
-    let existing = patterns_db::get_pattern(db.async_connection.clone(), pattern_id)
-        .await
-        .map_err(|e| actix_web::error::ErrorNotFound(e.to_string()))?;
-
-    if existing.is_default {
-        if request.name.is_some() || request.regex_pattern.is_some() {
-            return Err(actix_web::error::ErrorForbidden(
-                "Cannot modify name or regex of default patterns"
-            ));
+        match result {
+            Ok(response) => {
+                let finished_at = chrono::Utc::now().timestamp_millis();
+                job_state.with_mut(|state| {
+                    state.status = FinancialTemplateDetectionJobStatus::Completed;
+                    state.finished_at = Some(finished_at);
+                    state.current_sender = None;
+                    state.total_senders = response.candidate_sender_count;
+                    state.processed_senders = response.candidate_sender_count;
+                    state.candidate_sender_count = response.candidate_sender_count;
+                    state.candidate_email_count = response.candidate_email_count;
+                    state.new_templates_count = response.templates.len();
+                });
+            }
+            Err(err) => {
+                let finished_at = chrono::Utc::now().timestamp_millis();
+                job_state.with_mut(|state| {
+                    state.status = FinancialTemplateDetectionJobStatus::Failed;
+                    state.finished_at = Some(finished_at);
+                    state.current_sender = None;
+                    state.error = Some(err.to_string());
+                });
+            }
         }
-    }
+    });
 
-    let updated = FinancialPattern {
-        id: pattern_id,
-        name: request.name.clone().unwrap_or(existing.name),
-        regex_pattern: request.regex_pattern.clone().unwrap_or(existing.regex_pattern),
-        description: request.description.clone().or(existing.description),
-        sender_email: request.sender_email.clone().or(existing.sender_email),
-        document_type: request.document_type.clone().unwrap_or(existing.document_type),
-        status: request.status.clone().unwrap_or(existing.status),
-        amount_group: request.amount_group.unwrap_or(existing.amount_group),
-        vendor_group: request.vendor_group.or(existing.vendor_group),
-        source_vendor_group: request
-            .source_vendor_group
-            .or(existing.source_vendor_group),
-        destination_vendor_group: request
-            .destination_vendor_group
-            .or(existing.destination_vendor_group),
-        date_group: request.date_group.or(existing.date_group),
-        reference_group: request.reference_group.or(existing.reference_group),
-        currency_group: request.currency_group.or(existing.currency_group),
-        is_default: existing.is_default,
-        is_active: request.is_active.unwrap_or(existing.is_active),
-        match_count: existing.match_count,
-        last_matched_at: existing.last_matched_at,
-        created_at: existing.created_at,
-        updated_at: chrono::Utc::now().timestamp(),
-    };
-
-    pattern_validator::validate_pattern(
-        &updated.name,
-        &updated.regex_pattern,
-        updated.amount_group,
-        updated.vendor_group,
-        updated.source_vendor_group,
-        updated.destination_vendor_group,
-        updated.date_group,
-        updated.reference_group,
-        updated.currency_group,
-        &updated.document_type,
-        &updated.status,
-    )
-    .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
-
-    patterns_db::update_pattern(db.async_connection.clone(), pattern_id, &updated)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    let updated_pattern = patterns_db::get_pattern(db.async_connection.clone(), pattern_id)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "pattern": updated_pattern,
-        "message": "Pattern updated successfully"
-    })))
+    Ok(HttpResponse::Ok().json(run_state))
 }
 
-const TEMPLATE_SIMILARITY_THRESHOLD: f32 = 0.45;
-
-pub async fn scan_financial_emails(
-    db: web::Data<Arc<Database>>,
-    request: web::Json<FinancialEmailScanRequest>,
+pub async fn get_detect_templates_status(
+    detection_job: web::Data<TemplateDetectionJobState>,
+    query: web::Query<DetectStatusQuery>,
 ) -> ActixResult<HttpResponse> {
-    let fts_query = build_fts_query(DEFAULT_FINANCIAL_KEYWORDS);
+    let (state, version) = detection_job
+        .wait_for_change(query.since_version, query.timeout_ms)
+        .await;
+    Ok(HttpResponse::Ok()
+        .insert_header(("x-detect-state-version", version.to_string()))
+        .json(state))
+}
 
-    let total_emails = crate::database::emails::count_emails(
-        db.async_connection.clone(),
+pub async fn get_detect_sender_llm_inputs(
+    db: web::Data<Arc<Database>>,
+    search_index: web::Data<Arc<TantivySearchIndex>>,
+    query: web::Query<DetectSenderLlmInputsQuery>,
+) -> ActixResult<HttpResponse> {
+    let response: TemplateDetectionSenderLlmInputsResponse =
+        crate::helpers::template_detection::preview_sender_llm_inputs(
+            db,
+            search_index,
+            DetectFinancialTemplatesRequest {
+                credential_id: query.credential_id,
+                max_candidate_emails: query.max_candidate_emails,
+                max_templates_per_sender: query.max_templates_per_sender,
+            },
+            query.sender_email.clone(),
+        )
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn extract_financial(
+    db: web::Data<Arc<Database>>,
+    config: web::Data<Arc<crate::config::ApiConfig>>,
+    request: web::Json<ExtractFinancialRequest>,
+) -> ActixResult<HttpResponse> {
+    let result = crate::helpers::financial_extraction::extract_financial_from_templates(
+        db.get_ref().clone(),
+        config.get_ref(),
         request.credential_id,
     )
     .await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
-    let rows = crate::database::emails::list_email_scan_rows_fts(
-        db.async_connection.clone(),
-        request.credential_id,
-        request.max_emails,
-        &fts_query,
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    let mut sender_counts: HashMap<String, i64> = HashMap::new();
-    let mut sender_tokens: HashMap<String, Vec<Vec<String>>> = HashMap::new();
-
-    for row in rows.iter() {
-        let mut content = String::new();
-        if let Some(subject) = &row.subject {
-            content.push_str(subject);
-            content.push('\n');
-        }
-        if let Some(body_text) = &row.body_text {
-            content.push_str(body_text);
-            content.push('\n');
-        }
-        if let Some(body_html) = &row.body_html {
-            content.push_str(body_html);
-        }
-
-        let sender = row.from_address.clone();
-        *sender_counts.entry(sender.clone()).or_insert(0) += 1;
-        sender_tokens
-            .entry(sender)
-            .or_insert_with(Vec::new)
-            .push(tokenize_words(&content));
-    }
-
-    // If a sender's matched emails differ too much at a word level, they are likely not
-    // templated transaction emails. We drop them for now (may miss manual emails).
-    let mut total_matched = 0i64;
-    sender_counts.retain(|sender, count| {
-        let keep = sender_tokens
-            .get(sender)
-            .and_then(|tokens| {
-                if tokens.len() < 2 {
-                    return Some(true);
-                }
-                let avg = average_normalized_distance(tokens);
-                Some(avg <= TEMPLATE_SIMILARITY_THRESHOLD)
-            })
-            .unwrap_or(true);
-
-        if keep {
-            total_matched += *count;
-        }
-        keep
-    });
-
-    let mut senders: Vec<FinancialEmailScanSender> = sender_counts
-        .into_iter()
-        .map(|(sender_email, matched_count)| FinancialEmailScanSender {
-            sender_email,
-            matched_count,
-        })
-        .collect();
-
-    senders.sort_by(|a, b| {
-        b.matched_count
-            .cmp(&a.matched_count)
-            .then_with(|| a.sender_email.cmp(&b.sender_email))
-    });
-
-    if let Some(max_senders) = request.max_senders {
-        if senders.len() > max_senders {
-            senders.truncate(max_senders);
-        }
-    }
-
-    Ok(HttpResponse::Ok().json(FinancialEmailScanResponse {
-        total_emails,
-        total_emails_scanned: rows.len() as i64,
-        total_matched_emails: total_matched,
-        senders,
-    }))
-}
-
-fn tokenize_words(text: &str) -> Vec<String> {
-    let mut words = Vec::new();
-    let mut current = String::new();
-    for ch in text.chars() {
-        if ch.is_ascii_alphanumeric() {
-            current.push(ch.to_ascii_lowercase());
-        } else if !current.is_empty() {
-            words.push(current);
-            current = String::new();
-        }
-    }
-    if !current.is_empty() {
-        words.push(current);
-    }
-    words
-}
-
-fn average_normalized_distance(samples: &[Vec<String>]) -> f32 {
-    let baseline = &samples[0];
-    let mut total = 0f32;
-    let mut count = 0f32;
-    for candidate in samples.iter().skip(1) {
-        total += normalized_word_distance(baseline, candidate);
-        count += 1.0;
-    }
-    if count == 0.0 {
-        0.0
-    } else {
-        total / count
-    }
-}
-
-fn normalized_word_distance(a: &[String], b: &[String]) -> f32 {
-    let dist = word_edit_distance(a, b) as f32;
-    let denom = a.len().max(b.len()).max(1) as f32;
-    dist / denom
-}
-
-fn word_edit_distance(a: &[String], b: &[String]) -> usize {
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    let mut curr = vec![0usize; b.len() + 1];
-
-    for (i, aw) in a.iter().enumerate() {
-        curr[0] = i + 1;
-        for (j, bw) in b.iter().enumerate() {
-            let cost = if aw == bw { 0 } else { 1 };
-            let insert = curr[j] + 1;
-            let delete = prev[j + 1] + 1;
-            let replace = prev[j] + cost;
-            curr[j + 1] = insert.min(delete).min(replace);
-        }
-        prev.copy_from_slice(&curr);
-    }
-
-    prev[b.len()]
-}
-
-#[derive(Deserialize)]
-pub struct TogglePatternRequest {
-    pub is_active: bool,
-}
-
-pub async fn toggle_pattern(
-    db: web::Data<Arc<Database>>,
-    path: web::Path<i64>,
-    request: web::Json<TogglePatternRequest>,
-) -> ActixResult<HttpResponse> {
-    let pattern_id = *path;
-
-    patterns_db::toggle_pattern_active(
-        db.async_connection.clone(),
-        pattern_id,
-        request.is_active,
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    let pattern = patterns_db::get_pattern(db.async_connection.clone(), pattern_id)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    let message = if request.is_active {
-        "Pattern enabled successfully"
-    } else {
-        "Pattern disabled successfully"
-    };
-
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "pattern": pattern,
-        "message": message
-    })))
+    Ok(HttpResponse::Ok().json(result))
 }

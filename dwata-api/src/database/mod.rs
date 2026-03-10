@@ -2,26 +2,31 @@ pub mod companies;
 pub mod contact_links;
 pub mod contacts;
 pub mod credentials;
+pub mod documents;
 pub mod downloads;
 pub mod emails;
 pub mod events;
 pub mod extraction_jobs;
-pub mod financial_extraction_sources;
-pub mod financial_extraction_attempts;
-pub mod financial_patterns;
+pub mod financial_bills;
+pub mod financial_templates;
 pub mod financial_transactions;
 pub mod folders;
 pub mod labels;
 pub mod linkedin_connections;
-pub mod migrations;
 pub mod models;
 pub mod positions;
 pub mod queries;
 
-use rusqlite::{params, Connection};
+mod embedded {
+    refinery::embed_migrations!("migrations");
+}
+
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::{params, Connection};
+use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -55,6 +60,7 @@ impl AsyncDbConnection {
 pub struct Database {
     pub connection: DbConnection,
     pub async_connection: AsyncDbConnection,
+    pub sqlx_pool: SqlitePool,
 }
 
 #[allow(dead_code)]
@@ -73,8 +79,8 @@ impl Database {
         // Run migrations on sync connection before opening async connection
         {
             let mut conn = sync_mutex.lock().unwrap();
-        migrations::run_migrations(&mut conn)?;
-            migrations::migrate_folders_and_labels(&mut *conn)?;
+            conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
+            embedded::migrations::runner().run(&mut *conn)?;
         }
 
         // Now open pooled connections - they will see the migrated schema
@@ -85,10 +91,16 @@ impl Database {
         });
 
         let pool = Pool::builder().max_size(8).build(manager)?;
+        let sqlx_pool = SqlitePool::connect_lazy_with(
+            SqliteConnectOptions::from_str(&format!("sqlite:{}", db_path.display()))?
+                .busy_timeout(Duration::from_secs(5))
+                .foreign_keys(true),
+        );
 
         let database = Database {
             connection: sync_mutex,
             async_connection: AsyncDbConnection::new(pool),
+            sqlx_pool,
         };
 
         Ok(database)

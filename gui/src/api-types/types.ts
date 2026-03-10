@@ -413,23 +413,41 @@ export type ListEmailsResponse = { emails: Array<Email>, total_count: bigint, ha
 
 
 /**
- * Request to scan emails for financial transaction signals
+ * Request to fetch emails by IDs
  */
-export type FinancialEmailScanRequest = { credential_id: bigint | null, max_emails: number | null, max_senders: number | null, };
+export type EmailsByIdsRequest = { email_ids: Array<bigint>, };
 
 
-import type { FinancialEmailScanSender } from "./FinancialEmailScanSender";
+import type { Email } from "./Email";
 
 /**
- * Response for financial email scan
+ * Response for email batch lookup
  */
-export type FinancialEmailScanResponse = { total_emails: bigint, total_emails_scanned: bigint, total_matched_emails: bigint, senders: Array<FinancialEmailScanSender>, };
+export type EmailsByIdsResponse = { emails: Array<Email>, };
 
 
-/**
- * Sender summary for financial email scan
- */
-export type FinancialEmailScanSender = { sender_email: string, matched_count: bigint, };
+export type DocumentSourceType = "imap-account" | "local-folder" | "cloud-drive" | "cloud-mailbox" | "manual-import";
+
+
+export type SourceAccessState = "accessible" | "offline" | "unreachable" | "disabled" | "unknown";
+
+
+export type SourcePermissionState = "granted" | "expired" | "revoked" | "insufficient-scope" | "forbidden" | "unknown";
+
+
+export type DocumentKind = "email" | "attachment" | "file";
+
+
+import type { DocumentSourceType } from "./DocumentSourceType";
+import type { SourceAccessState } from "./SourceAccessState";
+import type { SourcePermissionState } from "./SourcePermissionState";
+
+export type DocumentSource = { id: bigint, source_type: DocumentSourceType, display_name: string, credential_id: bigint | null, root_reference: string | null, access_state: SourceAccessState, permission_state: SourcePermissionState, access_checked_at: bigint | null, permission_checked_at: bigint | null, created_at: bigint, updated_at: bigint, };
+
+
+import type { DocumentKind } from "./DocumentKind";
+
+export type Document = { id: bigint, source_id: bigint, kind: DocumentKind, parent_document_id: bigint | null, email_id: bigint | null, attachment_id: bigint | null, title: string | null, canonical_name: string | null, mime_type: string | null, size_bytes: bigint | null, checksum_sha256: string | null, storage_path: string | null, external_uri: string | null, date_created: bigint | null, date_modified: bigint | null, date_received: bigint | null, indexed_at: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
 export type EmailFolder = { id: bigint, credential_id: bigint, name: string, display_name: string | null, imap_path: string, folder_type: string | null, parent_folder_id: bigint | null, uidvalidity: number | null, last_synced_uid: number | null, oldest_synced_uid: number | null, total_messages: number, unread_messages: number, is_subscribed: boolean, is_selectable: boolean, created_at: bigint, updated_at: bigint, last_synced_at: bigint | null, };
@@ -604,30 +622,95 @@ import type { Contact } from "./Contact";
 export type ContactsResponse = { contacts: Array<Contact>, };
 
 
+export type DataSourceType = "email" | "imap" | "bank-statement" | "credit-card-statement" | "bank-feed" | "csv-upload" | "manual" | "unknown";
+
+
 export type FinancialDocumentType = "invoice" | "bill" | "bank-statement" | "receipt" | "tax-document" | "payment-confirmation";
 
 
+import type { BillStatus } from "./BillStatus";
 import type { DataSourceType } from "./DataSourceType";
 import type { FinancialDocumentType } from "./FinancialDocumentType";
+
+/**
+ * A financial document (bill, invoice, receipt, statement) extracted from an email or file.
+ * One Bill may be the source for zero (unpaid) or more FinancialTransactions.
+ *
+ * ## Date Column Conventions
+ *
+ * Every date has two columns:
+ * - `{field}_raw`  — `TEXT` — the exact date string as it appeared in the source document
+ *                    (e.g., "15 Jan 2025", "January 15th, 2025", "15/01/25")
+ * - `{field}`      — `BIGINT` — parsed UTC timestamp in milliseconds since Unix epoch.
+ *                    For date-only values, use 00:00:00 UTC for that calendar day.
+ *                    Nullable when parsing fails.
+ */
+export type Bill = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: BillStatus, issuer_vendor_id: bigint | null, document_reference: string | null, total_amount: number | null, currency: string | null, 
+/**
+ * Date the bill or invoice was generated or issued by the vendor.
+ * Distinct from due_date (when payment is expected) and billing_period (service window).
+ * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
+ */
+issued_date_raw: string | null, issued_date: bigint | null, 
+/**
+ * Date by which payment must be made.
+ * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
+ */
+due_date_raw: string | null, due_date: bigint | null, 
+/**
+ * Start and end of the billing or service period this bill covers.
+ * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
+ */
+billing_period_start_raw: string | null, billing_period_start: bigint | null, billing_period_end_raw: string | null, billing_period_end: bigint | null, created_at: bigint, updated_at: bigint, };
+
+
+export type BillStatus = "received" | "unpaid" | "paid" | "overdue" | "cancelled";
+
+
+import type { ServiceIdentifierKind } from "./ServiceIdentifierKind";
+
+export type BillSubject = { id: bigint, bill_id: bigint, kind: ServiceIdentifierKind, value: string, masked_value: string | null, is_primary: boolean, created_at: bigint, updated_at: bigint, };
+
+
+export type ServiceIdentifierKind = "phone-number" | "account-number" | "policy-number" | "meter-number" | "subscription-id" | "contract-id" | "other";
+
+
+import type { DataSourceType } from "./DataSourceType";
 import type { TransactionCategory } from "./TransactionCategory";
+import type { TransactionParty } from "./TransactionParty";
 import type { TransactionStatus } from "./TransactionStatus";
 
 /**
  * Financial transaction extracted from documents
  */
-export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, description: string | null, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, vendor: string | null, source_vendor_id: bigint | null, destination_vendor_id: bigint | null, status: TransactionStatus, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
+export type FinancialTransaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, amount: number, currency: string, transaction_date: string, category: TransactionCategory | null, payer: TransactionParty, payee: TransactionParty, status: TransactionStatus, source_file: string | null, extracted_at: bigint, notes: string | null, transaction_reference: string | null, };
+
+
+/**
+ * Strongly typed transaction endpoint. Always present for both payer and payee.
+ */
+export type TransactionParty = { 
+/**
+ * Canonical vendor reference. Null means unresolved.
+ */
+vendor_id: bigint | null, };
 
 
 export type TransactionCategory = "income" | "expense" | "investment" | "tax" | "utility" | "subscription" | "entertainment" | "travel" | "healthcare" | "education" | "other";
 
 
-export type TransactionStatus = "pending" | "paid" | "overdue" | "cancelled" | "refunded";
+export type TransactionStatus = "paid" | "cancelled" | "refunded";
 
+
+import type { VendorType } from "./VendorType";
 
 /**
- * Financial pattern for extracting transactions
+ * Transaction vendor entity
  */
-export type FinancialPattern = { id: bigint, name: string, regex_pattern: string, description: string | null, sender_email: string | null, document_type: string, status: string, amount_group: number, vendor_group: number | null, source_vendor_group: number | null, destination_vendor_group: number | null, date_group: number | null, reference_group: number | null, currency_group: number | null, is_default: boolean, is_active: boolean, match_count: number, last_matched_at: bigint | null, created_at: bigint, updated_at: bigint, };
+export type Vendor = { id: bigint, vendor_type: VendorType, vendor_name: string, vendor_external_id: string | null, created_at: bigint, updated_at: bigint, };
+
+
+export type VendorType = "self-user" | "self-business" | "financial-instrument" | "merchant" | "employer" | "bank" | "individual" | "platform" | "unknown";
 
 
 /**
@@ -636,6 +719,13 @@ export type FinancialPattern = { id: bigint, name: string, regex_pattern: string
 export type FinancialSummary = { total_income: number, total_expenses: number, net_balance: number, pending_bills: number, overdue_payments: number, currency: string, period_start: string, period_end: string, };
 
 
+/**
+ * Financial extraction source summary
+ */
+export type FinancialExtractionSummary = { source_count: bigint, transaction_count: bigint, last_extracted_at: bigint | null, };
+
+
+import type { Bill } from "./Bill";
 import type { CategoryBreakdown } from "./CategoryBreakdown";
 import type { FinancialSummary } from "./FinancialSummary";
 import type { FinancialTransaction } from "./FinancialTransaction";
@@ -643,7 +733,7 @@ import type { FinancialTransaction } from "./FinancialTransaction";
 /**
  * Financial health metrics
  */
-export type FinancialHealth = { summary: FinancialSummary, recent_transactions: Array<FinancialTransaction>, upcoming_bills: Array<FinancialTransaction>, category_breakdown: Array<CategoryBreakdown>, };
+export type FinancialHealth = { summary: FinancialSummary, recent_transactions: Array<FinancialTransaction>, upcoming_bills: Array<Bill>, category_breakdown: Array<CategoryBreakdown>, };
 
 
 import type { TransactionCategory } from "./TransactionCategory";
@@ -652,3 +742,107 @@ import type { TransactionCategory } from "./TransactionCategory";
  * Breakdown by category
  */
 export type CategoryBreakdown = { category: TransactionCategory, amount: number, percentage: number, transaction_count: number, };
+
+
+export type FinancialPagination = { page: number, limit: number, total_count: number, total_pages: number, };
+
+
+import type { Bill } from "./Bill";
+import type { FinancialPagination } from "./FinancialPagination";
+
+export type ListFinancialBillsResponse = { bills: Array<Bill>, pagination: FinancialPagination, };
+
+
+export type FinancialTemplateType = "bill" | "transaction";
+
+
+export type FinancialTemplateStatus = "active" | "superseded" | "disabled";
+
+
+import type { DataSourceType } from "./DataSourceType";
+import type { FinancialTemplateStatus } from "./FinancialTemplateStatus";
+import type { FinancialTemplateType } from "./FinancialTemplateType";
+
+export type FinancialExtractionTemplate = { id: bigint, data_source_type: DataSourceType, data_source_id: string, template_type: FinancialTemplateType, template_body: string, status: FinancialTemplateStatus, version: number, created_at: bigint, updated_at: bigint, };
+
+
+export type FinancialTemplateVariable = { id: bigint, template_id: bigint, placeholder_name: string, target_field: string, created_at: bigint, };
+
+
+import type { DataSourceType } from "./DataSourceType";
+
+export type FinancialTemplateApplicability = { id: bigint, template_id: bigint, data_source_type: DataSourceType, data_source_id: string, match_score: number | null, created_at: bigint, };
+
+
+export type DetectFinancialTemplatesRequest = { credential_id: bigint | null, max_candidate_emails: number | null, max_templates_per_sender: number | null, };
+
+
+export type DetectedFinancialTemplateVariable = { placeholder_name: string, target_field: string, };
+
+
+import type { DetectedFinancialTemplateVariable } from "./DetectedFinancialTemplateVariable";
+import type { FinancialTemplateType } from "./FinancialTemplateType";
+
+export type DetectedFinancialTemplate = { template_id: bigint, sender_email: string, template_type: FinancialTemplateType, template_body: string, translated_template_body: string, source_email_ids: Array<bigint>, variables: Array<DetectedFinancialTemplateVariable>, };
+
+
+import type { DetectedFinancialTemplate } from "./DetectedFinancialTemplate";
+
+export type DetectFinancialTemplatesResponse = { candidate_sender_count: number, candidate_email_count: number, templates: Array<DetectedFinancialTemplate>, };
+
+
+export type TemplateDetectionSenderRank = { sender_email: string, rank: number, total_candidate_emails: number, recent_candidate_emails: number, latest_email_ts: bigint, max_existing_cluster_size: number, };
+
+
+import type { DetectedFinancialTemplateVariable } from "./DetectedFinancialTemplateVariable";
+import type { FinancialTemplateType } from "./FinancialTemplateType";
+
+export type TemplateDetectionGeneratedTemplateDebug = { template_id: bigint | null, template_type: FinancialTemplateType | null, template_body: string, translated_template_body: string, source_email_ids: Array<bigint>, variables: Array<DetectedFinancialTemplateVariable>, has_bill: boolean, discarded_reason: string | null, };
+
+
+import type { TemplateDetectionGeneratedTemplateDebug } from "./TemplateDetectionGeneratedTemplateDebug";
+
+export type TemplateDetectionSenderDebug = { sender_email: string, rank: number, sender_candidate_count: number, existing_template_count: number, initially_matched_count: number, fresh_unmatched_count: number, pool_count: number, generated_templates: Array<TemplateDetectionGeneratedTemplateDebug>, error: string | null, skipped_reason: string | null, };
+
+
+import type { TemplateDetectionSenderDebug } from "./TemplateDetectionSenderDebug";
+import type { TemplateDetectionSenderRank } from "./TemplateDetectionSenderRank";
+
+export type TemplateDetectionDebugState = { keyword_query: string, keyword_list: Array<string>, max_candidate_emails: number, matched_document_ids_count: number, sender_ranking: Array<TemplateDetectionSenderRank>, candidate_email_ids: Array<bigint>, sender_debug: Array<TemplateDetectionSenderDebug>, };
+
+
+export type FinancialTemplateDetectionJobStatus = "idle" | "running" | "completed" | "failed";
+
+
+import type { FinancialTemplateDetectionJobStatus } from "./FinancialTemplateDetectionJobStatus";
+import type { TemplateDetectionDebugState } from "./TemplateDetectionDebugState";
+
+export type FinancialTemplateDetectionJobState = { run_id: bigint, status: FinancialTemplateDetectionJobStatus, started_at: bigint | null, finished_at: bigint | null, total_senders: number, processed_senders: number, current_sender: string | null, candidate_sender_count: number, candidate_email_count: number, new_templates_count: number, error: string | null, debug: TemplateDetectionDebugState | null, };
+
+
+export type TemplateDetectionSenderLlmDraftPreview = { seed_text: string, cluster_size: number, selected_email_ids: Array<bigint>, full_template: string, sample_subject: string, sample_body: string, };
+
+
+import type { TemplateDetectionSenderLlmDraftPreview } from "./TemplateDetectionSenderLlmDraftPreview";
+
+export type TemplateDetectionSenderLlmInputsResponse = { sender_email: string, sender_candidate_count: number, existing_template_count: number, initially_matched_count: number, fresh_unmatched_count: number, pool_count: number, drafts: Array<TemplateDetectionSenderLlmDraftPreview>, };
+
+
+export type FinancialTemplateFieldMapping = { placeholder_name: string, target_field: string, };
+
+
+import type { FinancialExtractionTemplate } from "./FinancialExtractionTemplate";
+import type { FinancialTemplateFieldMapping } from "./FinancialTemplateFieldMapping";
+
+export type FinancialTemplateWithVariables = { template: FinancialExtractionTemplate, variables: Array<FinancialTemplateFieldMapping>, };
+
+
+import type { FinancialTemplateWithVariables } from "./FinancialTemplateWithVariables";
+
+export type ListFinancialTemplatesResponse = { templates: Array<FinancialTemplateWithVariables>, };
+
+
+export type DeleteFinancialTemplatesRequest = { template_ids: Array<bigint>, };
+
+
+export type DeleteFinancialTemplatesResponse = { deleted_count: number, };

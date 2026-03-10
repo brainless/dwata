@@ -15,14 +15,9 @@ pub struct NocodoImapClient {
 }
 
 impl NocodoImapClient {
-    pub async fn new(
-        host: &str,
-        port: u16,
-        username: &str,
-        password: &str,
-    ) -> Result<Self> {
-        use tempfile::NamedTempFile;
+    pub async fn new(host: &str, port: u16, username: &str, password: &str) -> Result<Self> {
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         let mut temp_file = NamedTempFile::new()?;
         let config = ImapConfig {
@@ -41,7 +36,11 @@ impl NocodoImapClient {
     }
 
     pub async fn list_mailboxes(&self) -> Result<Vec<String>> {
-        Ok(vec!["INBOX".to_string(), "Sent".to_string(), "Drafts".to_string()])
+        Ok(vec![
+            "INBOX".to_string(),
+            "Sent".to_string(),
+            "Drafts".to_string(),
+        ])
     }
 
     pub async fn mailbox_status(&self, _mailbox: &str) -> Result<u32> {

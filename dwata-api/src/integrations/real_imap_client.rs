@@ -1,7 +1,7 @@
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
+use chrono::{Duration, Utc};
 use imap::ClientBuilder;
 use mail_parser::MessageParser;
-use chrono::{Utc, Duration};
 
 pub struct RealImapClient {
     session: imap::Session<imap::Connection>,
@@ -65,10 +65,7 @@ impl RealImapClient {
 
     pub fn list_mailboxes(&mut self) -> Result<Vec<String>> {
         let mailboxes = self.session.list(None, Some("*"))?;
-        Ok(mailboxes
-            .iter()
-            .map(|m| m.name().to_string())
-            .collect())
+        Ok(mailboxes.iter().map(|m| m.name().to_string()).collect())
     }
 
     pub fn list_folders_with_metadata(&mut self) -> Result<Vec<FolderMetadata>> {
@@ -172,31 +169,32 @@ impl RealImapClient {
 
         let messages = self.session.uid_fetch(uid.to_string(), "RFC822")?;
 
-        let message = messages.iter().next()
-            .context("Email not found")?;
+        let message = messages.iter().next().context("Email not found")?;
 
-        let body = message.body()
-            .context("Email has no body")?;
+        let body = message.body().context("Email has no body")?;
 
         let parser = MessageParser::default();
-        let parsed = parser.parse(body)
-            .context("Failed to parse email")?;
+        let parsed = parser.parse(body).context("Failed to parse email")?;
 
         let subject = parsed.subject().map(|s| s.to_string());
-        let from = parsed.from()
-            .and_then(|addrs| addrs.first())
-            .map(|addr| (
+        let from = parsed.from().and_then(|addrs| addrs.first()).map(|addr| {
+            (
                 addr.address().map(|a| a.to_string()),
                 addr.name().map(|n| n.to_string()),
-            ));
+            )
+        });
 
-        let to_addresses: Vec<(Option<String>, Option<String>)> = parsed.to()
+        let to_addresses: Vec<(Option<String>, Option<String>)> = parsed
+            .to()
             .map(|addrs| {
-                addrs.iter()
-                    .map(|addr| (
-                        addr.address().map(|a| a.to_string()),
-                        addr.name().map(|n| n.to_string()),
-                    ))
+                addrs
+                    .iter()
+                    .map(|addr| {
+                        (
+                            addr.address().map(|a| a.to_string()),
+                            addr.name().map(|n| n.to_string()),
+                        )
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -204,8 +202,7 @@ impl RealImapClient {
         let body_text = parsed.body_text(0).map(|s| s.to_string());
         let body_html = parsed.body_html(0).map(|s| s.to_string());
 
-        let date_sent = parsed.date()
-            .map(|dt| dt.to_timestamp() * 1000);
+        let date_sent = parsed.date().map(|dt| dt.to_timestamp() * 1000);
 
         let message_id = parsed.message_id().map(|s| s.to_string());
 
@@ -215,7 +212,8 @@ impl RealImapClient {
         let is_draft = flags.contains(&imap::types::Flag::Draft);
         let is_answered = flags.contains(&imap::types::Flag::Answered);
 
-        let date_received = message.internal_date()
+        let date_received = message
+            .internal_date()
             .map(|dt| dt.timestamp_millis())
             .or(date_sent)
             .unwrap_or_else(|| Utc::now().timestamp_millis());

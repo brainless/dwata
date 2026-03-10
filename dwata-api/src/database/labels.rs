@@ -98,7 +98,11 @@ pub async fn upsert_label(
     Ok(label_id)
 }
 
-pub async fn add_label_to_email(conn: AsyncDbConnection, email_id: i64, label_id: i64) -> Result<()> {
+pub async fn add_label_to_email(
+    conn: AsyncDbConnection,
+    email_id: i64,
+    label_id: i64,
+) -> Result<()> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
 
@@ -111,7 +115,11 @@ pub async fn add_label_to_email(conn: AsyncDbConnection, email_id: i64, label_id
     Ok(())
 }
 
-pub async fn remove_label_from_email(conn: AsyncDbConnection, email_id: i64, label_id: i64) -> Result<()> {
+pub async fn remove_label_from_email(
+    conn: AsyncDbConnection,
+    email_id: i64,
+    label_id: i64,
+) -> Result<()> {
     let conn = conn.lock().await;
 
     conn.execute(
@@ -122,7 +130,10 @@ pub async fn remove_label_from_email(conn: AsyncDbConnection, email_id: i64, lab
     Ok(())
 }
 
-pub async fn get_labels_for_email(conn: AsyncDbConnection, email_id: i64) -> Result<Vec<EmailLabel>> {
+pub async fn get_labels_for_email(
+    conn: AsyncDbConnection,
+    email_id: i64,
+) -> Result<Vec<EmailLabel>> {
     task::spawn_blocking(move || {
         let conn = conn.get_blocking();
         let mut stmt = conn.prepare(
@@ -166,13 +177,14 @@ pub async fn get_emails_for_label(
              FROM email_label_associations
              WHERE label_id = ?
              ORDER BY created_at DESC
-             LIMIT ? OFFSET ?"
+             LIMIT ? OFFSET ?",
         )?;
 
-        let email_ids = stmt.query_map([label_id, limit as i64, offset as i64], |row| {
-            Ok(row.get::<_, i64>(0)?)
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        let email_ids = stmt
+            .query_map([label_id, limit as i64, offset as i64], |row| {
+                Ok(row.get::<_, i64>(0)?)
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(email_ids)
     })

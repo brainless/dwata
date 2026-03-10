@@ -1,0 +1,46 @@
+# Dwata Configuration
+# Copy this file to project.toml in the project root and fill in your values.
+# project.toml is gitignored — each environment (local dev, server) has its own copy.
+
+[deploy]
+server_ip         = "203.0.113.10"
+ssh_user          = "dwata"
+domain_name       = "app.example.com"
+letsencrypt_email = "admin@example.com"
+
+[database]
+# SQLite database path (relative or absolute)
+# If omitted, defaults to OS local data dir + dwata/db.sqlite
+path = "dwata.db"
+
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[gui]
+port = 3030
+
+[jwt]
+secret           = "your-super-secret-jwt-key-change-this-in-production"
+expiration_hours = 24
+
+[cors]
+allowed_origins = ["http://localhost:3030"]
+
+[google_oauth]
+# Google Cloud Console OAuth2 client ID for Gmail
+client_id     = "YOUR_CLIENT_ID.apps.googleusercontent.com"
+client_secret = "YOUR_CLIENT_SECRET"
+# Redirect URI is automatically constructed from server host and port
+
+[downloads]
+# When false, the API will not auto-start download jobs on startup.
+auto_start = false
+
+[search]
+# Optional absolute path for Tantivy index directory.
+# If omitted, defaults to OS local data dir + dwata/tantivy-index
+# index_path = "/absolute/path/to/tantivy-index"
+
+[ai_provider_api_keys]
+# gemini_api_key = "your-gemini-key"

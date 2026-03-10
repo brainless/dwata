@@ -5,9 +5,7 @@ use std::sync::Arc;
 use crate::database::companies as db;
 use crate::database::Database;
 
-pub async fn list_companies(
-    database: web::Data<Arc<Database>>,
-) -> ActixResult<HttpResponse> {
+pub async fn list_companies(database: web::Data<Arc<Database>>) -> ActixResult<HttpResponse> {
     let companies = db::list_companies(database.async_connection.clone(), 100)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;

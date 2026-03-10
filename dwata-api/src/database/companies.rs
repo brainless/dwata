@@ -112,9 +112,11 @@ pub async fn get_company(conn: AsyncDbConnection, id: i64) -> Result<Company> {
 pub async fn list_companies(conn: AsyncDbConnection, limit: usize) -> Result<Vec<Company>> {
     let conn_guard = conn.lock().await;
 
-    let mut stmt = conn_guard.prepare("SELECT id FROM companies ORDER BY created_at DESC LIMIT ?")?;
+    let mut stmt =
+        conn_guard.prepare("SELECT id FROM companies ORDER BY created_at DESC LIMIT ?")?;
 
-    let ids: Vec<i64> = stmt.query_map([limit], |row| row.get::<_, i64>(0))?
+    let ids: Vec<i64> = stmt
+        .query_map([limit], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
     drop(stmt);

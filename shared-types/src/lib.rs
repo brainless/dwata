@@ -1,23 +1,30 @@
 use serde::{Deserialize, Serialize};
 
+pub mod bill;
 pub mod company;
 pub mod contact;
 pub mod contact_link;
 pub mod credential;
+pub mod document;
 pub mod download;
 pub mod email;
 pub mod event;
 pub mod extraction;
 pub mod extraction_job;
 pub mod financial;
+pub mod financial_template;
 pub mod folder;
 pub mod label;
 pub mod position;
 pub mod project;
+pub mod search;
 pub mod session;
 pub mod settings;
 pub mod task;
+pub mod transaction;
+pub mod vendor;
 
+pub use bill::{Bill, BillStatus, BillSubject, FinancialDocumentType, ServiceIdentifierKind};
 pub use company::{CompaniesResponse, Company, CreateCompanyRequest, UpdateCompanyRequest};
 pub use contact::{Contact, ContactsResponse, CreateContactRequest, UpdateContactRequest};
 pub use contact_link::{
@@ -28,14 +35,18 @@ pub use credential::{
     CredentialMetadata, CredentialType, ImapAccountSettings, ImapAuthMethod,
     ImapCredentialMetadata, PasswordResponse, SmtpAccountSettings, UpdateCredentialRequest,
 };
+pub use document::{
+    Document, DocumentCursor, DocumentKind, DocumentSortBy, DocumentSource, DocumentSourceType,
+    ListDocumentsRequest, ListDocumentsResponse, SourceAccessState, SourcePermissionState,
+};
 pub use download::{
     CloudStorageDownloadState, CreateDownloadJobRequest, DirectoryStatus, DownloadItem,
     DownloadItemStatus, DownloadJob, DownloadJobListResponse, DownloadJobStatus, DownloadProgress,
     FileFilter, ImapDownloadState, ImapFolderStatus, ImapSyncStrategy, SourceType,
 };
 pub use email::{
-    AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, FinancialEmailScanRequest,
-    FinancialEmailScanResponse, FinancialEmailScanSender, ListEmailsRequest, ListEmailsResponse,
+    AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, EmailsByIdsRequest,
+    EmailsByIdsResponse, ListEmailsRequest, ListEmailsResponse,
 };
 pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
 pub use extraction_job::{
@@ -44,10 +55,19 @@ pub use extraction_job::{
     ExtractionSourceType, ExtractorType,
 };
 pub use financial::{
-    CategoryBreakdown, DataSourceType, FinancialDocumentType, FinancialExtractionAttempt,
-    FinancialExtractionAttemptsResponse, FinancialExtractionSummary, FinancialHealth,
-    FinancialPattern, FinancialSummary, FinancialTransaction, TransactionCategory, TransactionStatus,
-    TransactionVendor, TransactionVendorType,
+    CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialPagination,
+    FinancialSummary, ListFinancialBillsResponse,
+};
+pub use financial_template::{
+    DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,
+    DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse, DetectedFinancialTemplate,
+    DetectedFinancialTemplateVariable, FinancialExtractionTemplate, FinancialTemplateApplicability,
+    FinancialTemplateDetectionJobState, FinancialTemplateDetectionJobStatus,
+    FinancialTemplateFieldMapping, FinancialTemplateStatus, FinancialTemplateType,
+    FinancialTemplateVariable, FinancialTemplateWithVariables, ListFinancialTemplatesResponse,
+    TemplateDetectionDebugState, TemplateDetectionGeneratedTemplateDebug,
+    TemplateDetectionSenderDebug, TemplateDetectionSenderLlmDraftPreview,
+    TemplateDetectionSenderLlmInputsResponse, TemplateDetectionSenderRank,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
@@ -55,17 +75,22 @@ pub use position::{CreatePositionRequest, Position, PositionsResponse};
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
 };
+pub use search::{
+    SearchDocumentsRequest, SearchDocumentsResponse, SearchField, SearchHit, SearchTerm,
+};
 pub use session::{
     AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionListResponse,
     SessionMessage, SessionResponse, SessionToolCall,
 };
 pub use settings::{
-    AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse,
-    UpdateAiProviderApiKeysRequest, UpdateOAuthClientAppsRequest,
+    AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse, UpdateAiProviderApiKeysRequest,
+    UpdateOAuthClientAppsRequest,
 };
 pub use task::{
     CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
 };
+pub use transaction::{DataSourceType, Transaction, TransactionCategory, TransactionStatus};
+pub use vendor::{Vendor, VendorType};
 
 // Re-export extraction types
 pub use extraction::*;

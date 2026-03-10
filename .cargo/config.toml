@@ -1,4 +1,3 @@
-[patch.'https://github.com/brainless/nocodo']
-nocodo-llm-sdk = { path = "../nocodo/nocodo-llm-sdk" }
-nocodo-agents = { path = "../nocodo/nocodo-agents" }
-nocodo-tools = { path = "../nocodo/nocodo-tools" }
+# Local git patch overrides intentionally removed.
+# The workspace now depends on `llm-sdk` directly via path dependencies
+# (aliased as `nocodo-llm-sdk` in crate manifests).

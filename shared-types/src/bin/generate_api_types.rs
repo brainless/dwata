@@ -1,5 +1,5 @@
+use shared_types::credential::{CreateLocalFileCredentialRequest, LocalFileSettings};
 use shared_types::*;
-use shared_types::credential::{LocalFileSettings, CreateLocalFileCredentialRequest};
 use std::fs;
 use std::path::Path;
 use ts_rs::TS;
@@ -40,7 +40,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(AiProviderApiKeyConfig::export_to_string()?));
     types.push(clean_type(OAuthClientAppConfig::export_to_string()?));
     types.push(clean_type(SettingsResponse::export_to_string()?));
-    types.push(clean_type(UpdateAiProviderApiKeysRequest::export_to_string()?));
+    types.push(clean_type(
+        UpdateAiProviderApiKeysRequest::export_to_string()?,
+    ));
     types.push(clean_type(UpdateOAuthClientAppsRequest::export_to_string()?));
 
     // Credential types
@@ -65,7 +67,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Local File credential types
     types.push(clean_type(LocalFileSettings::export_to_string()?));
-    types.push(clean_type(CreateLocalFileCredentialRequest::export_to_string()?));
+    types.push(clean_type(
+        CreateLocalFileCredentialRequest::export_to_string()?,
+    ));
 
     // Download types
     types.push(clean_type(DownloadJob::export_to_string()?));
@@ -90,9 +94,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(AttachmentExtractionStatus::export_to_string()?));
     types.push(clean_type(ListEmailsRequest::export_to_string()?));
     types.push(clean_type(ListEmailsResponse::export_to_string()?));
-    types.push(clean_type(FinancialEmailScanRequest::export_to_string()?));
-    types.push(clean_type(FinancialEmailScanResponse::export_to_string()?));
-    types.push(clean_type(FinancialEmailScanSender::export_to_string()?));
+    types.push(clean_type(EmailsByIdsRequest::export_to_string()?));
+    types.push(clean_type(EmailsByIdsResponse::export_to_string()?));
+
+    // Document types
+    types.push(clean_type(DocumentSourceType::export_to_string()?));
+    types.push(clean_type(SourceAccessState::export_to_string()?));
+    types.push(clean_type(SourcePermissionState::export_to_string()?));
+    types.push(clean_type(DocumentKind::export_to_string()?));
+    types.push(clean_type(DocumentSource::export_to_string()?));
+    types.push(clean_type(Document::export_to_string()?));
 
     // Email Folder and Label types
     types.push(clean_type(EmailFolder::export_to_string()?));
@@ -139,14 +150,73 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(ContactsResponse::export_to_string()?));
 
     // Financial types
+    types.push(clean_type(DataSourceType::export_to_string()?));
     types.push(clean_type(FinancialDocumentType::export_to_string()?));
-    types.push(clean_type(FinancialTransaction::export_to_string()?));
+    types.push(clean_type(Bill::export_to_string()?));
+    types.push(clean_type(BillStatus::export_to_string()?));
+    types.push(clean_type(BillSubject::export_to_string()?));
+    types.push(clean_type(ServiceIdentifierKind::export_to_string()?));
+    types.push(clean_type(Transaction::export_to_string()?));
     types.push(clean_type(TransactionCategory::export_to_string()?));
     types.push(clean_type(TransactionStatus::export_to_string()?));
-    types.push(clean_type(FinancialPattern::export_to_string()?));
+    types.push(clean_type(Vendor::export_to_string()?));
+    types.push(clean_type(VendorType::export_to_string()?));
     types.push(clean_type(FinancialSummary::export_to_string()?));
+    types.push(clean_type(FinancialExtractionSummary::export_to_string()?));
     types.push(clean_type(FinancialHealth::export_to_string()?));
     types.push(clean_type(CategoryBreakdown::export_to_string()?));
+    types.push(clean_type(FinancialPagination::export_to_string()?));
+    types.push(clean_type(ListFinancialBillsResponse::export_to_string()?));
+    types.push(clean_type(FinancialTemplateType::export_to_string()?));
+    types.push(clean_type(FinancialTemplateStatus::export_to_string()?));
+    types.push(clean_type(FinancialExtractionTemplate::export_to_string()?));
+    types.push(clean_type(FinancialTemplateVariable::export_to_string()?));
+    types.push(clean_type(
+        FinancialTemplateApplicability::export_to_string()?,
+    ));
+    types.push(clean_type(
+        DetectFinancialTemplatesRequest::export_to_string()?,
+    ));
+    types.push(clean_type(
+        DetectedFinancialTemplateVariable::export_to_string()?,
+    ));
+    types.push(clean_type(DetectedFinancialTemplate::export_to_string()?));
+    types.push(clean_type(
+        DetectFinancialTemplatesResponse::export_to_string()?,
+    ));
+    types.push(clean_type(TemplateDetectionSenderRank::export_to_string()?));
+    types.push(clean_type(
+        TemplateDetectionGeneratedTemplateDebug::export_to_string()?,
+    ));
+    types.push(clean_type(TemplateDetectionSenderDebug::export_to_string()?));
+    types.push(clean_type(TemplateDetectionDebugState::export_to_string()?));
+    types.push(clean_type(
+        FinancialTemplateDetectionJobStatus::export_to_string()?,
+    ));
+    types.push(clean_type(
+        FinancialTemplateDetectionJobState::export_to_string()?,
+    ));
+    types.push(clean_type(
+        TemplateDetectionSenderLlmDraftPreview::export_to_string()?,
+    ));
+    types.push(clean_type(
+        TemplateDetectionSenderLlmInputsResponse::export_to_string()?,
+    ));
+    types.push(clean_type(
+        FinancialTemplateFieldMapping::export_to_string()?
+    ));
+    types.push(clean_type(
+        FinancialTemplateWithVariables::export_to_string()?,
+    ));
+    types.push(clean_type(
+        ListFinancialTemplatesResponse::export_to_string()?,
+    ));
+    types.push(clean_type(
+        DeleteFinancialTemplatesRequest::export_to_string()?,
+    ));
+    types.push(clean_type(
+        DeleteFinancialTemplatesResponse::export_to_string()?,
+    ));
 
     let output_dir = Path::new("../gui/src/api-types");
     fs::create_dir_all(output_dir)?;

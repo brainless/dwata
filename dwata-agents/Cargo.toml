@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 # nocodo framework
-nocodo-llm-sdk = { path = "../../nocodo/nocodo-llm-sdk" }
+nocodo-llm-sdk = { package = "llm-sdk", path = "../../llm-sdk" }
 
 # Internal dependencies
 shared-types = { path = "../shared-types" }
@@ -28,6 +28,7 @@ thiserror = "1.0"
 
 # Regex
 regex = "1"
+calamine = "0.24"
 
 # Logging
 tracing = "0.1"
@@ -35,6 +36,7 @@ tracing-subscriber.workspace = true
 
 # Date/time
 chrono = "0.4"
+dateparser = "0.2"
 
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -43,4 +45,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 clap.workspace = true
 config = { version = "0.14", default-features = false, features = ["toml"] }
 dirs = "5.0"
-mail-parser = "0.9"
+
+[[bin]]
+name = "statement_based_financial_extractor"
+path = "src/bin/statement_based_financial_extractor.rs"

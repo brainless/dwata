@@ -1,5 +1,5 @@
 use crate::database::AsyncDbConnection;
-use shared_types::credential::{CredentialMetadata, CredentialType, CreateCredentialRequest};
+use shared_types::credential::{CreateCredentialRequest, CredentialMetadata, CredentialType};
 use tokio::task;
 
 #[derive(Debug)]
