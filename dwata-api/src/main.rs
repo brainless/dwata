@@ -488,6 +488,18 @@ async fn main() -> std::io::Result<()> {
             .service(update_ai_provider_api_keys)
             .service(update_oauth_client_apps)
             .route(
+                "/api/ollama/status",
+                web::get().to(handlers::ollama::ollama_status),
+            )
+            .route(
+                "/api/ollama/models",
+                web::get().to(handlers::ollama::ollama_list_models),
+            )
+            .route(
+                "/api/ollama/pull",
+                web::post().to(handlers::ollama::ollama_pull_model),
+            )
+            .route(
                 "/api/credentials",
                 web::post().to(handlers::credentials::create_credential),
             )

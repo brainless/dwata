@@ -43,4 +43,13 @@ auto_start = false
 # index_path = "/absolute/path/to/tantivy-index"
 
 [ai_provider_api_keys]
+# openai_api_key = "your-openai-key"
 # gemini_api_key = "your-gemini-key"
+
+[selected_llm]
+# Controls the model used by template detection agents.
+# Providers: "ollama", "openai", "gemini"
+# OpenAI model allowed: "gpt-5-mini"
+# Gemini model allowed: "gemini-3-flash-preview"
+provider = "ollama"
+model = "ministral-3:3b"

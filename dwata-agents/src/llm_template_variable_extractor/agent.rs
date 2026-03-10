@@ -1,7 +1,6 @@
 use crate::llm_template_variable_extractor::types::{TemplateVariableParams, TemplateVariableType};
 use crate::storage::{AgentStorage, Message};
 use nocodo_llm_sdk::client::LlmClient;
-use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
 use nocodo_llm_sdk::types::{CompletionRequest, ContentBlock, Message as LlmMessage};
 use nocodo_llm_sdk::Tool;
 use std::sync::Arc;
@@ -19,6 +18,7 @@ impl LlmTemplateVariableExtractorAgent {
     pub fn new(
         llm_client: Arc<dyn LlmClient>,
         storage: Arc<dyn AgentStorage>,
+        model: String,
         template_type: TemplateVariableType,
         sample_subject: String,
         sample_body: String,
@@ -26,7 +26,7 @@ impl LlmTemplateVariableExtractorAgent {
         Self {
             llm_client,
             storage,
-            model: MINISTRAL_3_3B_ID.to_string(),
+            model,
             template_type,
             sample_subject,
             sample_body,

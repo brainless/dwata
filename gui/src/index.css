@@ -3,7 +3,7 @@
 @source "../index.html";
 
 @plugin "daisyui" {
-  themes: cupcake, light, dark;
+  themes: autumn, cupcake, light, dark;
 }
 
 /*
@@ -27,5 +27,11 @@
 @layer utilities {
   .privacy-blur {
     filter: blur(3px);
+  }
+
+  .settings-page .input,
+  .settings-page .textarea,
+  .settings-page .select {
+    --input-color: color-mix(in oklab, var(--color-base-content) 60%, #0000);
   }
 }

@@ -30,6 +30,7 @@ pub struct SettingsResponse {
 /// Request to update AI provider API keys
 #[derive(Debug, Serialize, Deserialize, TS)]
 pub struct UpdateAiProviderApiKeysRequest {
+    pub openai_api_key: Option<String>,
     pub gemini_api_key: Option<String>,
 }
 

@@ -36,11 +36,18 @@ pub async fn get_settings(data: web::Data<SettingsAppState>) -> Result<HttpRespo
     })?;
 
     let ai_provider_api_keys = if let Some(ref keys) = config.ai_provider_api_keys {
-        vec![AiProviderApiKeyConfig {
-            name: "gemini".to_string(),
-            key: mask_api_key(&keys.gemini_api_key),
-            is_configured: keys.gemini_api_key.is_some(),
-        }]
+        vec![
+            AiProviderApiKeyConfig {
+                name: "openai".to_string(),
+                key: mask_api_key(&keys.openai_api_key),
+                is_configured: keys.openai_api_key.is_some(),
+            },
+            AiProviderApiKeyConfig {
+                name: "gemini".to_string(),
+                key: mask_api_key(&keys.gemini_api_key),
+                is_configured: keys.gemini_api_key.is_some(),
+            },
+        ]
     } else {
         vec![]
     };
@@ -66,6 +73,15 @@ pub async fn get_settings(data: web::Data<SettingsAppState>) -> Result<HttpRespo
     };
 
     let config_path = crate::config::get_config_path();
+    let config_path = if config_path.is_absolute() {
+        config_path
+    } else {
+        std::fs::canonicalize(&config_path).unwrap_or_else(|_| {
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join(&config_path)
+        })
+    };
     let response = SettingsResponse {
         config_file_path: config_path.to_string_lossy().to_string(),
         ai_provider_api_keys,
@@ -91,11 +107,15 @@ pub async fn update_ai_provider_api_keys(
     })?;
 
     if let Some(ref mut keys) = config.ai_provider_api_keys {
+        if let Some(openai_key) = req.openai_api_key {
+            keys.openai_api_key = Some(openai_key);
+        }
         if let Some(gemini_key) = req.gemini_api_key {
             keys.gemini_api_key = Some(gemini_key);
         }
     } else {
         config.ai_provider_api_keys = Some(crate::config::AiProviderApiKeysConfig {
+            openai_api_key: req.openai_api_key,
             gemini_api_key: req.gemini_api_key,
         });
     }
