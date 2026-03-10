@@ -30,9 +30,9 @@ pub struct TransactionFilters {
     #[serde(default)]
     pub bill_id: Option<i64>,
     #[serde(default)]
-    pub start_date: Option<i64>,
+    pub start_date: Option<String>,
     #[serde(default)]
-    pub end_date: Option<i64>,
+    pub end_date: Option<String>,
     #[serde(default)]
     pub min_amount: Option<f64>,
     #[serde(default)]
@@ -103,14 +103,26 @@ pub async fn list_transactions(
     query: web::Query<TransactionFilters>,
 ) -> ActixResult<HttpResponse> {
     let offset = (query.page.saturating_sub(1)) * query.limit;
+    let start_date_ms = query
+        .start_date
+        .as_deref()
+        .map(bills_db::date_string_to_utc_ms)
+        .transpose()
+        .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
+    let end_date_ms = query
+        .end_date
+        .as_deref()
+        .map(bills_db::date_string_to_utc_ms)
+        .transpose()
+        .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
 
     let (transactions, total_count) = db::list_financial_transactions_filtered(
         &db.sqlx_pool,
         query.payer_vendor_id,
         query.payee_vendor_id,
         query.bill_id,
-        query.start_date,
-        query.end_date,
+        start_date_ms,
+        end_date_ms,
         query.min_amount,
         query.max_amount,
         query.limit,

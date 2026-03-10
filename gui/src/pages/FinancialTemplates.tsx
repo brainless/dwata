@@ -82,8 +82,8 @@ export default function FinancialTemplates() {
 
   const footerActions = (
     <>
-      <A href="/financial" class="btn btn-ghost btn-sm">
-        Back to Financial
+      <A href="/financial/transactions" class="btn btn-ghost btn-sm">
+        Back to Transactions
       </A>
       <A href="/financial/templates/detect" class="btn btn-secondary btn-sm">
         Detect Templates

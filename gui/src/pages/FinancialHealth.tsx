@@ -49,12 +49,6 @@ export default function FinancialHealth() {
     }
   };
 
-  const formatSignedAmount = (amount: number, currency?: string) => {
-    const sign = amount > 0 ? "+" : amount < 0 ? "-" : "";
-    const formatted = formatCurrency(Math.abs(amount), currency);
-    return `${sign}${formatted}`;
-  };
-
   const fetchFinancialData = async (page = 1) => {
     setLoading(true);
     setError(null);
@@ -249,9 +243,6 @@ export default function FinancialHealth() {
       <A href="/financial/templates" class="btn btn-ghost btn-sm">
         Templates
       </A>
-      <A href="/financial/extractions" class="btn btn-ghost btn-sm">
-        Extraction History
-      </A>
     </>
   );
 
@@ -284,77 +275,79 @@ export default function FinancialHealth() {
         {/* Content */}
         <Show when={!loading() && !error() && summary()}>
           <div>
-            {/* Financial Stats Overview */}
+            {/* Reference-only overview section; keep for future iterations. */}
+            {/*
             <div class="stats stats-vertical lg:stats-horizontal shadow mb-8 w-full">
-            <div class="stat">
-              <div class="stat-figure text-success">
-                <HiOutlineArrowTrendingUp class="w-8 h-8" />
+              <div class="stat">
+                <div class="stat-figure text-success">
+                  <HiOutlineArrowTrendingUp class="w-8 h-8" />
+                </div>
+                <div class="stat-title">Total Income</div>
+                <div class="stat-value text-success">
+                  {formatCurrency(
+                    summary()!.total_income,
+                    summary()!.currency,
+                  )}
+                </div>
+                <div class="stat-desc">
+                  {summary()!.period_start} to {summary()!.period_end}
+                </div>
               </div>
-              <div class="stat-title">Total Income</div>
-              <div class="stat-value text-success">
-                {formatCurrency(
-                  summary()!.total_income,
-                  summary()!.currency,
-                )}
-              </div>
-              <div class="stat-desc">
-                {summary()!.period_start} to {summary()!.period_end}
-              </div>
-            </div>
 
-            <div class="stat">
-              <div class="stat-figure text-error">
-                <HiOutlineArrowTrendingDown class="w-8 h-8" />
+              <div class="stat">
+                <div class="stat-figure text-error">
+                  <HiOutlineArrowTrendingDown class="w-8 h-8" />
+                </div>
+                <div class="stat-title">Total Expenses</div>
+                <div class="stat-value text-error">
+                  {formatCurrency(
+                    summary()!.total_expenses,
+                    summary()!.currency,
+                  )}
+                </div>
+                <div class="stat-desc">
+                  {Math.round(
+                    (summary()!.total_expenses / summary()!.total_income) * 100,
+                  )}
+                  % of income
+                </div>
               </div>
-              <div class="stat-title">Total Expenses</div>
-              <div class="stat-value text-error">
-                {formatCurrency(
-                  summary()!.total_expenses,
-                  summary()!.currency,
-                )}
-              </div>
-              <div class="stat-desc">
-                {Math.round(
-                  (summary()!.total_expenses / summary()!.total_income) * 100,
-                )}
-                % of income
-              </div>
-            </div>
 
-            <div class="stat">
-              <div class="stat-figure text-primary">
-                <HiOutlineCurrencyDollar class="w-8 h-8" />
+              <div class="stat">
+                <div class="stat-figure text-primary">
+                  <HiOutlineCurrencyDollar class="w-8 h-8" />
+                </div>
+                <div class="stat-title">Net Balance</div>
+                <div class="stat-value text-primary">
+                  {formatCurrency(
+                    summary()!.net_balance,
+                    summary()!.currency,
+                  )}
+                </div>
+                <div class="stat-desc">
+                  {summary()!.net_balance > 0 ? "Positive" : "Negative"} cash flow
+                </div>
               </div>
-              <div class="stat-title">Net Balance</div>
-              <div class="stat-value text-primary">
-                {formatCurrency(
-                  summary()!.net_balance,
-                  summary()!.currency,
-                )}
-              </div>
-              <div class="stat-desc">
-                {summary()!.net_balance > 0 ? "Positive" : "Negative"} cash flow
-              </div>
-            </div>
 
-            <div class="stat">
-              <div class="stat-figure text-warning">
-                <HiOutlineExclamationTriangle class="w-8 h-8" />
-              </div>
-              <div class="stat-title">Pending/Overdue</div>
-              <div class="stat-value text-warning">
-                {summary()!.pending_bills + summary()!.overdue_payments}
-              </div>
-              <div class="stat-desc">
-                {summary()!.overdue_payments} overdue,{" "}
-                {summary()!.pending_bills} pending
+              <div class="stat">
+                <div class="stat-figure text-warning">
+                  <HiOutlineExclamationTriangle class="w-8 h-8" />
+                </div>
+                <div class="stat-title">Pending/Overdue</div>
+                <div class="stat-value text-warning">
+                  {summary()!.pending_bills + summary()!.overdue_payments}
+                </div>
+                <div class="stat-desc">
+                  {summary()!.overdue_payments} overdue,{" "}
+                  {summary()!.pending_bills} pending
+                </div>
               </div>
             </div>
-            </div>
+            */}
 
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div class="grid grid-cols-1 gap-6 mb-8">
             {/* Recent Transactions */}
-            <div class="lg:col-span-2">
+            <div>
               {/* Filter Bar */}
               <div class="bg-base-100 rounded-lg p-4 mb-4 shadow-sm border border-base-300">
                 <div class="flex flex-wrap gap-3 items-end">
@@ -427,15 +420,13 @@ export default function FinancialHealth() {
                             <th>Date</th>
                             <th>Transaction</th>
                             <th>Amount</th>
+                            <th>Currency</th>
                             <th>Status</th>
                           </tr>
                         </thead>
                         <tbody>
                           <For each={transactions()}>
                             {(transaction) => {
-                              const CategoryIcon = getCategoryIcon(
-                                transaction.category,
-                              );
                               return (
                                 <tr class="hover">
                                   <td class="text-xs">
@@ -445,10 +436,11 @@ export default function FinancialHealth() {
                                   </td>
                                   <td>
                                     <div class="flex items-center gap-2">
-                                      <CategoryIcon class="w-4 h-4 flex-shrink-0" />
                                       <div>
-                                        <div class="font-medium text-sm">
-                                          {transaction.vendor || 'Unknown Vendor'}
+                                        <div class="font-medium text-sm truncate max-w-[320px]" title={transaction.transaction_reference || "Unknown Reference"}>
+                                          {(transaction.transaction_reference || "Unknown Reference").length > 60
+                                            ? `${(transaction.transaction_reference || "Unknown Reference").slice(0, 60)}…`
+                                            : (transaction.transaction_reference || "Unknown Reference")}
                                         </div>
                                       </div>
                                     </div>
@@ -460,10 +452,10 @@ export default function FinancialHealth() {
                                       "text-error": transaction.amount < 0,
                                     }}
                                   >
-                                    {formatSignedAmount(
-                                      transaction.amount,
-                                      transaction.currency,
-                                    )}
+                                    {transaction.amount}
+                                  </td>
+                                  <td class="text-xs uppercase">
+                                    {transaction.currency}
                                   </td>
                                   <td>
                                     <span
@@ -512,14 +504,7 @@ export default function FinancialHealth() {
               </div>
             </div>
 
-            {/* Upcoming Bills */}
-            <div>
-              <div class="card bg-base-100 shadow-sm border border-base-300">
-                <div class="card-body">
-                  <h2 class="card-title mb-4">Upcoming Bills</h2>
-                </div>
-              </div>
-            </div>
+            {/* Upcoming Bills section removed */}
           </div>
 
           {/* Category Breakdown */}

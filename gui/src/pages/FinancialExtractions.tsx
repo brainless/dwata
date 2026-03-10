@@ -68,8 +68,8 @@ export default function FinancialExtractions() {
 
   const footerActions = (
     <>
-      <A href="/financial" class="btn btn-ghost btn-sm">
-        Back to Financial
+      <A href="/financial/transactions" class="btn btn-ghost btn-sm">
+        Back to Transactions
       </A>
       <button class="btn btn-primary btn-sm" onClick={() => fetchSummary()}>
         <HiOutlineArrowPath class="w-4 h-4" />
@@ -207,8 +207,8 @@ export default function FinancialExtractions() {
                 from your email sources.
               </p>
               <div class="card-actions">
-                <A href="/financial" class="btn btn-primary btn-sm">
-                  Run Extraction
+                <A href="/financial/transactions" class="btn btn-primary btn-sm">
+                  View Transactions
                 </A>
               </div>
             </div>
