@@ -1,162 +1,97 @@
 # Dwata
 
-> Your Personal Data Intelligence Platform
+Connect your email inbox, download emails, and use LLM agents to extract financial transaction data — all running locally on your machine.
 
-Dwata helps you unlock valuable insights from your own personal data. Whether it's emails, documents, cloud storage, or backups from platforms like LinkedIn and Slack, Dwata brings your information together to give you a clear, historical view of your financial health, business activities, and personal goals.
+**All data stays on your machine.** dwata works with Ollama and local models (tested on Mac Mini M4 16GB), so your emails never leave your computer.
 
-## What is Dwata?
+## What dwata does today
 
-Dwata is your personal data assistant that transforms raw information from your various sources into actionable insights. Instead of manually tracking through thousands of emails and documents, Dwata does the heavy lifting for you - automatically extracting, organizing, and presenting the information that matters most to you.
+### Email inbox
 
-**All your data stays local and private.** Dwata runs on your machine, ensuring complete data sovereignty and privacy.
+Connect your Gmail or IMAP account. dwata downloads your emails and stores them locally in SQLite.
 
-We support bring-your-own Google OAuth apps for Gmail/IMAP access. Set your own `client_id`/`client_secret` in the local config and those will be used.
+![Email inbox](docs/assets/dwata_email_home.png)
 
-## What Can Dwata Do?
+### Financial template detection
 
-Dwata includes multiple extractors designed to help you understand different aspects of your personal data:
+Select financial emails and run an LLM agent to generate extraction templates. The agent reads sample emails and produces reusable patterns — you only need AI once per email sender.
 
-- **Financial Information** - Track income, expenses, bills, and payments
-- **Events & Calendar** - Identify important dates and commitments
-- **Business & Work** - Monitor companies, projects, and professional activities
-- **More extractors coming soon** - Tasks, contacts, and personal goals
+![Detect financial templates](docs/assets/dwata_detect_financial_templates_with_ai.png)
 
-## Financial Insights (Our MVP Feature)
+![Running template detection with Ollama](docs/assets/dwata_run_financial_template_detection.png)
 
-Our financial extraction is the most robust feature currently available in Dwata. It's designed to help you get a complete picture of your financial health from your email history.
+### Financial templates
 
-### How Financial Extraction Works
+Browse and manage the generated templates. Each template captures how to extract financial data from a specific sender.
 
-#### 1. Smart Email Scanning
-Dwata scans your emails using a combination of keywords and patterns to identify financial communications. It looks for terms like "payment," "invoice," "receipt," "transaction," and many others. The scan is lightning-fast and groups emails by sender, showing you which companies or services you interact with most frequently.
+![Financial templates](docs/assets/dwata_financial_templates.png)
 
-#### 2. AI-Powered Pattern Learning
-Here's where Dwata gets smart. Instead of using AI to read every email forever (which would be slow and expensive), Dwata uses AI once to learn the pattern:
+### Extracted transactions
 
-- You select an email sender from the scan results
-- Dwata's AI agent examines sample emails from that sender
-- The AI extracts a regex pattern that identifies the financial information (amounts, dates, vendors, etc.)
-- You can test and verify the pattern works correctly
-- Once saved, the pattern runs directly in the software - no more AI needed!
+Once templates are in place, dwata extracts financial transactions from matching emails automatically.
 
-This approach makes Dwata **incredibly efficient** - you only use AI once per sender, then pattern-based extraction runs instantly.
+![Financial transactions](docs/assets/dwata_financial_transactions.png)
 
-#### 3. Your Financial Overview
-Once patterns are in place, Dwata automatically extracts:
-- Income and expenses
-- Pending and overdue bills
-- Payment history by vendor
-- Spending by category
-- Net balance and cash flow
+### LLM settings
 
-<!-- Screenshots will be added here -->
+Use Ollama with a local model (Ministral 3: 3b), OpenAI (GPT-4o Nano), or Google Gemini (Gemini 2.5 Flash Preview). Switch models in settings.
 
-### Supported AI Models
+![Settings - Ollama Ministral 3 3b](docs/assets/dwata_settings_ollama_ministral3_3b.png)
 
-At launch, Dwata supports **Google Gemini models** for the AI-powered pattern extraction. The pattern learning happens quickly and you only need to do it once per email sender.
+## Privacy
 
-## What's Coming Next
+- All email data is stored locally in SQLite — never sent to a cloud service
+- With Ollama, template detection runs entirely on your machine with no external API calls
+- OS keychain stores credentials (Gmail password / OAuth tokens) — dwata uses a single keychain entry so you get one prompt on first launch
+- On macOS, select **Always Allow** when the keychain prompt appears so you're not asked again
 
-While we're launching with financial insights as our focus, we're actively working on:
+## Getting started
 
-### Data Sources
-- **Email** (currently supported via IMAP)
-- **Files & Cloud Storage** - Google Drive, Dropbox, OneDrive
-- **LinkedIn Backups** - Professional network history
-- **Slack Backups** - Team communications and project context
-- **And more...**
+Download the latest release for your platform from [GitHub Releases](https://github.com/brainless/dwata/releases).
 
-### New Features
-- **Calendar & Events** - Track meetings, deadlines, and important dates
-- **Projects & Tasks** - Understand your work and personal projects
-- **Business Insights** - See which companies and people you interact with
-- **Goal Tracking** - Monitor progress toward personal objectives
+Run the dwata API server and open the GUI in your browser at `http://localhost:3030`.
 
-Our vision is to give you a complete historical view of your personal and professional life, all extracted from your own data sources.
+### Connecting Gmail
 
-## Key Benefits
+dwata supports Gmail via OAuth. Set your Google OAuth `client_id` and `client_secret` in the config file:
 
-### Privacy First
-- All data processing happens locally on your machine
-- No data is sent to cloud services except AI pattern extraction (one-time per sender)
-- Your information never leaves your control
+- **macOS**: `~/Library/Application Support/dwata/api.toml`
+- **Linux**: `~/.config/dwata/api.toml`
+- **Windows**: `%APPDATA%\dwata\api.toml`
 
-### Efficiency
-- One-time AI pattern learning per source
-- After that, extraction is instant and cost-free
-- No ongoing AI costs for pattern-based extraction
+You can use your own Google OAuth app (bring-your-own credentials).
 
-### Comprehensive
-- Multiple data sources in one place
-- Historical view of your activities
-- Actionable insights from your own data
+### Using Ollama
 
-### Simple to Use
-- Clean, intuitive interface
-- Focus on what matters to you
-- No technical knowledge required
+Install [Ollama](https://ollama.com) and pull a model:
 
-## Use Cases
+```bash
+ollama pull ministral:3b
+```
 
-**Financial Health Monitoring**
-Track your spending patterns, identify subscription costs, monitor income streams, and get alerts for upcoming bills.
+Then set the model in dwata's settings page.
 
-**Business Development**
-Extract leads and opportunities from your communications, understand your network, track project activities.
+## Tech stack
 
-**Work Overview**
-See all your professional activities in one place, understand time allocation, track deliverables and commitments.
+- **Backend**: Rust + Actix-web
+- **Database**: SQLite (local)
+- **Frontend**: SolidJS
+- **LLM**: Ollama (local), OpenAI, or Google Gemini
 
-**Personal Goals**
-Monitor progress toward your objectives using data from your actual activities and communications.
+## Support
 
-## Getting Started
-
-<!-- Installation instructions will be added here -->
-
-## System Requirements
-
-- macOS, Linux, or Windows
-- Internet connection for AI pattern extraction
-- Local storage for database
-
-## Support & Community
-
-- **Issues & Bugs**: [GitHub Issues](https://github.com/brainless/dwata/issues)
-- **Feature Requests**: [GitHub Discussions](https://github.com/brainless/dwata/discussions)
-- **Documentation**: [docs/](./docs/)
-
-## Philosophy
-
-We believe your personal data is your most valuable asset. Rather than letting it sit scattered across dozens of services and accounts, Dwata helps you extract real value from it - while keeping you in complete control.
-
-Dwata doesn't create new data or force you into rigid templates. Instead, it learns from your actual communications and documents, adapting to how you already work and live.
-
-## Technology
-
-Built with modern, efficient technologies:
-- **Backend**: Rust (fast, safe, efficient)
-- **Database**: SQLite (local, portable, reliable)
-- **Frontend**: SolidJS (reactive, performant)
-- **AI**: Google Gemini (for pattern learning)
-
-## Contributing
-
-We welcome contributions! Whether it's:
-- New data source integrations
-- Additional extractors
-- UI improvements
-- Documentation
-- Bug reports and fixes
-
-Check out our [Contributing Guide](DEVELOP.md) to get started.
+- **Bugs & issues**: [GitHub Issues](https://github.com/brainless/dwata/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/brainless/dwata/discussions)
+- **Developer guide**: [DEVELOP.md](DEVELOP.md)
 
 ## License
 
-GPL v3 License - See LICENSE file for details
+GPL v3 — see [LICENSE](LICENSE).
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+## From the founder
 
----
+I am Sumit, and I live in a small eastern Himalayan village in India. I mentor/co-mentor hundreds of folks each month about how to use coding agents. I run a digital nomad space in our village. Come, say Hi!
 
-**Made for people who want to take control of their personal data and extract meaningful insights from their digital lives.**
+- [Curry Hostel](https://www.instagram.com/curryhostel)
+- [Me on YouTube](https://www.youtube.com/@nomadsome)
+- [Sponsor me on GitHub](https://github.com/sponsors/brainless)
