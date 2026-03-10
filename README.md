@@ -30,7 +30,13 @@ Browse and manage the generated templates. Each template captures how to extract
 
 Once templates are in place, dwata extracts financial transactions from matching emails automatically.
 
+> [!WARNING]
+> There are quite a few issues with the extraction logic
+> I am working on it actively
+
 ![Financial transactions](docs/assets/dwata_financial_transactions.png)
+
+![Financial bills](docs/assets/dwata_financial_bills.png)
 
 ### LLM settings
 
