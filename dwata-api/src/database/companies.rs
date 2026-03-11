@@ -7,7 +7,7 @@ pub async fn insert_company(
     name: String,
     description: Option<String>,
     industry: Option<String>,
-    location: Option<String>,
+    location_id: Option<i64>,
     website: Option<String>,
     linkedin_url: Option<String>,
 ) -> Result<i64> {
@@ -16,14 +16,14 @@ pub async fn insert_company(
 
     let id: i64 = conn.query_row(
         "INSERT INTO companies
-         (name, description, industry, location, website, linkedin_url, created_at, updated_at)
+         (name, description, industry, location_id, website, linkedin_url, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
             &name,
             description.as_ref(),
             industry.as_ref(),
-            location.as_ref(),
+            location_id,
             website.as_ref(),
             linkedin_url.as_ref(),
             now,
@@ -38,13 +38,13 @@ pub async fn insert_company(
 pub async fn get_or_create_company(
     conn: AsyncDbConnection,
     name: String,
-    location: Option<String>,
+    location_id: Option<i64>,
 ) -> Result<i64> {
     {
         let locked_conn = conn.lock().await;
         let result: Result<i64, _> = locked_conn.query_row(
-            "SELECT id FROM companies WHERE name = ? AND (location = ? OR location IS NULL AND ? IS NULL)",
-            rusqlite::params![&name, location.as_ref(), location.as_ref()],
+            "SELECT id FROM companies WHERE name = ? AND (location_id = ? OR location_id IS NULL AND ? IS NULL)",
+            rusqlite::params![&name, location_id, location_id],
             |row| row.get(0),
         );
 
@@ -53,14 +53,14 @@ pub async fn get_or_create_company(
         }
     }
 
-    insert_company(conn, name, None, None, location, None, None).await
+    insert_company(conn, name, None, None, location_id, None, None).await
 }
 
 pub async fn get_company(conn: AsyncDbConnection, id: i64) -> Result<Company> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, industry, location, website, linkedin_url,
+        "SELECT id, name, description, industry, location_id, website, linkedin_url,
                 created_at, updated_at
          FROM companies
          WHERE id = ?",
@@ -72,7 +72,7 @@ pub async fn get_company(conn: AsyncDbConnection, id: i64) -> Result<Company> {
             name: row.get(1)?,
             description: row.get(2)?,
             industry: row.get(3)?,
-            location: row.get(4)?,
+            location_id: row.get(4)?,
             website: row.get(5)?,
             linkedin_url: row.get(6)?,
             created_at: row.get(7)?,

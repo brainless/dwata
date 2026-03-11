@@ -8,7 +8,7 @@ pub async fn insert_event(
     name: String,
     description: Option<String>,
     event_date: i64,
-    location: Option<String>,
+    location_id: Option<i64>,
     attendees: Vec<String>,
 ) -> Result<i64> {
     let conn = conn.lock().await;
@@ -18,7 +18,7 @@ pub async fn insert_event(
 
     let id: i64 = conn.query_row(
         "INSERT INTO events
-         (email_id, name, description, event_date, location, attendees, created_at, updated_at)
+         (email_id, name, description, event_date, location_id, attendees, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
@@ -26,7 +26,7 @@ pub async fn insert_event(
             &name,
             description.as_ref(),
             event_date,
-            location.as_ref(),
+            location_id,
             &attendees_json,
             now,
             now
@@ -41,7 +41,7 @@ pub async fn get_event(conn: AsyncDbConnection, id: i64) -> Result<Event> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, email_id, name, description, event_date, location, attendees,
+        "SELECT id, email_id, name, description, event_date, location_id, attendees,
                 project_id, task_id, created_at, updated_at
          FROM events
          WHERE id = ?",
@@ -58,7 +58,7 @@ pub async fn get_event(conn: AsyncDbConnection, id: i64) -> Result<Event> {
             name: row.get(2)?,
             description: row.get(3)?,
             event_date: row.get(4)?,
-            location: row.get(5)?,
+            location_id: row.get(5)?,
             attendees,
             project_id: row.get(7)?,
             task_id: row.get(8)?,

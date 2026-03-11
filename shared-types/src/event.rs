@@ -9,7 +9,7 @@ pub struct Event {
     pub name: String,
     pub description: Option<String>,
     pub event_date: i64, // Unix timestamp
-    pub location: Option<String>,
+    pub location_id: Option<i64>,
     #[ts(skip)]
     pub attendees: serde_json::Value, // Array of email addresses
     pub project_id: Option<i64>,
@@ -24,7 +24,7 @@ pub struct CreateEventRequest {
     pub name: String,
     pub description: Option<String>,
     pub event_date: i64,
-    pub location: Option<String>,
+    pub location_id: Option<i64>,
     pub attendees: Vec<String>,
 }
 
@@ -34,7 +34,7 @@ pub struct UpdateEventRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub event_date: Option<i64>,
-    pub location: Option<String>,
+    pub location_id: Option<i64>,
     pub attendees: Option<Vec<String>>,
 }
 

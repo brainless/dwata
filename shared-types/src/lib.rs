@@ -13,6 +13,7 @@ pub mod financial;
 pub mod financial_template;
 pub mod folder;
 pub mod label;
+pub mod location;
 pub mod ollama;
 pub mod project;
 pub mod search;
@@ -64,6 +65,7 @@ pub use financial_template::{
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
+pub use location::{CreateLocationRequest, Location, LocationsResponse, UpdateLocationRequest};
 pub use ollama::{
     OllamaModelDetails, OllamaModelInfo, OllamaModelsResponse, OllamaPullModelRequest,
     OllamaPullModelResponse, OllamaStatusResponse,
