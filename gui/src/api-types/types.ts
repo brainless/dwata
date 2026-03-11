@@ -472,7 +472,7 @@ import type { EmailLabel } from "./EmailLabel";
 export type ListLabelsResponse = { labels: Array<EmailLabel>, };
 
 
-export type DataType = "project" | "task" | "event" | "contact" | "location" | "date" | "priority" | "status" | "company" | "position";
+export type DataType = "project" | "task" | "event" | "contact" | "location" | "date" | "priority" | "status" | "company";
 
 
 export type ExtractionMethod = "attachment-parsing" | "pattern-based" | "gliner-ner" | "bert-ner" | "llm-based" | "hybrid";
@@ -491,11 +491,10 @@ import type { ExtractedCompany } from "./ExtractedCompany";
 import type { ExtractedContact } from "./ExtractedContact";
 import type { ExtractedEvent } from "./ExtractedEvent";
 import type { ExtractedLocation } from "./ExtractedLocation";
-import type { ExtractedPosition } from "./ExtractedPosition";
 import type { ExtractedProject } from "./ExtractedProject";
 import type { ExtractedTask } from "./ExtractedTask";
 
-export type ExtractedEntity = { "type": "Project", "data": ExtractedProject } | { "type": "Task", "data": ExtractedTask } | { "type": "Event", "data": ExtractedEvent } | { "type": "Contact", "data": ExtractedContact } | { "type": "Location", "data": ExtractedLocation } | { "type": "Company", "data": ExtractedCompany } | { "type": "Position", "data": ExtractedPosition };
+export type ExtractedEntity = { "type": "Project", "data": ExtractedProject } | { "type": "Task", "data": ExtractedTask } | { "type": "Event", "data": ExtractedEvent } | { "type": "Contact", "data": ExtractedContact } | { "type": "Location", "data": ExtractedLocation } | { "type": "Company", "data": ExtractedCompany };
 
 
 import type { ProjectStatus } from "./ProjectStatus";
@@ -578,7 +577,7 @@ export type ExtractionSourceType = "email-attachment" | "local-file" | "local-ar
 export type ExtractorType = "attachment-parser" | "linked-in-archive" | "gliner-ner" | "llm-based";
 
 
-export type ExtractionProgress = { total_items: bigint, processed_items: bigint, extracted_entities: bigint, failed_items: bigint, events_extracted: bigint, contacts_extracted: bigint, companies_extracted: bigint, positions_extracted: bigint, percent_complete: number, };
+export type ExtractionProgress = { total_items: bigint, processed_items: bigint, extracted_entities: bigint, failed_items: bigint, events_extracted: bigint, contacts_extracted: bigint, companies_extracted: bigint, percent_complete: number, };
 
 
 import type { ArchiveType } from "./ArchiveType";

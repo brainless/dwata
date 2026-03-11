@@ -13,7 +13,6 @@ pub mod folders;
 pub mod labels;
 pub mod linkedin_connections;
 pub mod models;
-pub mod positions;
 pub mod queries;
 
 mod embedded {

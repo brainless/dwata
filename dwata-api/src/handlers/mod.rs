@@ -10,5 +10,4 @@ pub mod folders;
 pub mod labels;
 pub mod oauth;
 pub mod ollama;
-pub mod positions;
 pub mod settings;

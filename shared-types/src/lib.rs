@@ -14,7 +14,6 @@ pub mod financial_template;
 pub mod folder;
 pub mod label;
 pub mod ollama;
-pub mod position;
 pub mod project;
 pub mod search;
 pub mod session;
@@ -69,7 +68,6 @@ pub use ollama::{
     OllamaModelDetails, OllamaModelInfo, OllamaModelsResponse, OllamaPullModelRequest,
     OllamaPullModelResponse, OllamaStatusResponse,
 };
-pub use position::{CreatePositionRequest, Position, PositionsResponse};
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
 };

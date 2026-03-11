@@ -628,18 +628,6 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::companies::get_company),
             )
             .route(
-                "/api/positions",
-                web::get().to(handlers::positions::list_positions),
-            )
-            .route(
-                "/api/positions/{id}",
-                web::get().to(handlers::positions::get_position),
-            )
-            .route(
-                "/api/contacts/{id}/positions",
-                web::get().to(handlers::positions::list_contact_positions),
-            )
-            .route(
                 "/api/financial/transactions",
                 web::get().to(handlers::financial::list_transactions),
             )
