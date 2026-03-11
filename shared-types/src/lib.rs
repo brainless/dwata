@@ -9,8 +9,6 @@ pub mod document;
 pub mod download;
 pub mod email;
 pub mod event;
-pub mod extraction;
-pub mod extraction_job;
 pub mod financial;
 pub mod financial_template;
 pub mod folder;
@@ -50,11 +48,6 @@ pub use email::{
     EmailsByIdsResponse, ListEmailsRequest, ListEmailsResponse,
 };
 pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
-pub use extraction_job::{
-    ArchiveType, AttachmentExtractionFilter, CreateExtractionJobRequest, ExtractionJob,
-    ExtractionJobListResponse, ExtractionJobStatus, ExtractionProgress, ExtractionSourceConfig,
-    ExtractionSourceType, ExtractorType,
-};
 pub use financial::{
     CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialPagination,
     FinancialSummary, ListFinancialBillsResponse,
@@ -96,9 +89,6 @@ pub use task::{
 };
 pub use transaction::{DataSourceType, Transaction, TransactionCategory, TransactionStatus};
 pub use vendor::{Vendor, VendorType};
-
-// Re-export extraction types
-pub use extraction::*;
 
 /// Error response for API endpoints
 #[derive(Debug, Serialize, Deserialize)]

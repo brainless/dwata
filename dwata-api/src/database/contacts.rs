@@ -2,16 +2,13 @@ use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use shared_types::Contact;
 
-pub async fn insert_contact_from_extraction(
+pub async fn insert_contact(
     conn: AsyncDbConnection,
-    extraction_job_id: i64,
     email_id: Option<i64>,
     name: String,
     email: Option<String>,
     phone: Option<String>,
     organization: Option<String>,
-    confidence: f32,
-    requires_review: bool,
 ) -> Result<i64> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp();
@@ -33,19 +30,15 @@ pub async fn insert_contact_from_extraction(
 
     let id: i64 = conn.query_row(
         "INSERT INTO contacts
-         (extraction_job_id, email_id, name, email, phone, organization,
-          confidence, requires_review, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (email_id, name, email, phone, organization, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
-            extraction_job_id,
             email_id,
             &name,
             email.as_ref(),
             phone.as_ref(),
             organization.as_ref(),
-            confidence,
-            requires_review,
             now,
             now
         ],
@@ -59,9 +52,7 @@ pub async fn get_contact(conn: AsyncDbConnection, id: i64) -> Result<Contact> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, extraction_job_id, email_id, name, email, phone, organization,
-                confidence, requires_review, is_confirmed, is_duplicate, merged_into_contact_id,
-                created_at, updated_at
+        "SELECT id, email_id, name, email, phone, organization, created_at, updated_at
          FROM contacts
          WHERE id = ?",
     )?;
@@ -69,19 +60,13 @@ pub async fn get_contact(conn: AsyncDbConnection, id: i64) -> Result<Contact> {
     stmt.query_row([id], |row| {
         Ok(Contact {
             id: row.get(0)?,
-            extraction_job_id: row.get(1)?,
-            email_id: row.get(2)?,
-            name: row.get(3)?,
-            email: row.get(4)?,
-            phone: row.get(5)?,
-            organization: row.get(6)?,
-            confidence: row.get(7)?,
-            requires_review: row.get(8)?,
-            is_confirmed: row.get(9)?,
-            is_duplicate: row.get(10)?,
-            merged_into_contact_id: row.get(11)?,
-            created_at: row.get(12)?,
-            updated_at: row.get(13)?,
+            email_id: row.get(1)?,
+            name: row.get(2)?,
+            email: row.get(3)?,
+            phone: row.get(4)?,
+            organization: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
         })
     })
     .map_err(|e| anyhow::anyhow!("Failed to get contact: {}", e))

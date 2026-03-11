@@ -2,17 +2,14 @@ use crate::database::AsyncDbConnection;
 use anyhow::Result;
 use shared_types::Event;
 
-pub async fn insert_event_from_extraction(
+pub async fn insert_event(
     conn: AsyncDbConnection,
-    extraction_job_id: i64,
     email_id: Option<i64>,
     name: String,
     description: Option<String>,
     event_date: i64,
     location: Option<String>,
     attendees: Vec<String>,
-    confidence: f32,
-    requires_review: bool,
 ) -> Result<i64> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp();
@@ -21,20 +18,16 @@ pub async fn insert_event_from_extraction(
 
     let id: i64 = conn.query_row(
         "INSERT INTO events
-         (extraction_job_id, email_id, name, description, event_date, location, attendees,
-          confidence, requires_review, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (email_id, name, description, event_date, location, attendees, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
-            extraction_job_id,
             email_id,
             &name,
             description.as_ref(),
             event_date,
             location.as_ref(),
             &attendees_json,
-            confidence,
-            requires_review,
             now,
             now
         ],
@@ -48,34 +41,29 @@ pub async fn get_event(conn: AsyncDbConnection, id: i64) -> Result<Event> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, extraction_job_id, email_id, name, description, event_date, location,
-                attendees, confidence, requires_review, is_confirmed, project_id, task_id,
-                created_at, updated_at
+        "SELECT id, email_id, name, description, event_date, location, attendees,
+                project_id, task_id, created_at, updated_at
          FROM events
          WHERE id = ?",
     )?;
 
     stmt.query_row([id], |row| {
-        let attendees_json: String = row.get(7)?;
+        let attendees_json: String = row.get(6)?;
         let attendees: serde_json::Value =
             serde_json::from_str(&attendees_json).unwrap_or(serde_json::json!([]));
 
         Ok(Event {
             id: row.get(0)?,
-            extraction_job_id: row.get(1)?,
-            email_id: row.get(2)?,
-            name: row.get(3)?,
-            description: row.get(4)?,
-            event_date: row.get(5)?,
-            location: row.get(6)?,
+            email_id: row.get(1)?,
+            name: row.get(2)?,
+            description: row.get(3)?,
+            event_date: row.get(4)?,
+            location: row.get(5)?,
             attendees,
-            confidence: row.get(8)?,
-            requires_review: row.get(9)?,
-            is_confirmed: row.get(10)?,
-            project_id: row.get(11)?,
-            task_id: row.get(12)?,
-            created_at: row.get(13)?,
-            updated_at: row.get(14)?,
+            project_id: row.get(7)?,
+            task_id: row.get(8)?,
+            created_at: row.get(9)?,
+            updated_at: row.get(10)?,
         })
     })
     .map_err(|e| anyhow::anyhow!("Failed to get event: {}", e))

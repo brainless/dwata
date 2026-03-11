@@ -113,36 +113,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(ListLabelsRequest::export_to_string()?));
     types.push(clean_type(ListLabelsResponse::export_to_string()?));
 
-    // Extraction types
-    types.push(clean_type(DataType::export_to_string()?));
-    types.push(clean_type(ExtractionMethod::export_to_string()?));
-    types.push(clean_type(Attachment::export_to_string()?));
-    types.push(clean_type(UserPreferences::export_to_string()?));
-    types.push(clean_type(ExtractedEntity::export_to_string()?));
-    types.push(clean_type(ExtractedProject::export_to_string()?));
-    types.push(clean_type(ExtractedTask::export_to_string()?));
-    types.push(clean_type(ExtractedEvent::export_to_string()?));
-    types.push(clean_type(ExtractedContact::export_to_string()?));
-    types.push(clean_type(ExtractedLocation::export_to_string()?));
-    types.push(clean_type(TextSpan::export_to_string()?));
-    types.push(clean_type(TextSource::export_to_string()?));
-    types.push(clean_type(Relationship::export_to_string()?));
-    types.push(clean_type(RelationType::export_to_string()?));
-    types.push(clean_type(EntityRef::export_to_string()?));
-    types.push(clean_type(Ambiguity::export_to_string()?));
-    types.push(clean_type(AmbiguityOption::export_to_string()?));
-
-    // Extraction Job types
-    types.push(clean_type(ExtractionJob::export_to_string()?));
-    types.push(clean_type(ExtractionJobStatus::export_to_string()?));
-    types.push(clean_type(ExtractionSourceType::export_to_string()?));
-    types.push(clean_type(ExtractorType::export_to_string()?));
-    types.push(clean_type(ExtractionProgress::export_to_string()?));
-    types.push(clean_type(ExtractionSourceConfig::export_to_string()?));
-    types.push(clean_type(AttachmentExtractionFilter::export_to_string()?));
-    types.push(clean_type(CreateExtractionJobRequest::export_to_string()?));
-    types.push(clean_type(ExtractionJobListResponse::export_to_string()?));
-
     // Contact types
     types.push(clean_type(Contact::export_to_string()?));
     types.push(clean_type(CreateContactRequest::export_to_string()?));

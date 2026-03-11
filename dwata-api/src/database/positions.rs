@@ -4,7 +4,6 @@ use shared_types::Position;
 
 pub async fn insert_position(
     conn: AsyncDbConnection,
-    extraction_job_id: Option<i64>,
     contact_id: i64,
     company_id: i64,
     title: String,
@@ -15,21 +14,18 @@ pub async fn insert_position(
     started_date: Option<i64>,
     finished_date: Option<i64>,
     is_current: bool,
-    confidence: Option<f32>,
-    requires_review: bool,
 ) -> Result<i64> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp();
 
     let id: i64 = conn.query_row(
         "INSERT INTO positions
-         (extraction_job_id, contact_id, company_id, title, description, location,
+         (contact_id, company_id, title, description, location,
           started_on, finished_on, started_date, finished_date, is_current,
-          confidence, requires_review, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
-            extraction_job_id,
             contact_id,
             company_id,
             &title,
@@ -40,8 +36,6 @@ pub async fn insert_position(
             started_date,
             finished_date,
             is_current,
-            confidence,
-            requires_review,
             now,
             now
         ],
@@ -55,9 +49,9 @@ pub async fn get_position(conn: AsyncDbConnection, id: i64) -> Result<Position> 
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, extraction_job_id, contact_id, company_id, title, description, location,
+        "SELECT id, contact_id, company_id, title, description, location,
                 started_on, finished_on, started_date, finished_date, is_current,
-                confidence, requires_review, is_confirmed, created_at, updated_at
+                created_at, updated_at
          FROM positions
          WHERE id = ?",
     )?;
@@ -65,22 +59,18 @@ pub async fn get_position(conn: AsyncDbConnection, id: i64) -> Result<Position> 
     stmt.query_row([id], |row| {
         Ok(Position {
             id: row.get(0)?,
-            extraction_job_id: row.get(1)?,
-            contact_id: row.get(2)?,
-            company_id: row.get(3)?,
-            title: row.get(4)?,
-            description: row.get(5)?,
-            location: row.get(6)?,
-            started_on: row.get(7)?,
-            finished_on: row.get(8)?,
-            started_date: row.get(9)?,
-            finished_date: row.get(10)?,
-            is_current: row.get(11)?,
-            confidence: row.get(12)?,
-            requires_review: row.get(13)?,
-            is_confirmed: row.get(14)?,
-            created_at: row.get(15)?,
-            updated_at: row.get(16)?,
+            contact_id: row.get(1)?,
+            company_id: row.get(2)?,
+            title: row.get(3)?,
+            description: row.get(4)?,
+            location: row.get(5)?,
+            started_on: row.get(6)?,
+            finished_on: row.get(7)?,
+            started_date: row.get(8)?,
+            finished_date: row.get(9)?,
+            is_current: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
         })
     })
     .map_err(|e| anyhow::anyhow!("Failed to get position: {}", e))

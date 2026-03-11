@@ -326,11 +326,6 @@ async fn main() -> std::io::Result<()> {
         keyring_service.clone(),
     ));
 
-    // Initialize extraction manager
-    let extraction_manager = Arc::new(jobs::extraction_manager::ExtractionManager::new(
-        db.async_connection.clone(),
-    ));
-
     // Restore interrupted jobs on startup
     if let Err(e) = download_manager.restore_interrupted_jobs().await {
         tracing::warn!("Failed to restore interrupted jobs: {}", e);
@@ -474,7 +469,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(db.clone()))
             .app_data(web::Data::new(settings_state.clone()))
             .app_data(web::Data::new(download_manager_for_server.clone()))
-            .app_data(web::Data::new(extraction_manager.clone()))
             .app_data(web::Data::new(oauth_client.clone()))
             .app_data(web::Data::new(state_manager.clone()))
             .app_data(web::Data::new(token_cache.clone()))
@@ -558,22 +552,6 @@ async fn main() -> std::io::Result<()> {
             .route(
                 "/api/downloads/{id}",
                 web::delete().to(handlers::downloads::delete_download_job),
-            )
-            .route(
-                "/api/extractions",
-                web::post().to(handlers::extraction_jobs::create_extraction_job),
-            )
-            .route(
-                "/api/extractions",
-                web::get().to(handlers::extraction_jobs::list_extraction_jobs),
-            )
-            .route(
-                "/api/extractions/{id}",
-                web::get().to(handlers::extraction_jobs::get_extraction_job),
-            )
-            .route(
-                "/api/extractions/{id}/start",
-                web::post().to(handlers::extraction_jobs::start_extraction),
             )
             .route("/api/emails", web::get().to(handlers::emails::list_emails))
             .route(

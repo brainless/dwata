@@ -5,7 +5,6 @@ use ts_rs::TS;
 #[ts(export)]
 pub struct Position {
     pub id: i64,
-    pub extraction_job_id: Option<i64>,
     pub contact_id: i64,
     pub company_id: i64,
     pub title: String,
@@ -16,9 +15,6 @@ pub struct Position {
     pub started_date: Option<i64>,
     pub finished_date: Option<i64>,
     pub is_current: bool,
-    pub confidence: Option<f32>,
-    pub requires_review: bool,
-    pub is_confirmed: bool,
     pub created_at: i64,
     pub updated_at: i64,
 }

@@ -16,7 +16,6 @@ nocodo-llm-sdk = { package = "llm-sdk", path = "../../llm-sdk" }
 dwata-agents = { path = "../dwata-agents" }
 # manager-tools.workspace = true
 shared-types = { path = "../shared-types" }
-extractors = { path = "../extractors" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 sqlx = { workspace = true, features = ["sqlite", "macros"] }
 refinery = { version = "0.9.0", features = ["rusqlite"] }
