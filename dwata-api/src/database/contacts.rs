@@ -8,7 +8,7 @@ pub async fn insert_contact(
     name: String,
     email: Option<String>,
     phone: Option<String>,
-    organization: Option<String>,
+    company_id: Option<i64>,
 ) -> Result<i64> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp();
@@ -30,7 +30,7 @@ pub async fn insert_contact(
 
     let id: i64 = conn.query_row(
         "INSERT INTO contacts
-         (email_id, name, email, phone, organization, created_at, updated_at)
+         (email_id, name, email, phone, company_id, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
@@ -38,7 +38,7 @@ pub async fn insert_contact(
             &name,
             email.as_ref(),
             phone.as_ref(),
-            organization.as_ref(),
+            company_id,
             now,
             now
         ],
@@ -52,7 +52,7 @@ pub async fn get_contact(conn: AsyncDbConnection, id: i64) -> Result<Contact> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, email_id, name, email, phone, organization, created_at, updated_at
+        "SELECT id, email_id, name, email, phone, company_id, created_at, updated_at
          FROM contacts
          WHERE id = ?",
     )?;
@@ -64,7 +64,7 @@ pub async fn get_contact(conn: AsyncDbConnection, id: i64) -> Result<Contact> {
             name: row.get(2)?,
             email: row.get(3)?,
             phone: row.get(4)?,
-            organization: row.get(5)?,
+            company_id: row.get(5)?,
             created_at: row.get(6)?,
             updated_at: row.get(7)?,
         })

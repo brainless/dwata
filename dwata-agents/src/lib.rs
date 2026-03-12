@@ -1,4 +1,5 @@
 pub mod date_parser;
+pub mod email_entity_extractor;
 pub mod llm_template_variable_extractor;
 pub mod statement_extractor;
 pub mod storage;
@@ -7,6 +8,7 @@ pub mod template_detection;
 pub mod template_document_labeler;
 pub mod template_value_extractor;
 
+pub use email_entity_extractor::{EmailEntityExtractorAgent, ExtractedEntitiesParams};
 pub use llm_template_variable_extractor::{
     LlmTemplateVariableExtractorAgent, TemplateVariable, TemplateVariableParams,
     TemplateVariableType,

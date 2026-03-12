@@ -9,7 +9,7 @@ pub struct Contact {
     pub name: String,
     pub email: Option<String>,
     pub phone: Option<String>,
-    pub organization: Option<String>,
+    pub company_id: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -20,7 +20,7 @@ pub struct CreateContactRequest {
     pub name: String,
     pub email: Option<String>,
     pub phone: Option<String>,
-    pub organization: Option<String>,
+    pub company_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -29,7 +29,7 @@ pub struct UpdateContactRequest {
     pub name: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
-    pub organization: Option<String>,
+    pub company_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize, TS)]
