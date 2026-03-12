@@ -90,7 +90,7 @@ pub async fn insert_financial_bill(pool: &SqlitePool, bill: &Bill) -> Result<i64
     let inserted_id = sqlx::query_scalar::<_, i64>(
         "INSERT OR IGNORE INTO financial_bills
          (data_source_type, data_source_id, template_id, document_type, status,
-          issuer_vendor_id, document_reference, total_amount, currency,
+          issuer_organisation_id, document_reference, total_amount, currency,
           issued_date_raw, issued_date, due_date_raw, due_date,
           billing_period_start_raw, billing_period_start,
           billing_period_end_raw, billing_period_end,
@@ -103,7 +103,7 @@ pub async fn insert_financial_bill(pool: &SqlitePool, bill: &Bill) -> Result<i64
     .bind(None::<i64>)
     .bind(document_type)
     .bind(status)
-    .bind(bill.issuer_vendor_id)
+    .bind(bill.issuer_organisation_id)
     .bind(bill.document_reference.as_deref())
     .bind(bill.total_amount)
     .bind(bill.currency.as_deref())
@@ -190,7 +190,7 @@ pub async fn list_financial_bills_filtered(
 
     let mut data_qb = QueryBuilder::<Sqlite>::new(
         "SELECT fb.id, fb.data_source_type, fb.data_source_id, fb.document_type, fb.status,
-                fb.issuer_vendor_id, fb.document_reference, fb.total_amount, fb.currency,
+                fb.issuer_organisation_id, fb.document_reference, fb.total_amount, fb.currency,
                 fb.issued_date_raw, fb.issued_date, fb.due_date_raw, fb.due_date,
                 fb.billing_period_start_raw, fb.billing_period_start,
                 fb.billing_period_end_raw, fb.billing_period_end,
@@ -240,7 +240,8 @@ pub async fn list_financial_bills_filtered(
                 document_type: document_type_from_str(&document_type_str),
                 status: bill_status_from_str(&status_str),
                 category: None,
-                issuer_vendor_id: row.try_get(5)?,
+                issuer_organisation_id: row.try_get(5)?,
+                subscription_id: None,
                 document_reference: row.try_get(6)?,
                 total_amount: row.try_get(7)?,
                 currency: row.try_get(8)?,

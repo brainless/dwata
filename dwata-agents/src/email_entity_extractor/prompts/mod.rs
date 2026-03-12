@@ -4,41 +4,46 @@ pub fn build_system_prompt(email_subject: &str, email_body: &str) -> String {
 
 ## Entity Types
 
-Extract instances of these entity types — only include types that are actually present in the email:
+Extract instances of these entity types — only include types actually present in the email:
 
 **Location** — Physical addresses, cities, countries
   Fields: address_line1, address_line2, city, region, country_code (ISO alpha-2/3), postal_code
 
-**Company** — Companies, organisations, institutions
-  Fields: name, industry, website
+**Organisation** — Any company, institution, bank, vendor, service provider, government body, or other organisation
+  Fields: name, industry, website, role (one of: business, bank, insurer, payment_platform, employer, utility, service_provider, government, educational, non_profit, unknown)
   FK: location_id → Location.id
 
-**Contact** — Named individuals (sender, recipient, any person mentioned)
+**Person** — Named individuals (sender, recipient, any person mentioned)
   Fields: name, email, phone
-  FK: company_id → Company.id
-
-**Vendor** — Merchants, banks, payment processors, service providers
-  Fields: vendor_name, vendor_type (one of: self_user, self_business, financial_instrument, merchant, employer, bank, individual, platform, unknown), vendor_external_id
+  FK: organisation_id → Organisation.id
 
 **Bill** — Invoices, bills, receipts, statements, payment requests
-  Fields: document_type (invoice/bill/bank_statement/receipt/tax_document/payment_confirmation), total_amount (numeric only, no currency symbol), currency (ISO code), issued_date (raw string), due_date (raw string), billing_period_start (raw string), billing_period_end (raw string), document_reference
-  FK: issuer_vendor_id → Vendor.id
+  Fields: document_type (invoice/bill/bank_statement/receipt/tax_document/payment_confirmation), total_amount (numeric only), currency (ISO code), issued_date (raw string), due_date (raw string), billing_period_start (raw string), billing_period_end (raw string), document_reference
+  FK: issuer_organisation_id → Organisation.id, subscription_id → Subscription.id (if recurring)
 
 **Transaction** — Confirmed payments or completed transfers
-  Fields: amount (numeric only, no currency symbol), currency (ISO code), transaction_date (raw string), transaction_reference
-  FK: payer_vendor_id → Vendor.id, payee_vendor_id → Vendor.id, bill_id → Bill.id
+  Fields: amount (numeric only), currency (ISO code), transaction_date (raw string), transaction_reference
+  FK: payer_organisation_id → Organisation.id, payee_organisation_id → Organisation.id, bill_id → Bill.id
+
+**Subscription** — Recurring service subscriptions (only extract if the email clearly describes a subscription, not just a renewal bill)
+  Fields: service_name, plan_name, billing_cycle (weekly/monthly/quarterly/semi_annual/annual/other), amount (numeric only), currency, next_billing_date (raw string), start_date (raw string)
+  FK: organisation_id → Organisation.id
+
+**Order** — E-commerce or product orders
+  Fields: order_reference, order_date (raw string), status (placed/confirmed/shipped/out_for_delivery/delivered/cancelled/returned/refunded/unknown), total_amount (numeric only), currency, items (list of product names/descriptions), tracking_number
+  FK: organisation_id → Organisation.id, transaction_id → Transaction.id
 
 **Event** — Meetings, appointments, scheduled calls
-  Fields: name, description, event_date (raw string), attendees (list of email addresses or names)
+  Fields: name, description, event_date (raw string), attendees (list of names or email addresses)
   FK: location_id → Location.id
 
 ## Rules
 
 1. Extract ALL entities you can find — be thorough
 2. Assign each entity a unique positive integer `id` — you choose the value
-3. Use FK fields to connect related entities (e.g. a Transaction's payee_vendor_id referencing a Vendor you extracted)
-4. For amount/total_amount: extract numeric value only, strip all currency symbols and codes
-5. For date fields: copy the raw string exactly as it appears in the email — do not reformat
+3. Use FK fields to connect related entities using those ids
+4. For amount/total_amount: numeric string only — strip all currency symbols and codes
+5. For all date fields: copy the raw string exactly as it appears — do not reformat
 6. Call `submit_entities` with all extracted entities now
 
 ## Email to extract from
@@ -53,7 +58,7 @@ Subject: {subject}
 
 pub fn build_confirmation_message(table: &str) -> String {
     format!(
-        "Here are the parsed entity values:\n\n{}\n\nPlease call `confirm_entities` with confirmed=true if these are correct, or call `submit_entities` again with any corrections.",
+        "Here are the parsed entity values:\n\n{}\n\nPlease call `confirm_entities` with confirmed=true if these are correct, or call `submit_entities` again with corrections.",
         table
     )
 }

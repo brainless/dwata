@@ -314,7 +314,7 @@ fn build_bill_from_fields(
         document_type: FinancialDocumentType::Bill,
         status,
         category: None,
-        issuer_vendor_id: None,
+        issuer_organisation_id: None,
         document_reference: fields.get("document_reference").cloned(),
         total_amount: Some(amount),
         currency: Some(
@@ -331,6 +331,7 @@ fn build_bill_from_fields(
         billing_period_start: None,
         billing_period_end_raw: None,
         billing_period_end: None,
+        subscription_id: None,
         created_at: now_s,
         updated_at: now_s,
     })

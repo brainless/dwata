@@ -58,7 +58,10 @@ pub struct Bill {
     pub document_type: FinancialDocumentType,
     pub status: BillStatus,
     pub category: Option<TransactionCategory>,
-    pub issuer_vendor_id: Option<i64>,
+    /// FK to the Organisation that issued this bill (replaces issuer_vendor_id)
+    pub issuer_organisation_id: Option<i64>,
+    /// FK to the Subscription this bill belongs to (if recurring)
+    pub subscription_id: Option<i64>,
     pub document_reference: Option<String>,
     pub total_amount: Option<f64>,
     pub currency: Option<String>,

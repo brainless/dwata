@@ -10,4 +10,6 @@ pub mod folders;
 pub mod labels;
 pub mod oauth;
 pub mod ollama;
+pub mod organisations;
+pub mod persons;
 pub mod settings;

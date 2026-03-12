@@ -13,6 +13,8 @@ pub mod folders;
 pub mod labels;
 pub mod linkedin_connections;
 pub mod models;
+pub mod organisations;
+pub mod persons;
 pub mod queries;
 
 mod embedded {

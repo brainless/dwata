@@ -15,10 +15,14 @@ pub mod folder;
 pub mod label;
 pub mod location;
 pub mod ollama;
+pub mod order;
+pub mod organisation;
+pub mod person;
 pub mod project;
 pub mod search;
 pub mod session;
 pub mod settings;
+pub mod subscription;
 pub mod task;
 pub mod transaction;
 pub mod vendor;
@@ -70,6 +74,12 @@ pub use ollama::{
     OllamaModelDetails, OllamaModelInfo, OllamaModelsResponse, OllamaPullModelRequest,
     OllamaPullModelResponse, OllamaStatusResponse,
 };
+pub use order::{Order, OrderStatus};
+pub use organisation::{
+    CreateOrganisationRequest, Organisation, OrganisationRole, OrganisationsResponse,
+    UpdateOrganisationRequest,
+};
+pub use person::{CreatePersonRequest, Person, PersonsResponse, UpdatePersonRequest};
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
 };
@@ -84,6 +94,7 @@ pub use settings::{
     AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse, UpdateAiProviderApiKeysRequest,
     UpdateOAuthClientAppsRequest,
 };
+pub use subscription::{BillingCycle, Subscription, SubscriptionStatus};
 pub use task::{
     CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
 };

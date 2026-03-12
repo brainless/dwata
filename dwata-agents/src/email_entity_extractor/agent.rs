@@ -1,5 +1,5 @@
 use crate::email_entity_extractor::types::{
-    parse_value, ConfirmEntitiesParams, ExtractedEntitiesParams, ParsedValue,
+    parse_value, ConfirmEntitiesParams, ExtractedEntitiesParams,
 };
 use crate::storage::{AgentStorage, Message};
 use nocodo_llm_sdk::client::LlmClient;
@@ -142,7 +142,7 @@ impl EmailEntityExtractorAgent {
                                 content: confirmation_msg,
                             })
                             .await?;
-                        break; // proceed to next loop iteration for confirmation
+                        break;
                     } else if tool_call.name() == "confirm_entities" {
                         let confirm: ConfirmEntitiesParams = tool_call.parse_arguments()?;
                         if confirm.confirmed {
@@ -173,7 +173,6 @@ impl EmailEntityExtractorAgent {
                     }
                 }
             } else {
-                // No tool call — nudge the model
                 self.storage
                     .create_message(Message {
                         id: None,
@@ -185,7 +184,6 @@ impl EmailEntityExtractorAgent {
                     .await?;
             }
 
-            // Safety: if we've burned all submit iterations stop
             if submit_count >= MAX_SUBMIT_ITERATIONS {
                 break;
             }
@@ -196,7 +194,7 @@ impl EmailEntityExtractorAgent {
 }
 
 // ---------------------------------------------------------------------------
-// Formatting helpers
+// Formatting helpers (used for the confirmation message sent back to the LLM)
 // ---------------------------------------------------------------------------
 
 fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
@@ -224,55 +222,33 @@ fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
         out.push('\n');
     }
 
-    if !params.companies.is_empty() {
-        out.push_str("### Companies\n");
-        out.push_str(&row("id", "name", "industry", "website", "location_id"));
+    if !params.organisations.is_empty() {
+        out.push_str("### Organisations\n");
+        out.push_str(&row("id", "name", "role", "website", "location_id"));
         out.push_str(&sep());
-        for c in &params.companies {
+        for o in &params.organisations {
             out.push_str(&row(
-                &c.id.to_string(),
-                &c.name,
-                opt(&c.industry),
-                opt(&c.website),
-                &c.location_id.map(|v| v.to_string()).unwrap_or_default(),
+                &o.id.to_string(),
+                &o.name,
+                opt(&o.role),
+                opt(&o.website),
+                &o.location_id.map(|v| v.to_string()).unwrap_or_default(),
             ));
         }
         out.push('\n');
     }
 
-    if !params.contacts.is_empty() {
-        out.push_str("### Contacts\n");
-        out.push_str(&row("id", "name", "email", "phone", "company_id"));
+    if !params.persons.is_empty() {
+        out.push_str("### Persons\n");
+        out.push_str(&row("id", "name", "email", "phone", "organisation_id"));
         out.push_str(&sep());
-        for c in &params.contacts {
+        for p in &params.persons {
             out.push_str(&row(
-                &c.id.to_string(),
-                &c.name,
-                opt(&c.email),
-                opt(&c.phone),
-                &c.company_id.map(|v| v.to_string()).unwrap_or_default(),
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !params.vendors.is_empty() {
-        out.push_str("### Vendors\n");
-        out.push_str(&row(
-            "id",
-            "vendor_name",
-            "vendor_type",
-            "vendor_external_id",
-            "",
-        ));
-        out.push_str(&sep());
-        for v in &params.vendors {
-            out.push_str(&row(
-                &v.id.to_string(),
-                &v.vendor_name,
-                &v.vendor_type,
-                opt(&v.vendor_external_id),
-                "",
+                &p.id.to_string(),
+                &p.name,
+                opt(&p.email),
+                opt(&p.phone),
+                &p.organisation_id.map(|v| v.to_string()).unwrap_or_default(),
             ));
         }
         out.push('\n');
@@ -316,7 +292,7 @@ fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
             "id",
             "amount (parsed)",
             "currency",
-            "transaction_date (parsed)",
+            "date (parsed)",
             "reference",
         ));
         out.push_str(&sep());
@@ -333,6 +309,60 @@ fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
                 &t.currency,
                 &date_parsed,
                 opt(&t.transaction_reference),
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !params.subscriptions.is_empty() {
+        out.push_str("### Subscriptions\n");
+        out.push_str(&row(
+            "id",
+            "service_name",
+            "plan_name",
+            "billing_cycle",
+            "amount (parsed)",
+        ));
+        out.push_str(&sep());
+        for s in &params.subscriptions {
+            let amount_parsed = s
+                .amount
+                .as_deref()
+                .map(|v| parse_value(v).to_string())
+                .unwrap_or_default();
+            out.push_str(&row(
+                &s.id.to_string(),
+                &s.service_name,
+                opt(&s.plan_name),
+                opt(&s.billing_cycle),
+                &amount_parsed,
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !params.orders.is_empty() {
+        out.push_str("### Orders\n");
+        out.push_str(&row(
+            "id",
+            "order_reference",
+            "status",
+            "total_amount (parsed)",
+            "tracking_number",
+        ));
+        out.push_str(&sep());
+        for o in &params.orders {
+            let amount_parsed = o
+                .total_amount
+                .as_deref()
+                .map(|v| parse_value(v).to_string())
+                .unwrap_or_default();
+            out.push_str(&row(
+                &o.id.to_string(),
+                opt(&o.order_reference),
+                opt(&o.status),
+                &amount_parsed,
+                opt(&o.tracking_number),
             ));
         }
         out.push('\n');

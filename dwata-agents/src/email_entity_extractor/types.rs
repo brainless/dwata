@@ -21,37 +21,29 @@ pub struct ExtractedLocation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExtractedCompany {
+pub struct ExtractedOrganisation {
     #[schemars(description = "Unique positive integer id you assign")]
     pub id: u32,
     pub name: String,
     pub industry: Option<String>,
     pub website: Option<String>,
-    #[schemars(description = "FK: id of an ExtractedLocation describing this company's address")]
+    #[schemars(
+        description = "Role of this organisation: business, bank, insurer, payment_platform, employer, utility, service_provider, government, educational, non_profit, unknown"
+    )]
+    pub role: Option<String>,
+    #[schemars(description = "FK: id of an ExtractedLocation for this organisation's address")]
     pub location_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExtractedContact {
+pub struct ExtractedPerson {
     #[schemars(description = "Unique positive integer id you assign")]
     pub id: u32,
     pub name: String,
     pub email: Option<String>,
     pub phone: Option<String>,
-    #[schemars(description = "FK: id of an ExtractedCompany this person belongs to")]
-    pub company_id: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExtractedVendor {
-    #[schemars(description = "Unique positive integer id you assign")]
-    pub id: u32,
-    pub vendor_name: String,
-    #[schemars(
-        description = "One of: self_user, self_business, financial_instrument, merchant, employer, bank, individual, platform, unknown"
-    )]
-    pub vendor_type: String,
-    pub vendor_external_id: Option<String>,
+    #[schemars(description = "FK: id of an ExtractedOrganisation this person belongs to")]
+    pub organisation_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -77,8 +69,12 @@ pub struct ExtractedBill {
     #[schemars(description = "Raw date string exactly as it appears in the email")]
     pub billing_period_end: Option<String>,
     pub document_reference: Option<String>,
-    #[schemars(description = "FK: id of an ExtractedVendor that issued this bill")]
-    pub issuer_vendor_id: Option<u32>,
+    #[schemars(description = "FK: id of an ExtractedOrganisation that issued this bill")]
+    pub issuer_organisation_id: Option<u32>,
+    #[schemars(
+        description = "FK: id of an ExtractedSubscription this bill belongs to (if this is a recurring charge)"
+    )]
+    pub subscription_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -94,12 +90,60 @@ pub struct ExtractedTransaction {
     #[schemars(description = "Raw date string exactly as it appears in the email")]
     pub transaction_date: Option<String>,
     pub transaction_reference: Option<String>,
-    #[schemars(description = "FK: id of an ExtractedVendor who paid")]
-    pub payer_vendor_id: Option<u32>,
-    #[schemars(description = "FK: id of an ExtractedVendor who received payment")]
-    pub payee_vendor_id: Option<u32>,
+    #[schemars(description = "FK: id of an ExtractedOrganisation who paid")]
+    pub payer_organisation_id: Option<u32>,
+    #[schemars(description = "FK: id of an ExtractedOrganisation who received payment")]
+    pub payee_organisation_id: Option<u32>,
     #[schemars(description = "FK: id of an ExtractedBill this transaction settles")]
     pub bill_id: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExtractedSubscription {
+    #[schemars(description = "Unique positive integer id you assign")]
+    pub id: u32,
+    #[schemars(description = "FK: id of an ExtractedOrganisation providing the service")]
+    pub organisation_id: Option<u32>,
+    #[schemars(description = "Human-readable service name, e.g. 'Netflix', 'GitHub Pro', 'AWS'")]
+    pub service_name: String,
+    #[schemars(
+        description = "Membership or plan tier, e.g. 'Premium', 'Pro', 'Family', 'Standard'"
+    )]
+    pub plan_name: Option<String>,
+    #[schemars(description = "One of: weekly, monthly, quarterly, semi_annual, annual, other")]
+    pub billing_cycle: Option<String>,
+    #[schemars(description = "Recurring charge amount — numeric string only, no currency symbol")]
+    pub amount: Option<String>,
+    #[schemars(description = "ISO currency code or symbol")]
+    pub currency: Option<String>,
+    #[schemars(description = "Raw date string exactly as it appears in the email")]
+    pub next_billing_date: Option<String>,
+    #[schemars(description = "Raw date string exactly as it appears in the email")]
+    pub start_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExtractedOrder {
+    #[schemars(description = "Unique positive integer id you assign")]
+    pub id: u32,
+    #[schemars(description = "FK: id of an ExtractedOrganisation that is the seller/merchant")]
+    pub organisation_id: Option<u32>,
+    pub order_reference: Option<String>,
+    #[schemars(description = "Raw date string exactly as it appears in the email")]
+    pub order_date: Option<String>,
+    #[schemars(
+        description = "One of: placed, confirmed, shipped, out_for_delivery, delivered, cancelled, returned, refunded, unknown"
+    )]
+    pub status: Option<String>,
+    #[schemars(description = "Numeric amount string only — strip currency symbols")]
+    pub total_amount: Option<String>,
+    #[schemars(description = "ISO currency code or symbol")]
+    pub currency: Option<String>,
+    #[schemars(description = "List of product/item names or descriptions from the email")]
+    pub items: Vec<String>,
+    pub tracking_number: Option<String>,
+    #[schemars(description = "FK: id of an ExtractedTransaction that paid for this order")]
+    pub transaction_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -121,23 +165,29 @@ pub struct ExtractedEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(
-    description = "All entities extracted from the email. Include only entities actually present in the email; omit empty lists."
+    description = "All entities extracted from the email. Include only entities actually present; omit empty lists."
 )]
 pub struct ExtractedEntitiesParams {
     #[schemars(
-        description = "Physical addresses, cities, or countries found in the email (used as FK targets by other entities)"
+        description = "Physical addresses or places mentioned (FK targets for other entities)"
     )]
     pub locations: Vec<ExtractedLocation>,
-    #[schemars(description = "Companies, organisations, or institutions mentioned")]
-    pub companies: Vec<ExtractedCompany>,
-    #[schemars(description = "Named individuals (sender, recipient, contacts)")]
-    pub contacts: Vec<ExtractedContact>,
-    #[schemars(description = "Vendors / merchants / banks / payment parties")]
-    pub vendors: Vec<ExtractedVendor>,
+    #[schemars(
+        description = "Companies, institutions, banks, vendors, service providers — any organisation"
+    )]
+    pub organisations: Vec<ExtractedOrganisation>,
+    #[schemars(description = "Named individuals — sender, recipient, or any person mentioned")]
+    pub persons: Vec<ExtractedPerson>,
     #[schemars(description = "Bills, invoices, receipts, or statements")]
     pub bills: Vec<ExtractedBill>,
-    #[schemars(description = "Completed or confirmed payment transactions")]
+    #[schemars(description = "Confirmed or completed payment transactions")]
     pub transactions: Vec<ExtractedTransaction>,
+    #[schemars(
+        description = "Recurring subscriptions to services — only create if clearly a new subscription, not just a renewal bill"
+    )]
+    pub subscriptions: Vec<ExtractedSubscription>,
+    #[schemars(description = "Product or e-commerce orders")]
+    pub orders: Vec<ExtractedOrder>,
     #[schemars(description = "Meetings, appointments, or scheduled events")]
     pub events: Vec<ExtractedEvent>,
 }
@@ -160,7 +210,7 @@ pub struct ConfirmEntitiesParams {
 }
 
 // ---------------------------------------------------------------------------
-// Parsed entity structs (agent-side only, not sent to LLM)
+// Parsed value types (agent-side only, not sent to LLM)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
@@ -184,16 +234,14 @@ impl std::fmt::Display for ParsedValue {
 
 pub fn parse_value(raw: &str) -> ParsedValue {
     let trimmed = raw.trim();
-    // Try int
     if let Ok(v) = trimmed.parse::<i64>() {
         return ParsedValue::Int(v);
     }
-    // Try float (remove commas first for numbers like "1,299.50")
+    // Strip commas before float parse (e.g. "1,299.50")
     let no_comma = trimmed.replace(',', "");
     if let Ok(v) = no_comma.parse::<f64>() {
         return ParsedValue::Float(v);
     }
-    // Try date via dateparser
     if let Ok(dt) = dateparser::parse(trimmed) {
         return ParsedValue::Date(dt.date_naive());
     }
