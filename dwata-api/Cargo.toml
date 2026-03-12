@@ -46,6 +46,7 @@ rust-embed = "8.5"
 webbrowser = "0.8.15"
 tantivy = "0.22"
 rayon = "1.10"
+async-trait = "0.1"
 
 [features]
 default = []

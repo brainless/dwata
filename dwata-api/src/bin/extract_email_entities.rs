@@ -6,9 +6,12 @@ use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
 use dwata_agents::EmailEntityExtractorAgent;
 use dwata_api::database::emails as emails_db;
 use dwata_api::helpers::database::initialize_database;
+use dwata_api::helpers::email_search_provider::TantivyEmailSearchProvider;
+use dwata_api::search::tantivy::open_or_create_index;
 use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
 use nocodo_llm_sdk::ollama::OllamaClient;
 use std::sync::Arc;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -22,8 +25,20 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env().add_directive("dwata_agents=info".parse()?))
+        .with_target(false)
+        .init();
+
     let args = Args::parse();
     let db = initialize_database().context("Failed to initialize database")?;
+
+    let search_index_path = dirs::data_local_dir()
+        .map(|d| d.join("dwata").join("tantivy-index"))
+        .context("Failed to resolve search index path")?;
+    let search_index = Arc::new(
+        open_or_create_index(&search_index_path).context("Failed to initialize search index")?,
+    );
 
     let email = emails_db::get_email(db.async_connection.clone(), args.email_id)
         .await
@@ -59,12 +74,19 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to create agent session")?;
 
+    let search_provider = Arc::new(TantivyEmailSearchProvider::new(
+        search_index,
+        db.async_connection.clone(),
+        email.from_address.clone(),
+    ));
+
     let agent = EmailEntityExtractorAgent::new(
         llm_client,
         storage,
         MINISTRAL_3_3B_ID.to_string(),
         simple.subject.clone(),
         simple.body.clone(),
+        Some(search_provider),
     );
 
     let entities = agent

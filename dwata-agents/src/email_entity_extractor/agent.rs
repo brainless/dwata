@@ -1,3 +1,4 @@
+use crate::email_entity_extractor::search::{EmailSearchProvider, SearchEmailsParams};
 use crate::email_entity_extractor::types::{
     parse_value, ConfirmEntitiesParams, ExtractedEntitiesParams,
 };
@@ -15,6 +16,7 @@ pub struct EmailEntityExtractorAgent {
     model: String,
     email_subject: String,
     email_body: String,
+    search_provider: Option<Arc<dyn EmailSearchProvider>>,
 }
 
 impl EmailEntityExtractorAgent {
@@ -24,6 +26,7 @@ impl EmailEntityExtractorAgent {
         model: String,
         email_subject: String,
         email_body: String,
+        search_provider: Option<Arc<dyn EmailSearchProvider>>,
     ) -> Self {
         Self {
             llm_client,
@@ -31,6 +34,7 @@ impl EmailEntityExtractorAgent {
             model,
             email_subject,
             email_body,
+            search_provider,
         }
     }
 
@@ -51,7 +55,19 @@ impl EmailEntityExtractorAgent {
             )
             .build();
 
-        let tools = vec![submit_tool, confirm_tool];
+        let search_tool = Tool::from_type::<SearchEmailsParams>()
+            .name("search_emails")
+            .description(
+                "Search previous emails from the same sender to gather extra context. \
+                 Use this when the current email references a prior order, subscription, \
+                 or relationship that needs clarification.",
+            )
+            .build();
+
+        let mut tools = vec![submit_tool, confirm_tool];
+        if self.search_provider.is_some() {
+            tools.push(search_tool);
+        }
 
         self.storage
             .create_message(Message {
@@ -118,7 +134,55 @@ impl EmailEntityExtractorAgent {
 
             if let Some(tool_calls) = response.tool_calls {
                 for tool_call in &tool_calls {
-                    if tool_call.name() == "submit_entities" {
+                    tracing::info!(
+                        tool = tool_call.name(),
+                        arguments = %tool_call.arguments(),
+                        "Model called tool"
+                    );
+                    if tool_call.name() == "search_emails" {
+                        let params: SearchEmailsParams = tool_call.parse_arguments()?;
+                        let result_text = match &self.search_provider {
+                            Some(provider) => match provider.search_emails(&params).await {
+                                Ok(results) if results.is_empty() => {
+                                    "No previous emails from this sender matched your query."
+                                        .to_string()
+                                }
+                                Ok(results) => {
+                                    let mut text = format!(
+                                        "Found {} previous email(s) from this sender:\n\n",
+                                        results.len()
+                                    );
+                                    for (i, r) in results.iter().enumerate() {
+                                        text.push_str(&format!(
+                                                "--- Email {} ---\nSubject: {}\nFrom: {}\nDate: {}\n\n{}\n\n",
+                                                i + 1,
+                                                r.subject,
+                                                r.from,
+                                                r.date.as_deref().unwrap_or("unknown"),
+                                                r.body_excerpt,
+                                            ));
+                                    }
+                                    text
+                                }
+                                Err(e) => {
+                                    tracing::warn!("search_emails tool failed: {}", e);
+                                    "Email search failed; proceed with available information."
+                                        .to_string()
+                                }
+                            },
+                            None => "Email search is not available.".to_string(),
+                        };
+
+                        self.storage
+                            .create_message(Message {
+                                id: None,
+                                session_id,
+                                role: "user".to_string(),
+                                content: result_text,
+                            })
+                            .await?;
+                        break;
+                    } else if tool_call.name() == "submit_entities" {
                         let params: ExtractedEntitiesParams = tool_call.parse_arguments()?;
                         submit_count += 1;
                         let table = build_parsed_table(&params);
