@@ -14,40 +14,12 @@ deadline_raw: string | null, deadline: bigint | null, notifications: number, cre
 export type ProjectStatus = "active" | "planning" | "on-hold" | "completed" | "archived";
 
 
-/**
- * Request to create a new project
- */
-export type CreateProjectRequest = { name: string, description: string, deadline_raw: string | null, };
-
-
-import type { ProjectStatus } from "./ProjectStatus";
-
-/**
- * Request to update a project
- */
-export type UpdateProjectRequest = { name: string | null, description: string | null, status: ProjectStatus | null, deadline_raw: string | null, };
-
-
-import type { Project } from "./Project";
-
-/**
- * Response containing a list of projects
- */
-export type ProjectsResponse = { projects: Array<Project>, };
-
-
-export type Event = { id: bigint, email_id: bigint | null, name: string, description: string | null, 
+export type Event = { id: bigint, name: string, description: string | null, 
 /**
  * Date of the event.
  * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
  */
 event_date_raw: string | null, event_date: bigint | null, location_id: bigint | null, project_id: bigint | null, task_id: bigint | null, created_at: bigint, updated_at: bigint, };
-
-
-export type CreateEventRequest = { name: string, description: string | null, event_date_raw: string | null, location_id: bigint | null, attendees: Array<string>, };
-
-
-export type UpdateEventRequest = { name: string | null, description: string | null, event_date_raw: string | null, location_id: bigint | null, attendees: Array<string> | null, };
 
 
 import type { Event } from "./Event";
@@ -68,31 +40,6 @@ export type TaskStatus = "todo" | "in-progress" | "review" | "done" | "cancelled
 
 
 export type TaskPriority = "low" | "medium" | "high" | "critical";
-
-
-import type { TaskPriority } from "./TaskPriority";
-
-/**
- * Request to create a new task
- */
-export type CreateTaskRequest = { project_id: bigint | null, title: string, description: string | null, priority: TaskPriority, due_date: string | null, };
-
-
-import type { TaskPriority } from "./TaskPriority";
-import type { TaskStatus } from "./TaskStatus";
-
-/**
- * Request to update a task
- */
-export type UpdateTaskRequest = { project_id: number | null, title: string | null, description: string | null, status: TaskStatus | null, priority: TaskPriority | null, due_date: string | null, };
-
-
-import type { Task } from "./Task";
-
-/**
- * Response containing a list of tasks
- */
-export type TasksResponse = { tasks: Array<Task>, };
 
 
 /**
@@ -120,14 +67,6 @@ export type SessionResponse = { id: bigint, agent_name: string, provider: string
  * Simplified session info for list views
  */
 export type SessionListItem = { id: bigint, agent_name: string, user_prompt: string, status: string, started_at: bigint, };
-
-
-import type { SessionListItem } from "./SessionListItem";
-
-/**
- * List of sessions response
- */
-export type SessionListResponse = { sessions: Array<SessionListItem>, };
 
 
 /**
@@ -233,14 +172,6 @@ validate_certs: boolean, };
 import type { ImapAccountSettings } from "./ImapAccountSettings";
 
 /**
- * Type-safe request for creating IMAP credentials
- */
-export type CreateImapCredentialRequest = { identifier: string, username: string, password: string, settings: ImapAccountSettings, notes: string | null, };
-
-
-import type { ImapAccountSettings } from "./ImapAccountSettings";
-
-/**
  * Extended credential metadata with parsed IMAP settings
  */
 export type ImapCredentialMetadata = { id: bigint, identifier: string, username: string, settings: ImapAccountSettings, notes: string | null, created_at: bigint, updated_at: bigint, last_accessed_at: bigint | null, is_active: boolean, };
@@ -302,14 +233,6 @@ description: string | null,
  * File type hint (e.g., "linkedin-archive", "email-export")
  */
 file_type: string | null, };
-
-
-import type { LocalFileSettings } from "./LocalFileSettings";
-
-/**
- * Type-safe request for creating local file credentials
- */
-export type CreateLocalFileCredentialRequest = { identifier: string, settings: LocalFileSettings, notes: string | null, };
 
 
 import type { DownloadJobStatus } from "./DownloadJobStatus";
@@ -436,30 +359,6 @@ import type { Email } from "./Email";
 export type EmailsByIdsResponse = { emails: Array<Email>, };
 
 
-export type DocumentSourceType = "imap-account" | "local-folder" | "cloud-drive" | "cloud-mailbox" | "manual-import";
-
-
-export type SourceAccessState = "accessible" | "offline" | "unreachable" | "disabled" | "unknown";
-
-
-export type SourcePermissionState = "granted" | "expired" | "revoked" | "insufficient-scope" | "forbidden" | "unknown";
-
-
-export type DocumentKind = "email" | "attachment" | "file";
-
-
-import type { DocumentSourceType } from "./DocumentSourceType";
-import type { SourceAccessState } from "./SourceAccessState";
-import type { SourcePermissionState } from "./SourcePermissionState";
-
-export type DocumentSource = { id: bigint, source_type: DocumentSourceType, display_name: string, credential_id: bigint | null, root_reference: string | null, access_state: SourceAccessState, permission_state: SourcePermissionState, access_checked_at: bigint | null, permission_checked_at: bigint | null, created_at: bigint, updated_at: bigint, };
-
-
-import type { DocumentKind } from "./DocumentKind";
-
-export type Document = { id: bigint, source_id: bigint, kind: DocumentKind, parent_document_id: bigint | null, email_id: bigint | null, attachment_id: bigint | null, title: string | null, canonical_name: string | null, mime_type: string | null, size_bytes: bigint | null, checksum_sha256: string | null, storage_path: string | null, external_uri: string | null, date_created: bigint | null, date_modified: bigint | null, date_received: bigint | null, indexed_at: bigint | null, created_at: bigint, updated_at: bigint, };
-
-
 export type EmailFolder = { id: bigint, credential_id: bigint, name: string, display_name: string | null, imap_path: string, folder_type: string | null, parent_folder_id: bigint | null, uidvalidity: number | null, last_synced_uid: number | null, oldest_synced_uid: number | null, total_messages: number, unread_messages: number, is_subscribed: boolean, is_selectable: boolean, created_at: bigint, updated_at: bigint, last_synced_at: bigint | null, };
 
 
@@ -485,12 +384,6 @@ export type ListLabelsResponse = { labels: Array<EmailLabel>, };
 export type Contact = { id: bigint, email_id: bigint | null, name: string, email: string | null, phone: string | null, company_id: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
-export type CreateContactRequest = { name: string, email: string | null, phone: string | null, company_id: bigint | null, };
-
-
-export type UpdateContactRequest = { name: string | null, email: string | null, phone: string | null, company_id: bigint | null, };
-
-
 import type { Contact } from "./Contact";
 
 export type ContactsResponse = { contacts: Array<Contact>, };
@@ -501,14 +394,6 @@ export type Location = { id: bigint, address_line1: string | null, address_line2
  * ISO 3166-1 alpha-2 or alpha-3 country code
  */
 country_code: string | null, postal_code: string | null, created_at: bigint, updated_at: bigint, };
-
-
-export type Company = { id: bigint, name: string, description: string | null, industry: string | null, location_id: bigint | null, website: string | null, linkedin_url: string | null, created_at: bigint, updated_at: bigint, };
-
-
-import type { Company } from "./Company";
-
-export type CompaniesResponse = { companies: Array<Company>, };
 
 
 export type Person = { id: bigint, email_id: bigint | null, name: string, email: string | null, phone: string | null, organisation_id: bigint | null, created_at: bigint, updated_at: bigint, };
@@ -522,12 +407,8 @@ export type PersonsResponse = { persons: Array<Person>, };
 export type DataSourceType = "email" | "imap" | "bank-statement" | "credit-card-statement" | "bank-feed" | "csv-upload" | "manual" | "unknown";
 
 
-export type FinancialDocumentType = "invoice" | "bill" | "bank-statement" | "receipt" | "tax-document" | "payment-confirmation";
-
-
 import type { BillStatus } from "./BillStatus";
 import type { DataSourceType } from "./DataSourceType";
-import type { FinancialDocumentType } from "./FinancialDocumentType";
 import type { TransactionCategory } from "./TransactionCategory";
 
 /**
@@ -543,9 +424,9 @@ import type { TransactionCategory } from "./TransactionCategory";
  *                    For date-only values, use 00:00:00 UTC for that calendar day.
  *                    Nullable when parsing fails.
  */
-export type Bill = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: BillStatus, category: TransactionCategory | null, 
+export type Bill = { id: bigint, data_source_type: DataSourceType, data_source_id: string, status: BillStatus, category: TransactionCategory | null, 
 /**
- * FK to the Organisation that issued this bill (replaces issuer_vendor_id)
+ * FK to the Organisation that issued this bill
  */
 issuer_organisation_id: bigint | null, 
 /**
@@ -587,7 +468,7 @@ import type { TransactionStatus } from "./TransactionStatus";
 /**
  * Financial transaction extracted from documents
  */
-export type Transaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, amount: number, currency: string, transaction_date_raw: string | null, transaction_date: bigint | null, status: TransactionStatus, payer_vendor_id: bigint | null, payee_vendor_id: bigint | null, transaction_reference: string | null, bill_id: bigint | null, source_file: string | null, extracted_at: bigint, };
+export type Transaction = { id: bigint, data_source_type: DataSourceType, data_source_id: string, amount: number, currency: string, transaction_date_raw: string | null, transaction_date: bigint | null, status: TransactionStatus, payer_organisation_id: bigint | null, payee_organisation_id: bigint | null, transaction_reference: string | null, bill_id: bigint | null, source_file: string | null, extracted_at: bigint, };
 
 
 export type TransactionCategory = "income" | "expense" | "investment" | "tax" | "utility" | "subscription" | "entertainment" | "travel" | "healthcare" | "education" | "other";
@@ -596,15 +477,84 @@ export type TransactionCategory = "income" | "expense" | "investment" | "tax" | 
 export type TransactionStatus = "paid" | "cancelled" | "refunded";
 
 
-import type { VendorType } from "./VendorType";
+import type { BillingCycle } from "./BillingCycle";
 
 /**
- * Transaction vendor entity
+ * A recurring subscription to a service extracted from emails
  */
-export type Vendor = { id: bigint, vendor_type: VendorType, vendor_name: string, vendor_external_id: string | null, created_at: bigint, updated_at: bigint, };
+export type Subscription = { id: bigint, 
+/**
+ * FK to the Organisation providing the service
+ */
+organisation_id: bigint | null, 
+/**
+ * Human-readable service name, e.g. 'Netflix', 'GitHub Pro', 'AWS'
+ */
+service_name: string, 
+/**
+ * Membership or plan tier, e.g. 'Premium', 'Pro', 'Family', 'Standard'
+ */
+plan_name: string | null, billing_cycle: BillingCycle | null, 
+/**
+ * Recurring charge amount
+ */
+amount: number | null, currency: string | null, 
+/**
+ * Raw date string exactly as it appeared in the email
+ */
+next_billing_date_raw: string | null, 
+/**
+ * Parsed UTC timestamp in milliseconds
+ */
+next_billing_date: bigint | null, 
+/**
+ * Raw date string exactly as it appeared in the email
+ */
+start_date_raw: string | null, 
+/**
+ * Parsed UTC timestamp in milliseconds
+ */
+start_date: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
-export type VendorType = "self-user" | "self-business" | "financial-instrument" | "merchant" | "employer" | "bank" | "individual" | "platform" | "unknown";
+export type BillingCycle = "weekly" | "monthly" | "quarterly" | "semi_annual" | "annual" | "other";
+
+
+import type { Subscription } from "./Subscription";
+
+export type SubscriptionsResponse = { subscriptions: Array<Subscription>, };
+
+
+import type { OrderStatus } from "./OrderStatus";
+
+/**
+ * A product or e-commerce order extracted from emails
+ */
+export type Order = { id: bigint, 
+/**
+ * FK to the Organisation that is the seller/merchant
+ */
+organisation_id: bigint | null, order_reference: string | null, 
+/**
+ * Raw date string exactly as it appeared in the email
+ */
+order_date_raw: string | null, 
+/**
+ * Parsed UTC timestamp in milliseconds
+ */
+order_date: bigint | null, status: OrderStatus | null, total_amount: number | null, currency: string | null, tracking_number: string | null, 
+/**
+ * FK to the Transaction that paid for this order
+ */
+transaction_id: bigint | null, created_at: bigint, updated_at: bigint, };
+
+
+export type OrderStatus = "placed" | "confirmed" | "shipped" | "out_for_delivery" | "delivered" | "cancelled" | "returned" | "refunded" | "unknown";
+
+
+import type { Order } from "./Order";
+
+export type OrdersResponse = { orders: Array<Order>, };
 
 
 /**
@@ -702,7 +652,7 @@ export type TemplateDetectionSenderDebug = { sender_email: string, rank: number,
 import type { TemplateDetectionSenderDebug } from "./TemplateDetectionSenderDebug";
 import type { TemplateDetectionSenderRank } from "./TemplateDetectionSenderRank";
 
-export type TemplateDetectionDebugState = { keyword_query: string, keyword_list: Array<string>, max_candidate_emails: number, matched_document_ids_count: number, sender_ranking: Array<TemplateDetectionSenderRank>, candidate_email_ids: Array<bigint>, sender_debug: Array<TemplateDetectionSenderDebug>, };
+export type TemplateDetectionDebugState = { keyword_query: string, keyword_list: Array<string>, max_candidate_emails: number, matched_email_ids_count: number, sender_ranking: Array<TemplateDetectionSenderRank>, candidate_email_ids: Array<bigint>, sender_debug: Array<TemplateDetectionSenderDebug>, };
 
 
 export type FinancialTemplateDetectionJobStatus = "idle" | "running" | "completed" | "failed";

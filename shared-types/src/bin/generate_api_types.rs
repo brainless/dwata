@@ -99,10 +99,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Location types
     types.push(clean_type(Location::export_to_string()?));
 
-    // Company types
-    types.push(clean_type(Company::export_to_string()?));
-    types.push(clean_type(CompaniesResponse::export_to_string()?));
-
     // Person types
     types.push(clean_type(Person::export_to_string()?));
     types.push(clean_type(PersonsResponse::export_to_string()?));

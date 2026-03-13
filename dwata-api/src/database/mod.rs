@@ -1,4 +1,3 @@
-pub mod companies;
 pub mod contact_links;
 pub mod contacts;
 pub mod credentials;

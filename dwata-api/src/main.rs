@@ -596,12 +596,12 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::contacts::get_contact_links),
             )
             .route(
-                "/api/companies",
-                web::get().to(handlers::companies::list_companies),
+                "/api/organisations",
+                web::get().to(handlers::organisations::list_organisations),
             )
             .route(
-                "/api/companies/{id}",
-                web::get().to(handlers::companies::get_company),
+                "/api/organisations/{id}",
+                web::get().to(handlers::organisations::get_organisation),
             )
             .route(
                 "/api/financial/transactions",

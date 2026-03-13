@@ -1,4 +1,3 @@
-pub mod companies;
 pub mod contacts;
 pub mod credentials;
 pub mod downloads;
