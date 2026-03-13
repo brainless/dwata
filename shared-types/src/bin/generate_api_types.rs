@@ -84,14 +84,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(EmailsByIdsRequest::export_to_string()?));
     types.push(clean_type(EmailsByIdsResponse::export_to_string()?));
 
-    // Document types
-    types.push(clean_type(DocumentSourceType::export_to_string()?));
-    types.push(clean_type(SourceAccessState::export_to_string()?));
-    types.push(clean_type(SourcePermissionState::export_to_string()?));
-    types.push(clean_type(DocumentKind::export_to_string()?));
-    types.push(clean_type(DocumentSource::export_to_string()?));
-    types.push(clean_type(Document::export_to_string()?));
-
     // Email Folder and Label types
     types.push(clean_type(EmailFolder::export_to_string()?));
     types.push(clean_type(ListFoldersRequest::export_to_string()?));

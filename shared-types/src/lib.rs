@@ -5,7 +5,6 @@ pub mod company;
 pub mod contact;
 pub mod contact_link;
 pub mod credential;
-pub mod document;
 pub mod download;
 pub mod email;
 pub mod event;
@@ -36,10 +35,7 @@ pub use credential::{
     CredentialType, ImapAccountSettings, ImapAuthMethod, ImapCredentialMetadata, PasswordResponse,
     SmtpAccountSettings, UpdateCredentialRequest,
 };
-pub use document::{
-    Document, DocumentCursor, DocumentKind, DocumentSortBy, DocumentSource, DocumentSourceType,
-    ListDocumentsRequest, ListDocumentsResponse, SourceAccessState, SourcePermissionState,
-};
+
 pub use download::{
     CloudStorageDownloadState, CreateDownloadJobRequest, DirectoryStatus, DownloadItem,
     DownloadItemStatus, DownloadJob, DownloadJobListResponse, DownloadJobStatus, DownloadProgress,

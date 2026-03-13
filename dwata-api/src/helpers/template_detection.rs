@@ -17,11 +17,11 @@ use nocodo_llm_sdk::openai::OpenAIClient;
 use regex::Regex;
 use shared_types::{
     DataSourceType, DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse,
-    DetectedFinancialTemplate, DetectedFinancialTemplateVariable, DocumentKind,
-    FinancialTemplateType, HitId, SearchField, SearchRequest, SearchTarget, SearchTerm,
-    TemplateDetectionDebugState, TemplateDetectionGeneratedTemplateDebug,
-    TemplateDetectionSenderDebug, TemplateDetectionSenderLlmDraftPreview,
-    TemplateDetectionSenderLlmInputsResponse, TemplateDetectionSenderRank,
+    DetectedFinancialTemplate, DetectedFinancialTemplateVariable, FinancialTemplateType, HitId,
+    SearchField, SearchRequest, SearchTarget, SearchTerm, TemplateDetectionDebugState,
+    TemplateDetectionGeneratedTemplateDebug, TemplateDetectionSenderDebug,
+    TemplateDetectionSenderLlmDraftPreview, TemplateDetectionSenderLlmInputsResponse,
+    TemplateDetectionSenderRank,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
