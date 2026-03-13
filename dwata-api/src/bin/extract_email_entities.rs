@@ -141,11 +141,12 @@ fn print_entities(params: &ExtractedEntitiesParams) {
             );
             print_sep(&[4, 35, 20, 25, 40, 12]);
             for o in organisations {
+                let role_str = o.role.map(|r| r.to_string()).unwrap_or_default();
                 println!(
                     "| {:<2} | {:<33} | {:<18} | {:<23} | {:<38} | {:<10} |",
                     o.id,
                     trunc(&o.name, 33),
-                    trunc(o.role.as_deref().unwrap_or(""), 18),
+                    trunc(&role_str, 18),
                     trunc(o.industry.as_deref().unwrap_or(""), 23),
                     trunc(o.website.as_deref().unwrap_or(""), 38),
                     o.location_id.map(|v| v.to_string()).unwrap_or_default(),
@@ -189,7 +190,7 @@ fn print_entities(params: &ExtractedEntitiesParams) {
             println!(
                 "| {:<2} | {:<20} | {:<18} | {:<8} | {:<28} | {:<28} | {:<10} | {:<10} |",
                 "id",
-                "doc_type",
+                "doc_ref",
                 "total_amount",
                 "currency",
                 "issued_date (parsed)",
@@ -217,7 +218,7 @@ fn print_entities(params: &ExtractedEntitiesParams) {
                 println!(
                     "| {:<2} | {:<20} | {:<18} | {:<8} | {:<28} | {:<28} | {:<10} | {:<10} |",
                     b.id,
-                    trunc(b.document_type.as_deref().unwrap_or(""), 20),
+                    trunc(b.document_reference.as_deref().unwrap_or(""), 20),
                     trunc(&amount, 18),
                     trunc(b.currency.as_deref().unwrap_or(""), 8),
                     trunc(&issued, 28),
@@ -244,7 +245,7 @@ fn print_entities(params: &ExtractedEntitiesParams) {
             );
             print_sep(&[4, 20, 10, 30, 30, 12, 12]);
             for t in transactions {
-                let amount = parse_value(&t.amount).to_string();
+                let amount = format!("{:.2}", t.amount);
                 let date = t
                     .transaction_date
                     .as_deref()
@@ -287,11 +288,7 @@ fn print_entities(params: &ExtractedEntitiesParams) {
             );
             print_sep(&[4, 30, 25, 15, 20, 10, 12]);
             for s in subscriptions {
-                let amount = s
-                    .amount
-                    .as_deref()
-                    .map(|v| parse_value(v).to_string())
-                    .unwrap_or_default();
+                let amount = s.amount.map(|v| format!("{:.2}", v)).unwrap_or_default();
                 let next = s
                     .next_billing_date
                     .as_deref()
@@ -335,8 +332,7 @@ fn print_entities(params: &ExtractedEntitiesParams) {
             for o in orders {
                 let amount = o
                     .total_amount
-                    .as_deref()
-                    .map(|v| parse_value(v).to_string())
+                    .map(|v| format!("{:.2}", v))
                     .unwrap_or_default();
                 println!(
                     "| {:<2} | {:<23} | {:<18} | {:<18} | {:<8} | {:<28} | {:<10} |",

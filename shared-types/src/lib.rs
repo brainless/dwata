@@ -15,17 +15,19 @@ pub mod folder;
 pub mod label;
 pub mod location;
 pub mod ollama;
+pub mod order;
 pub mod organisation;
 pub mod person;
 pub mod project;
 pub mod search;
 pub mod session;
 pub mod settings;
+pub mod subscription;
 pub mod task;
 pub mod transaction;
 pub mod vendor;
 
-pub use bill::{Bill, BillStatus, BillSubject, FinancialDocumentType, ServiceIdentifierKind};
+pub use bill::{Bill, BillStatus, BillSubject, ServiceIdentifierKind};
 pub use company::{CompaniesResponse, Company};
 pub use contact::{Contact, ContactsResponse};
 pub use contact_link::{
@@ -72,6 +74,7 @@ pub use ollama::{
     OllamaModelDetails, OllamaModelInfo, OllamaModelsResponse, OllamaPullModelRequest,
     OllamaPullModelResponse, OllamaStatusResponse,
 };
+pub use order::{Order, OrderStatus, OrdersResponse};
 
 pub use organisation::{
     CreateOrganisationRequest, Organisation, OrganisationRole, OrganisationsResponse,
@@ -90,6 +93,7 @@ pub use settings::{
     AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse, UpdateAiProviderApiKeysRequest,
     UpdateOAuthClientAppsRequest,
 };
+pub use subscription::{BillingCycle, Subscription, SubscriptionsResponse};
 
 pub use task::{Task, TaskPriority, TaskStatus};
 pub use transaction::{DataSourceType, Transaction, TransactionCategory, TransactionStatus};

@@ -5,7 +5,6 @@ use ts_rs::TS;
 #[ts(export)]
 pub struct Event {
     pub id: i64,
-    pub email_id: Option<i64>,
     pub name: String,
     pub description: Option<String>,
     /// Date of the event.

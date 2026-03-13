@@ -43,30 +43,29 @@ pub async fn get_event(conn: AsyncDbConnection, id: i64) -> Result<Event> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, email_id, name, description, event_date_raw, event_date, location_id, attendees,
+        "SELECT id, name, description, event_date_raw, event_date, location_id, attendees,
                 project_id, task_id, created_at, updated_at
          FROM events
          WHERE id = ?",
     )?;
 
     stmt.query_row([id], |row| {
-        let attendees_json: String = row.get(7)?;
+        let attendees_json: String = row.get(6)?;
         let attendees: serde_json::Value =
             serde_json::from_str(&attendees_json).unwrap_or(serde_json::json!([]));
 
         Ok(Event {
             id: row.get(0)?,
-            email_id: row.get(1)?,
-            name: row.get(2)?,
-            description: row.get(3)?,
-            event_date_raw: row.get(4)?,
-            event_date: row.get(5)?,
-            location_id: row.get(6)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            event_date_raw: row.get(3)?,
+            event_date: row.get(4)?,
+            location_id: row.get(5)?,
             attendees,
-            project_id: row.get(8)?,
-            task_id: row.get(9)?,
-            created_at: row.get(10)?,
-            updated_at: row.get(11)?,
+            project_id: row.get(7)?,
+            task_id: row.get(8)?,
+            created_at: row.get(9)?,
+            updated_at: row.get(10)?,
         })
     })
     .map_err(|e| anyhow::anyhow!("Failed to get event: {}", e))

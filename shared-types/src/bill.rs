@@ -3,18 +3,6 @@ use ts_rs::TS;
 
 use crate::transaction::{DataSourceType, TransactionCategory};
 
-/// Financial document types that can be extracted
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
-#[serde(rename_all = "kebab-case")]
-pub enum FinancialDocumentType {
-    Invoice,
-    Bill,
-    BankStatement,
-    Receipt,
-    TaxDocument,
-    PaymentConfirmation,
-}
-
 /// Status specific to a financial document (bill, invoice, statement).
 /// Distinct from TransactionStatus which tracks payment events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -55,10 +43,9 @@ pub struct Bill {
     pub id: i64,
     pub data_source_type: DataSourceType,
     pub data_source_id: String,
-    pub document_type: FinancialDocumentType,
     pub status: BillStatus,
     pub category: Option<TransactionCategory>,
-    /// FK to the Organisation that issued this bill (replaces issuer_vendor_id)
+    /// FK to the Organisation that issued this bill
     pub issuer_organisation_id: Option<i64>,
     /// FK to the Subscription this bill belongs to (if recurring)
     pub subscription_id: Option<i64>,

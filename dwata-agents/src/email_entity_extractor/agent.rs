@@ -294,10 +294,11 @@ fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
             out.push_str(&row("id", "name", "role", "website", "location_id"));
             out.push_str(&sep());
             for o in organisations {
+                let role_str = o.role.map(|r| r.to_string());
                 out.push_str(&row(
                     &o.id.to_string(),
                     &o.name,
-                    opt(&o.role),
+                    opt(&role_str),
                     opt(&o.website),
                     &o.location_id.map(|v| v.to_string()).unwrap_or_default(),
                 ));
@@ -348,7 +349,7 @@ fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
                     .unwrap_or_default();
                 out.push_str(&row(
                     &b.id.to_string(),
-                    opt(&b.document_type),
+                    opt(&b.document_reference),
                     &amount_parsed,
                     opt(&b.currency),
                     &date_parsed,
@@ -370,7 +371,7 @@ fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
             ));
             out.push_str(&sep());
             for t in transactions {
-                let amount_parsed = parse_value(&t.amount).to_string();
+                let amount_parsed = format!("{:.2}", t.amount);
                 let date_parsed = t
                     .transaction_date
                     .as_deref()
@@ -400,11 +401,7 @@ fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
             ));
             out.push_str(&sep());
             for s in subscriptions {
-                let amount_parsed = s
-                    .amount
-                    .as_deref()
-                    .map(|v| parse_value(v).to_string())
-                    .unwrap_or_default();
+                let amount_parsed = s.amount.map(|v| format!("{:.2}", v)).unwrap_or_default();
                 out.push_str(&row(
                     &s.id.to_string(),
                     &s.service_name,
@@ -431,8 +428,7 @@ fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
             for o in orders {
                 let amount_parsed = o
                     .total_amount
-                    .as_deref()
-                    .map(|v| parse_value(v).to_string())
+                    .map(|v| format!("{:.2}", v))
                     .unwrap_or_default();
                 out.push_str(&row(
                     &o.id.to_string(),

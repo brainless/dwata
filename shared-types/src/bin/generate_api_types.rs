@@ -117,7 +117,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Financial types
     types.push(clean_type(DataSourceType::export_to_string()?));
-    types.push(clean_type(FinancialDocumentType::export_to_string()?));
     types.push(clean_type(Bill::export_to_string()?));
     types.push(clean_type(BillStatus::export_to_string()?));
     types.push(clean_type(BillSubject::export_to_string()?));
@@ -127,6 +126,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(TransactionStatus::export_to_string()?));
     types.push(clean_type(Vendor::export_to_string()?));
     types.push(clean_type(VendorType::export_to_string()?));
+    types.push(clean_type(Subscription::export_to_string()?));
+    types.push(clean_type(BillingCycle::export_to_string()?));
+    types.push(clean_type(SubscriptionsResponse::export_to_string()?));
+    types.push(clean_type(Order::export_to_string()?));
+    types.push(clean_type(OrderStatus::export_to_string()?));
+    types.push(clean_type(OrdersResponse::export_to_string()?));
     types.push(clean_type(FinancialSummary::export_to_string()?));
     types.push(clean_type(FinancialExtractionSummary::export_to_string()?));
     types.push(clean_type(FinancialHealth::export_to_string()?));

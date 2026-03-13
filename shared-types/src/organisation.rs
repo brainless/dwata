@@ -1,9 +1,10 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// The role an organisation plays, especially in financial contexts.
 /// An organisation can play multiple roles across different interactions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export)]
 #[serde(rename_all = "kebab-case")]
 pub enum OrganisationRole {
@@ -29,6 +30,24 @@ pub enum OrganisationRole {
     NonProfit,
     /// Could not be determined
     Unknown,
+}
+
+impl std::fmt::Display for OrganisationRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OrganisationRole::Business => write!(f, "business"),
+            OrganisationRole::Bank => write!(f, "bank"),
+            OrganisationRole::Insurer => write!(f, "insurer"),
+            OrganisationRole::PaymentPlatform => write!(f, "payment-platform"),
+            OrganisationRole::Employer => write!(f, "employer"),
+            OrganisationRole::Utility => write!(f, "utility"),
+            OrganisationRole::ServiceProvider => write!(f, "service-provider"),
+            OrganisationRole::Government => write!(f, "government"),
+            OrganisationRole::Educational => write!(f, "educational"),
+            OrganisationRole::NonProfit => write!(f, "non-profit"),
+            OrganisationRole::Unknown => write!(f, "unknown"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
