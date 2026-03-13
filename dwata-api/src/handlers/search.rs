@@ -30,7 +30,6 @@ fn parse_q_term(
             "from" | "sender" => Some(SearchField::FromAddress),
             "subject" => Some(SearchField::Subject),
             "body" | "text" => Some(SearchField::BodyText),
-            "filename" => Some(SearchField::Filename),
             _ => None,
         };
 

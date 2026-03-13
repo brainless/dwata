@@ -553,7 +553,7 @@ async fn main() -> std::io::Result<()> {
                 "/api/emails/{id}/labels",
                 web::get().to(handlers::emails::get_email_labels),
             )
-            .route("/api/search", web::get().to(handlers::documents::search))
+            .route("/api/search", web::get().to(handlers::search::search))
             .route(
                 "/api/credentials/{credential_id}/folders",
                 web::get().to(handlers::folders::list_folders),
