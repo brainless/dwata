@@ -27,14 +27,14 @@ pub mod vendor;
 
 pub use bill::{Bill, BillStatus, BillSubject, FinancialDocumentType, ServiceIdentifierKind};
 pub use company::{CompaniesResponse, Company};
-pub use contact::{Contact, ContactsResponse, CreateContactRequest, UpdateContactRequest};
+pub use contact::{Contact, ContactsResponse};
 pub use contact_link::{
     ContactLink, ContactLinkType, ContactLinksResponse, CreateContactLinkRequest,
 };
 pub use credential::{
-    ApiKeySettings, CreateCredentialRequest, CreateImapCredentialRequest, CredentialListResponse,
-    CredentialMetadata, CredentialType, ImapAccountSettings, ImapAuthMethod,
-    ImapCredentialMetadata, PasswordResponse, SmtpAccountSettings, UpdateCredentialRequest,
+    ApiKeySettings, CreateCredentialRequest, CredentialListResponse, CredentialMetadata,
+    CredentialType, ImapAccountSettings, ImapAuthMethod, ImapCredentialMetadata, PasswordResponse,
+    SmtpAccountSettings, UpdateCredentialRequest,
 };
 pub use document::{
     Document, DocumentCursor, DocumentKind, DocumentSortBy, DocumentSource, DocumentSourceType,
@@ -49,7 +49,7 @@ pub use email::{
     AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, EmailsByIdsRequest,
     EmailsByIdsResponse, ListEmailsRequest, ListEmailsResponse,
 };
-pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
+pub use event::{Event, EventsResponse};
 pub use financial::{
     CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialPagination,
     FinancialSummary, ListFinancialBillsResponse,
@@ -78,24 +78,20 @@ pub use organisation::{
     UpdateOrganisationRequest,
 };
 pub use person::{Person, PersonsResponse};
-pub use project::{
-    CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
-};
+pub use project::{Project, ProjectStatus};
 pub use search::{
     SearchDocumentsRequest, SearchDocumentsResponse, SearchField, SearchHit, SearchTerm,
 };
 pub use session::{
-    AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionListResponse,
-    SessionMessage, SessionResponse, SessionToolCall,
+    AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionMessage, SessionResponse,
+    SessionToolCall,
 };
 pub use settings::{
     AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse, UpdateAiProviderApiKeysRequest,
     UpdateOAuthClientAppsRequest,
 };
 
-pub use task::{
-    CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
-};
+pub use task::{Task, TaskPriority, TaskStatus};
 pub use transaction::{DataSourceType, Transaction, TransactionCategory, TransactionStatus};
 pub use vendor::{Vendor, VendorType};
 

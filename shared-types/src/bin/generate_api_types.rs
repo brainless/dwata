@@ -1,4 +1,4 @@
-use shared_types::credential::{CreateLocalFileCredentialRequest, LocalFileSettings};
+use shared_types::credential::LocalFileSettings;
 use shared_types::*;
 use std::fs;
 use std::path::Path;
@@ -11,30 +11,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Project types
     types.push(clean_type(Project::export_to_string()?));
     types.push(clean_type(ProjectStatus::export_to_string()?));
-    types.push(clean_type(CreateProjectRequest::export_to_string()?));
-    types.push(clean_type(UpdateProjectRequest::export_to_string()?));
-    types.push(clean_type(ProjectsResponse::export_to_string()?));
 
     // Event types
     types.push(clean_type(Event::export_to_string()?));
-    types.push(clean_type(CreateEventRequest::export_to_string()?));
-    types.push(clean_type(UpdateEventRequest::export_to_string()?));
     types.push(clean_type(EventsResponse::export_to_string()?));
 
     // Task types
     types.push(clean_type(Task::export_to_string()?));
     types.push(clean_type(TaskStatus::export_to_string()?));
     types.push(clean_type(TaskPriority::export_to_string()?));
-    types.push(clean_type(CreateTaskRequest::export_to_string()?));
-    types.push(clean_type(UpdateTaskRequest::export_to_string()?));
-    types.push(clean_type(TasksResponse::export_to_string()?));
 
     // Session types
     types.push(clean_type(SessionMessage::export_to_string()?));
     types.push(clean_type(SessionToolCall::export_to_string()?));
     types.push(clean_type(SessionResponse::export_to_string()?));
     types.push(clean_type(SessionListItem::export_to_string()?));
-    types.push(clean_type(SessionListResponse::export_to_string()?));
 
     // Settings types
     types.push(clean_type(AiProviderApiKeyConfig::export_to_string()?));
@@ -56,7 +47,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // IMAP credential types
     types.push(clean_type(ImapAuthMethod::export_to_string()?));
     types.push(clean_type(ImapAccountSettings::export_to_string()?));
-    types.push(clean_type(CreateImapCredentialRequest::export_to_string()?));
     types.push(clean_type(ImapCredentialMetadata::export_to_string()?));
 
     // SMTP credential types
@@ -67,9 +57,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Local File credential types
     types.push(clean_type(LocalFileSettings::export_to_string()?));
-    types.push(clean_type(
-        CreateLocalFileCredentialRequest::export_to_string()?,
-    ));
 
     // Download types
     types.push(clean_type(DownloadJob::export_to_string()?));
@@ -115,8 +102,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Contact types
     types.push(clean_type(Contact::export_to_string()?));
-    types.push(clean_type(CreateContactRequest::export_to_string()?));
-    types.push(clean_type(UpdateContactRequest::export_to_string()?));
     types.push(clean_type(ContactsResponse::export_to_string()?));
 
     // Location types

@@ -72,12 +72,6 @@ pub struct SessionListItem {
     pub started_at: i64,
 }
 
-/// List of sessions response
-#[derive(Debug, Serialize, Deserialize, TS)]
-pub struct SessionListResponse {
-    pub sessions: Vec<SessionListItem>,
-}
-
 /// Detailed session with messages and tool calls
 #[derive(Debug, Serialize, Deserialize, TS)]
 pub struct SessionResponse {

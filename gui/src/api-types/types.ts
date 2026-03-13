@@ -3,7 +3,7 @@ import type { ProjectStatus } from "./ProjectStatus";
 /**
  * Project entity for managing work and hobby projects
  */
-export type Project = { id: number, name: string, description: string, status: ProjectStatus, tasks_completed: number, tasks_total: number, 
+export type Project = { id: bigint, name: string, description: string, status: ProjectStatus, tasks_completed: number, tasks_total: number, 
 /**
  * Date by which the project must be completed.
  * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
@@ -61,7 +61,7 @@ import type { TaskStatus } from "./TaskStatus";
 /**
  * Task entity for managing individual tasks
  */
-export type Task = { id: number, project_id: number | null, title: string, description: string | null, status: TaskStatus, priority: TaskPriority, due_date: string | null, assigned_to: string | null, created_at: bigint, updated_at: bigint, };
+export type Task = { id: bigint, project_id: bigint | null, title: string, description: string | null, status: TaskStatus, priority: TaskPriority, due_date: string | null, assigned_to: string | null, created_at: bigint, updated_at: bigint, };
 
 
 export type TaskStatus = "todo" | "in-progress" | "review" | "done" | "cancelled";
@@ -75,7 +75,7 @@ import type { TaskPriority } from "./TaskPriority";
 /**
  * Request to create a new task
  */
-export type CreateTaskRequest = { project_id: number | null, title: string, description: string | null, priority: TaskPriority, due_date: string | null, };
+export type CreateTaskRequest = { project_id: bigint | null, title: string, description: string | null, priority: TaskPriority, due_date: string | null, };
 
 
 import type { TaskPriority } from "./TaskPriority";

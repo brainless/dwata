@@ -15,7 +15,7 @@ pub enum ProjectStatus {
 /// Project entity for managing work and hobby projects
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct Project {
-    pub id: i32,
+    pub id: i64,
     pub name: String,
     pub description: String,
     pub status: ProjectStatus,
@@ -28,27 +28,4 @@ pub struct Project {
     pub notifications: i32,
     pub created_at: i64,
     pub updated_at: i64,
-}
-
-/// Request to create a new project
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct CreateProjectRequest {
-    pub name: String,
-    pub description: String,
-    pub deadline_raw: Option<String>,
-}
-
-/// Request to update a project
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct UpdateProjectRequest {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub status: Option<ProjectStatus>,
-    pub deadline_raw: Option<String>,
-}
-
-/// Response containing a list of projects
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct ProjectsResponse {
-    pub projects: Vec<Project>,
 }

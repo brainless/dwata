@@ -21,26 +21,6 @@ pub struct Event {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct CreateEventRequest {
-    pub name: String,
-    pub description: Option<String>,
-    pub event_date_raw: Option<String>,
-    pub location_id: Option<i64>,
-    pub attendees: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct UpdateEventRequest {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub event_date_raw: Option<String>,
-    pub location_id: Option<i64>,
-    pub attendees: Option<Vec<String>>,
-}
-
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct EventsResponse {
