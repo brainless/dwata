@@ -25,8 +25,6 @@ pub mod settings;
 pub mod subscription;
 pub mod task;
 pub mod transaction;
-pub mod vendor;
-
 pub use bill::{Bill, BillStatus, BillSubject, ServiceIdentifierKind};
 pub use company::{CompaniesResponse, Company};
 pub use contact::{Contact, ContactsResponse};
@@ -97,7 +95,6 @@ pub use subscription::{BillingCycle, Subscription, SubscriptionsResponse};
 
 pub use task::{Task, TaskPriority, TaskStatus};
 pub use transaction::{DataSourceType, Transaction, TransactionCategory, TransactionStatus};
-pub use vendor::{Vendor, VendorType};
 
 /// Error response for API endpoints
 #[derive(Debug, Serialize, Deserialize)]
