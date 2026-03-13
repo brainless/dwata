@@ -901,3 +901,350 @@ pub async fn update_attachment_extraction_status(
 
     Ok(())
 }
+
+/// List emails for search indexing with pagination
+pub async fn list_emails_for_indexing_page(
+    conn: AsyncDbConnection,
+    after_id: i64,
+    limit: usize,
+) -> Result<Vec<(Email, crate::search::tantivy::IndexedTextFields)>> {
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut stmt = conn.prepare(
+            "SELECT id, download_item_id, credential_id, uid, folder_id, message_id,
+                    subject, from_address, from_name, to_addresses, cc_addresses, bcc_addresses,
+                    reply_to, date_sent, date_received, body_text, body_html, is_read,
+                    is_flagged, is_draft, is_answered, has_attachments, attachment_count,
+                    size_bytes, thread_id, created_at, updated_at
+             FROM emails
+             WHERE id > ?1
+             ORDER BY id ASC
+             LIMIT ?2",
+        )?;
+
+        let rows = stmt.query_map(rusqlite::params![after_id, limit as i64], |row| {
+            let email = Email {
+                id: row.get(0)?,
+                download_item_id: row.get(1)?,
+                credential_id: row.get(2)?,
+                uid: row.get(3)?,
+                folder_id: row.get(4)?,
+                message_id: row.get(5)?,
+                subject: row.get(6)?,
+                from_address: row.get(7)?,
+                from_name: row.get(8)?,
+                to_addresses: serde_json::from_str(&row.get::<_, String>(9)?).unwrap_or_default(),
+                cc_addresses: serde_json::from_str(&row.get::<_, String>(10)?).unwrap_or_default(),
+                bcc_addresses: serde_json::from_str(&row.get::<_, String>(11)?).unwrap_or_default(),
+                reply_to: row.get(12)?,
+                date_sent: row.get(13)?,
+                date_received: row.get(14)?,
+                body_text: row.get(15)?,
+                body_html: row.get(16)?,
+                is_read: row.get(17)?,
+                is_flagged: row.get(18)?,
+                is_draft: row.get(19)?,
+                is_answered: row.get(20)?,
+                has_attachments: row.get(21)?,
+                attachment_count: row.get(22)?,
+                size_bytes: row.get(23)?,
+                thread_id: row.get(24)?,
+                created_at: row.get(25)?,
+                updated_at: row.get(26)?,
+            };
+
+            let indexed_text = crate::search::tantivy::IndexedTextFields::from_email(
+                email.body_text.clone(),
+                email.subject.clone(),
+                email.from_address.clone(),
+                email.credential_id,
+            );
+
+            Ok((email, indexed_text))
+        })?;
+
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    })
+    .await?
+}
+
+/// Get emails by their IDs
+pub async fn get_emails_by_ids(conn: AsyncDbConnection, ids: &[i64]) -> Result<Vec<Email>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids = ids.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let query = format!(
+            "SELECT id, download_item_id, credential_id, uid, folder_id, message_id,
+                    subject, from_address, from_name, to_addresses, cc_addresses, bcc_addresses,
+                    reply_to, date_sent, date_received, body_text, body_html, is_read,
+                    is_flagged, is_draft, is_answered, has_attachments, attachment_count,
+                    size_bytes, thread_id, created_at, updated_at
+             FROM emails
+             WHERE id IN ({})",
+            placeholders
+        );
+
+        let mut stmt = conn.prepare(&query)?;
+        let emails = stmt
+            .query_map(rusqlite::params_from_iter(ids), |row| {
+                Ok(Email {
+                    id: row.get(0)?,
+                    download_item_id: row.get(1)?,
+                    credential_id: row.get(2)?,
+                    uid: row.get(3)?,
+                    folder_id: row.get(4)?,
+                    message_id: row.get(5)?,
+                    subject: row.get(6)?,
+                    from_address: row.get(7)?,
+                    from_name: row.get(8)?,
+                    to_addresses: serde_json::from_str(&row.get::<_, String>(9)?)
+                        .unwrap_or_default(),
+                    cc_addresses: serde_json::from_str(&row.get::<_, String>(10)?)
+                        .unwrap_or_default(),
+                    bcc_addresses: serde_json::from_str(&row.get::<_, String>(11)?)
+                        .unwrap_or_default(),
+                    reply_to: row.get(12)?,
+                    date_sent: row.get(13)?,
+                    date_received: row.get(14)?,
+                    body_text: row.get(15)?,
+                    body_html: row.get(16)?,
+                    is_read: row.get(17)?,
+                    is_flagged: row.get(18)?,
+                    is_draft: row.get(19)?,
+                    is_answered: row.get(20)?,
+                    has_attachments: row.get(21)?,
+                    attachment_count: row.get(22)?,
+                    size_bytes: row.get(23)?,
+                    thread_id: row.get(24)?,
+                    created_at: row.get(25)?,
+                    updated_at: row.get(26)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(emails)
+    })
+    .await?
+}
+
+/// List email scan rows by email IDs (replaces list_email_scan_rows_by_document_ids)
+pub async fn list_email_scan_rows_by_ids(
+    conn: AsyncDbConnection,
+    email_ids: &[i64],
+    credential_id: Option<i64>,
+    max_emails: Option<usize>,
+) -> Result<Vec<EmailScanRow>> {
+    if email_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let email_ids = email_ids.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut seen_email_ids = HashSet::new();
+        let mut rows: Vec<(i64, EmailScanRow)> = Vec::new();
+
+        for chunk in email_ids.chunks(900) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut query = format!(
+                "SELECT e.id, e.date_received, e.from_address, e.subject, e.body_text, e.body_html
+                 FROM emails e
+                 WHERE e.id IN ({})",
+                placeholders
+            );
+            let mut params: Vec<Value> = chunk.iter().copied().map(Value::from).collect();
+
+            if let Some(cred) = credential_id {
+                query.push_str(" AND e.credential_id = ?");
+                params.push(Value::from(cred));
+            }
+
+            let mut stmt = conn.prepare(&query)?;
+            let mapped = stmt.query_map(params_from_iter(params), |row| {
+                Ok((
+                    row.get::<_, i64>(1)?,
+                    EmailScanRow {
+                        email_id: row.get(0)?,
+                        date_received: row.get(1)?,
+                        from_address: row.get(2)?,
+                        subject: row.get(3)?,
+                        body_text: row.get(4)?,
+                        body_html: row.get(5)?,
+                    },
+                ))
+            })?;
+
+            for item in mapped {
+                let (date_received, scan_row) = item?;
+                if seen_email_ids.insert(scan_row.email_id) {
+                    rows.push((date_received, scan_row));
+                }
+            }
+        }
+
+        rows.sort_by(|a, b| b.0.cmp(&a.0));
+        if let Some(limit) = max_emails {
+            rows.truncate(limit);
+        }
+        Ok(rows.into_iter().map(|(_, row)| row).collect())
+    })
+    .await?
+}
+
+/// Updated version that works with email IDs instead of document IDs
+pub async fn list_template_candidate_emails_by_sender_and_email_ids(
+    conn: AsyncDbConnection,
+    sender_email: &str,
+    email_ids: &[i64],
+    credential_id: Option<i64>,
+    max_emails: Option<usize>,
+) -> Result<Vec<TemplateCandidateEmailRow>> {
+    if email_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let sender_email = sender_email.to_string();
+    let email_ids = email_ids.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut seen_email_ids = HashSet::new();
+        let mut rows: Vec<(i64, TemplateCandidateEmailRow)> = Vec::new();
+
+        for chunk in email_ids.chunks(900) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut query = format!(
+                "SELECT e.id, e.date_received, e.from_address, e.subject, e.body_text, e.body_html
+                 FROM emails e
+                 WHERE e.id IN ({})
+                   AND LOWER(e.from_address) = LOWER(?)",
+                placeholders
+            );
+            let mut params: Vec<Value> = chunk.iter().copied().map(Value::from).collect();
+            params.push(Value::from(sender_email.clone()));
+
+            if let Some(cred) = credential_id {
+                query.push_str(" AND e.credential_id = ?");
+                params.push(Value::from(cred));
+            }
+
+            let mut stmt = conn.prepare(&query)?;
+            let mapped = stmt.query_map(params_from_iter(params), |row| {
+                Ok((
+                    row.get::<_, i64>(1)?,
+                    TemplateCandidateEmailRow {
+                        email_id: row.get(0)?,
+                        from_address: row.get(2)?,
+                        subject: row.get(3)?,
+                        body_text: row.get(4)?,
+                        body_html: row.get(5)?,
+                    },
+                ))
+            })?;
+
+            for item in mapped {
+                let (date_received, candidate_row) = item?;
+                if seen_email_ids.insert(candidate_row.email_id) {
+                    rows.push((date_received, candidate_row));
+                }
+            }
+        }
+
+        rows.sort_by(|a, b| b.0.cmp(&a.0));
+        if let Some(limit) = max_emails {
+            rows.truncate(limit);
+        }
+        Ok(rows.into_iter().map(|(_, row)| row).collect())
+    })
+    .await?
+}
+
+/// Updated version that works with email IDs instead of document IDs
+pub async fn list_unmatched_template_candidate_emails_by_sender_and_email_ids(
+    conn: AsyncDbConnection,
+    sender_email: &str,
+    email_ids: &[i64],
+    credential_id: Option<i64>,
+    max_emails: Option<usize>,
+) -> Result<Vec<TemplateCandidateEmailRow>> {
+    if email_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let sender_email = sender_email.to_string();
+    let email_ids = email_ids.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut seen_email_ids = HashSet::new();
+        let mut rows: Vec<(i64, TemplateCandidateEmailRow)> = Vec::new();
+
+        for chunk in email_ids.chunks(900) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut query = format!(
+                "SELECT e.id, e.date_received, e.from_address, e.subject, e.body_text, e.body_html
+                 FROM emails e
+                 WHERE e.id IN ({})
+                   AND LOWER(e.from_address) = LOWER(?)
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM financial_template_email_links l
+                       JOIN financial_extraction_templates t ON t.id = l.template_id
+                       WHERE l.email_id = e.id
+                         AND t.data_source_type = 'email'
+                         AND LOWER(t.data_source_id) = LOWER(e.from_address)
+                         AND t.status = 'active'
+                   )",
+                placeholders
+            );
+            let mut params: Vec<Value> = chunk.iter().copied().map(Value::from).collect();
+            params.push(Value::from(sender_email.clone()));
+
+            if let Some(cred) = credential_id {
+                query.push_str(" AND e.credential_id = ?");
+                params.push(Value::from(cred));
+            }
+
+            let mut stmt = conn.prepare(&query)?;
+            let mapped = stmt.query_map(params_from_iter(params), |row| {
+                Ok((
+                    row.get::<_, i64>(1)?,
+                    TemplateCandidateEmailRow {
+                        email_id: row.get(0)?,
+                        from_address: row.get(2)?,
+                        subject: row.get(3)?,
+                        body_text: row.get(4)?,
+                        body_html: row.get(5)?,
+                    },
+                ))
+            })?;
+
+            for item in mapped {
+                let (date_received, candidate_row) = item?;
+                if seen_email_ids.insert(candidate_row.email_id) {
+                    rows.push((date_received, candidate_row));
+                }
+            }
+        }
+
+        rows.sort_by(|a, b| b.0.cmp(&a.0));
+        if let Some(limit) = max_emails {
+            rows.truncate(limit);
+        }
+        Ok(rows.into_iter().map(|(_, row)| row).collect())
+    })
+    .await?
+}

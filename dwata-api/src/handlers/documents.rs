@@ -1,11 +1,9 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
-use shared_types::{
-    DocumentKind, SearchDocumentsRequest, SearchDocumentsResponse, SearchField, SearchTerm,
-};
+use shared_types::{HitId, SearchField, SearchRequest, SearchResponse, SearchTarget, SearchTerm};
 use std::sync::Arc;
 
-use crate::database::documents as documents_db;
+use crate::database::emails as emails_db;
 use crate::database::Database;
 use crate::search::tantivy::TantivySearchIndex;
 
@@ -30,9 +28,9 @@ fn parse_q_term(
     if let Some((prefix, value)) = trimmed.split_once(':') {
         let field = match prefix.trim().to_ascii_lowercase().as_str() {
             "from" | "sender" => Some(SearchField::FromAddress),
-            "subject" | "title" => Some(SearchField::Title),
+            "subject" => Some(SearchField::Subject),
             "body" | "text" => Some(SearchField::BodyText),
-            "attachment" | "attachments" => Some(SearchField::AttachmentText),
+            "filename" => Some(SearchField::Filename),
             _ => None,
         };
 
@@ -57,22 +55,21 @@ fn parse_q_term(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct SearchDocumentsQuery {
+pub struct SearchQuery {
     pub q: Option<String>,
     pub terms: Option<String>,
     pub field: Option<SearchField>,
     pub is_phrase: Option<bool>,
-    pub kind: Option<DocumentKind>,
-    pub source_id: Option<i64>,
+    pub target: Option<SearchTarget>,
     pub credential_id: Option<i64>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
 
-pub async fn search_documents(
+pub async fn search(
     db: web::Data<Arc<Database>>,
     search_index: web::Data<Arc<TantivySearchIndex>>,
-    query: web::Query<SearchDocumentsQuery>,
+    query: web::Query<SearchQuery>,
 ) -> ActixResult<HttpResponse> {
     let query = query.into_inner();
     let terms = if let Some(terms_json) = query.terms.as_ref().filter(|s| !s.trim().is_empty()) {
@@ -94,10 +91,9 @@ pub async fn search_documents(
         );
     }
 
-    let request = SearchDocumentsRequest {
+    let request = SearchRequest {
+        target: query.target.unwrap_or(SearchTarget::Email),
         terms,
-        kind: query.kind,
-        source_id: query.source_id,
         credential_id: query.credential_id,
         limit: query.limit,
         offset: query.offset,
@@ -114,35 +110,67 @@ pub async fn search_documents(
     let search_result = search_index
         .search(&request)
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-    let ids: Vec<i64> = search_result.hits.iter().map(|h| h.document_id).collect();
 
-    let docs = documents_db::get_documents_by_ids(db.async_connection.clone(), &ids)
+    // Extract email IDs from hits
+    let email_ids: Vec<i64> = search_result
+        .hits
+        .iter()
+        .filter_map(|h| match &h.hit_id {
+            HitId::Email(id) => Some(*id),
+            _ => None,
+        })
+        .collect();
+
+    // Fetch full email data for the hits
+    let emails = emails_db::get_emails_by_ids(db.async_connection.clone(), &email_ids)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-    let docs_by_id = docs
+
+    // Create a map for quick lookup
+    let emails_by_id = emails
         .into_iter()
-        .map(|d| (d.id, d))
+        .map(|e| (e.id, e))
         .collect::<std::collections::HashMap<_, _>>();
-    let documents = ids
+
+    // Check for missing emails
+    let missing_ids: Vec<i64> = email_ids
         .iter()
-        .filter_map(|id| docs_by_id.get(id).cloned())
-        .collect::<Vec<_>>();
-    let missing_ids = ids
-        .iter()
-        .filter(|id| !docs_by_id.contains_key(id))
+        .filter(|id| !emails_by_id.contains_key(id))
         .copied()
-        .collect::<Vec<_>>();
+        .collect();
     if !missing_ids.is_empty() {
         tracing::warn!(
             missing_count = missing_ids.len(),
             sample_ids = ?missing_ids.iter().take(5).copied().collect::<Vec<_>>(),
-            "Search hydration missing documents for some indexed IDs"
+            "Search hydration missing emails for some indexed IDs"
         );
     }
 
-    Ok(HttpResponse::Ok().json(SearchDocumentsResponse {
-        hits: search_result.hits,
-        documents,
+    // Update hits with email data where available
+    let hits: Vec<shared_types::SearchHit> = search_result
+        .hits
+        .into_iter()
+        .map(|mut hit| {
+            if let HitId::Email(email_id) = &hit.hit_id {
+                if let Some(email) = emails_by_id.get(email_id) {
+                    // Fill in any missing preview fields from the email
+                    if hit.subject.is_none() {
+                        hit.subject.clone_from(&email.subject);
+                    }
+                    if hit.from_address.is_none() {
+                        hit.from_address = Some(email.from_address.clone());
+                    }
+                    if hit.date_received.is_none() {
+                        hit.date_received = Some(email.date_received);
+                    }
+                }
+            }
+            hit
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(SearchResponse {
+        hits,
         total_hits: search_result.total_hits,
     }))
 }

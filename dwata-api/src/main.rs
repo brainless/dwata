@@ -174,22 +174,7 @@ async fn main() -> std::io::Result<()> {
     );
     tracing::info!("Tantivy index path: {}", search_index_path.display());
 
-    match crate::database::documents::backfill_email_documents_from_emails(
-        db.async_connection.clone(),
-    )
-    .await
-    {
-        Ok(inserted) => {
-            tracing::info!(
-                "Email document backfill complete: inserted {} missing rows",
-                inserted
-            );
-        }
-        Err(err) => {
-            tracing::warn!("Email document backfill failed: {}", err);
-        }
-    }
-
+    // Start email search index backfill
     let search_index_backfill = search_index.clone();
     let db_for_backfill = db.clone();
     tokio::spawn(async move {
@@ -200,7 +185,7 @@ async fn main() -> std::io::Result<()> {
         let mut total_failed = 0usize;
         let mut pages_processed = 0usize;
         loop {
-            let page = match crate::database::documents::list_documents_for_indexing_page(
+            let page = match crate::database::emails::list_emails_for_indexing_page(
                 db_for_backfill.async_connection.clone(),
                 after_id,
                 page_size,
@@ -219,17 +204,19 @@ async fn main() -> std::io::Result<()> {
             }
 
             total_seen += page.len();
-            let page_rows = page
-                .iter()
-                .map(|row| (row.document.clone(), row.indexed_text.clone()))
-                .collect::<Vec<_>>();
+            let page_rows: Vec<(i64, crate::search::tantivy::IndexedTextFields)> = page
+                .into_iter()
+                .map(|(email, indexed_text)| (email.id, indexed_text))
+                .collect();
             let page_count = page_rows.len();
-            if let Err(err) = search_index_backfill.index_documents_page(&page_rows) {
+            if let Err(err) = search_index_backfill.index_emails(&page_rows) {
                 total_failed += page_count;
+                let first_id = page_rows.first().map(|(id, _)| *id);
+                let last_id = page_rows.last().map(|(id, _)| *id);
                 tracing::warn!(
                     page_size = page_count,
-                    first_doc_id = page.first().map(|r| r.document.id),
-                    last_doc_id = page.last().map(|r| r.document.id),
+                    first_email_id = first_id,
+                    last_email_id = last_id,
                     error = %err,
                     "Backfill page failed to index"
                 );
@@ -247,8 +234,8 @@ async fn main() -> std::io::Result<()> {
                 );
             }
 
-            if let Some(last) = page.last() {
-                after_id = last.document.id;
+            if let Some((last_id, _)) = page_rows.last() {
+                after_id = *last_id;
             }
         }
         tracing::info!(
@@ -566,10 +553,7 @@ async fn main() -> std::io::Result<()> {
                 "/api/emails/{id}/labels",
                 web::get().to(handlers::emails::get_email_labels),
             )
-            .route(
-                "/api/documents/search",
-                web::get().to(handlers::documents::search_documents),
-            )
+            .route("/api/search", web::get().to(handlers::documents::search))
             .route(
                 "/api/credentials/{credential_id}/folders",
                 web::get().to(handlers::folders::list_folders),

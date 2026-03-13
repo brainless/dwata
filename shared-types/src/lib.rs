@@ -81,7 +81,8 @@ pub use organisation::{
 pub use person::{Person, PersonsResponse};
 pub use project::{Project, ProjectStatus};
 pub use search::{
-    SearchDocumentsRequest, SearchDocumentsResponse, SearchField, SearchHit, SearchTerm,
+    HitId, SearchField, SearchFieldLegacy, SearchHit, SearchHitLegacy, SearchRequest,
+    SearchResponse, SearchTarget, SearchTerm, SearchTermLegacy,
 };
 pub use session::{
     AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionMessage, SessionResponse,

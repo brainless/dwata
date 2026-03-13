@@ -18,7 +18,7 @@ use regex::Regex;
 use shared_types::{
     DataSourceType, DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse,
     DetectedFinancialTemplate, DetectedFinancialTemplateVariable, DocumentKind,
-    FinancialTemplateType, SearchDocumentsRequest, SearchField, SearchTerm,
+    FinancialTemplateType, HitId, SearchField, SearchRequest, SearchTarget, SearchTerm,
     TemplateDetectionDebugState, TemplateDetectionGeneratedTemplateDebug,
     TemplateDetectionSenderDebug, TemplateDetectionSenderLlmDraftPreview,
     TemplateDetectionSenderLlmInputsResponse, TemplateDetectionSenderRank,
@@ -463,13 +463,13 @@ async fn collect_matched_document_ids(
     let query = build_tantivy_query(DEFAULT_FINANCIAL_KEYWORDS);
     let max_candidate_emails = request.max_candidate_emails;
 
-    let mut matched_document_ids = Vec::new();
-    let mut seen_document_ids = HashSet::new();
+    let mut matched_email_ids = Vec::new();
+    let mut seen_email_ids = HashSet::new();
     let mut offset = 0usize;
 
     loop {
         let page_limit = if let Some(max) = max_candidate_emails {
-            let remaining = max.saturating_sub(matched_document_ids.len());
+            let remaining = max.saturating_sub(matched_email_ids.len());
             let page_limit = remaining.min(100);
             if page_limit == 0 {
                 break;
@@ -478,14 +478,13 @@ async fn collect_matched_document_ids(
         } else {
             100
         };
-        let search_result = search_index.search(&SearchDocumentsRequest {
+        let search_result = search_index.search(&SearchRequest {
+            target: SearchTarget::Email,
             terms: vec![SearchTerm {
                 field: SearchField::Any,
                 value: query.clone(),
                 is_phrase: false,
             }],
-            kind: Some(DocumentKind::Email),
-            source_id: None,
             credential_id: request.credential_id,
             limit: Some(page_limit),
             offset: Some(offset),
@@ -495,8 +494,10 @@ async fn collect_matched_document_ids(
             break;
         }
         for hit in &search_result.hits {
-            if seen_document_ids.insert(hit.document_id) {
-                matched_document_ids.push(hit.document_id);
+            if let HitId::Email(email_id) = &hit.hit_id {
+                if seen_email_ids.insert(*email_id) {
+                    matched_email_ids.push(*email_id);
+                }
             }
         }
         let fetched = search_result.hits.len();
@@ -506,7 +507,7 @@ async fn collect_matched_document_ids(
         offset += fetched;
     }
 
-    Ok(matched_document_ids)
+    Ok(matched_email_ids)
 }
 
 pub async fn preview_sender_llm_inputs(
@@ -515,15 +516,15 @@ pub async fn preview_sender_llm_inputs(
     request: DetectFinancialTemplatesRequest,
     sender_email: String,
 ) -> Result<TemplateDetectionSenderLlmInputsResponse> {
-    let matched_document_ids = collect_matched_document_ids(search_index, &request).await?;
+    let matched_email_ids = collect_matched_document_ids(search_index, &request).await?;
     let sender_key = sender_email.trim().to_ascii_lowercase();
 
-    let sender_rows = emails_db::list_template_candidate_emails_by_sender_and_document_ids(
+    let sender_rows = emails_db::list_template_candidate_emails_by_sender_and_email_ids(
         db.async_connection.clone(),
         &sender_key,
-        &matched_document_ids,
+        &matched_email_ids,
         request.credential_id,
-        request.max_candidate_emails,
+        Some(10),
     )
     .await?;
 
@@ -538,10 +539,10 @@ pub async fn preview_sender_llm_inputs(
         match_existing_templates_for_sender(&existing_templates, &sender_rows);
 
     let unmatched_rows =
-        emails_db::list_unmatched_template_candidate_emails_by_sender_and_document_ids(
+        emails_db::list_unmatched_template_candidate_emails_by_sender_and_email_ids(
             db.async_connection.clone(),
             &sender_key,
-            &matched_document_ids,
+            &matched_email_ids,
             request.credential_id,
             request.max_candidate_emails,
         )
@@ -648,11 +649,11 @@ where
         .map(|s| (*s).to_string())
         .collect::<Vec<_>>();
     let max_candidate_emails = request.max_candidate_emails;
-    let matched_document_ids = collect_matched_document_ids(search_index, &request).await?;
+    let matched_email_ids = collect_matched_document_ids(search_index, &request).await?;
 
-    let scan_rows = emails_db::list_email_scan_rows_by_document_ids(
+    let scan_rows = emails_db::list_email_scan_rows_by_ids(
         db.async_connection.clone(),
-        &matched_document_ids,
+        &matched_email_ids,
         request.credential_id,
         request.max_candidate_emails,
     )
@@ -695,7 +696,7 @@ where
         keyword_query: query.clone(),
         keyword_list,
         max_candidate_emails: max_candidate_emails.unwrap_or(0),
-        matched_document_ids_count: matched_document_ids.len(),
+        matched_email_ids_count: matched_email_ids.len(),
         sender_ranking,
         candidate_email_ids,
         sender_debug: Vec::new(),
@@ -739,23 +740,22 @@ where
             skipped_reason: None,
         };
 
-        let sender_rows =
-            match emails_db::list_template_candidate_emails_by_sender_and_document_ids(
-                db.async_connection.clone(),
-                sender_email,
-                &matched_document_ids,
-                request.credential_id,
-                request.max_candidate_emails,
-            )
-            .await
-            {
-                Ok(rows) => rows,
-                Err(err) => {
-                    sender_debug.error = Some(err.to_string());
-                    debug_state.sender_debug.push(sender_debug);
-                    continue;
-                }
-            };
+        let sender_rows = match emails_db::list_template_candidate_emails_by_sender_and_email_ids(
+            db.async_connection.clone(),
+            sender_email,
+            &matched_email_ids,
+            request.credential_id,
+            request.max_candidate_emails,
+        )
+        .await
+        {
+            Ok(rows) => rows,
+            Err(err) => {
+                sender_debug.error = Some(err.to_string());
+                debug_state.sender_debug.push(sender_debug);
+                continue;
+            }
+        };
         sender_debug.sender_candidate_count = sender_rows.len();
         if sender_rows.is_empty() {
             sender_debug.skipped_reason = Some("No sender rows".to_string());
@@ -792,10 +792,10 @@ where
         sender_debug.initially_matched_count = initially_matched.len();
 
         let fresh_unmatched_rows =
-            match emails_db::list_unmatched_template_candidate_emails_by_sender_and_document_ids(
+            match emails_db::list_unmatched_template_candidate_emails_by_sender_and_email_ids(
                 db.async_connection.clone(),
                 sender_email,
-                &matched_document_ids,
+                &matched_email_ids,
                 request.credential_id,
                 request.max_candidate_emails,
             )

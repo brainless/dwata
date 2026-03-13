@@ -4,7 +4,7 @@ use dwata_agents::email_entity_extractor::search::{
     EmailSearchProvider, EmailSearchResult, SearchEmailsParams,
 };
 use dwata_agents::simple_email_content;
-use shared_types::{DocumentKind, SearchDocumentsRequest, SearchField, SearchTerm};
+use shared_types::{SearchField, SearchRequest, SearchTarget, SearchTerm};
 use std::sync::Arc;
 
 use crate::database::emails as emails_db;
@@ -36,7 +36,8 @@ impl EmailSearchProvider for TantivyEmailSearchProvider {
     async fn search_emails(&self, params: &SearchEmailsParams) -> Result<Vec<EmailSearchResult>> {
         let limit = params.limit.unwrap_or(5).min(10) as usize;
 
-        let request = SearchDocumentsRequest {
+        let request = SearchRequest {
+            target: SearchTarget::Email,
             terms: vec![
                 SearchTerm {
                     field: SearchField::FromAddress,
@@ -49,8 +50,6 @@ impl EmailSearchProvider for TantivyEmailSearchProvider {
                     is_phrase: false,
                 },
             ],
-            kind: Some(DocumentKind::Email),
-            source_id: None,
             credential_id: None,
             limit: Some(limit),
             offset: None,
@@ -64,10 +63,19 @@ impl EmailSearchProvider for TantivyEmailSearchProvider {
             return Ok(Vec::new());
         }
 
-        let document_ids: Vec<i64> = tantivy_results.hits.iter().map(|h| h.document_id).collect();
-        let scan_rows = emails_db::list_email_scan_rows_by_document_ids(
+        // Extract email IDs from hits
+        let email_ids: Vec<i64> = tantivy_results
+            .hits
+            .iter()
+            .filter_map(|h| match &h.hit_id {
+                shared_types::HitId::Email(id) => Some(*id),
+                _ => None,
+            })
+            .collect();
+
+        let scan_rows = emails_db::list_email_scan_rows_by_ids(
             self.db_conn.clone(),
-            &document_ids,
+            &email_ids,
             None,
             Some(limit),
         )

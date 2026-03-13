@@ -311,10 +311,10 @@ pub async fn list_documents_for_indexing_page(
             Ok(DocumentForIndexing {
                 document,
                 indexed_text: IndexedTextFields {
-                    title: subject,
-                    from_address,
                     body_text,
-                    attachment_text: None,
+                    filename: None,
+                    subject,
+                    from_address,
                     credential_id,
                 },
             })
