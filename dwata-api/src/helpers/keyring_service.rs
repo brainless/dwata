@@ -44,6 +44,13 @@ pub struct KeyringService {
 }
 
 impl KeyringService {
+    fn is_not_found_error(error_message: &str) -> bool {
+        let normalized = error_message.to_ascii_lowercase();
+        normalized.contains("not found")
+            || normalized.contains("nomatchingentry")
+            || normalized.contains("no matching entry")
+    }
+
     /// Create a new KeyringService with default cache TTL of 1 hour
     pub fn new() -> Self {
         Self::with_ttl(Duration::from_secs(3600))
@@ -81,7 +88,7 @@ impl KeyringService {
         })?;
 
         entry.get_password().map_err(|e| {
-            if e.to_string().contains("not found") || e.to_string().contains("NotFound") {
+            if Self::is_not_found_error(&e.to_string()) {
                 KeyringError::NotFound
             } else {
                 KeyringError::OperationFailed(format!("Failed to retrieve password: {}", e))
@@ -381,7 +388,7 @@ impl KeyringService {
         })?;
 
         let json_string = entry.get_password().map_err(|e| {
-            if e.to_string().contains("not found") || e.to_string().contains("NotFound") {
+            if Self::is_not_found_error(&e.to_string()) {
                 KeyringError::NotFound
             } else {
                 KeyringError::OperationFailed(format!(
