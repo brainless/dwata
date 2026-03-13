@@ -1,5 +1,6 @@
 use crate::database::AsyncDbConnection;
 use anyhow::Result;
+use dwata_agents::simple_email_content;
 use rusqlite::params_from_iter;
 use rusqlite::types::Value;
 use shared_types::email::{AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment};
@@ -953,8 +954,15 @@ pub async fn list_emails_for_indexing_page(
                 updated_at: row.get(26)?,
             };
 
+            // Use simple_email_content to prefer plain text but fall back to HTML-to-text conversion
+            let simple_content = simple_email_content(
+                email.subject.as_deref(),
+                email.body_text.as_deref(),
+                email.body_html.as_deref(),
+            );
+
             let indexed_text = crate::search::tantivy::IndexedTextFields::from_email(
-                email.body_text.clone(),
+                Some(simple_content.body),
                 email.subject.clone(),
                 email.from_address.clone(),
                 email.credential_id,
