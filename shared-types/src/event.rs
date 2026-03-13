@@ -8,7 +8,10 @@ pub struct Event {
     pub email_id: Option<i64>,
     pub name: String,
     pub description: Option<String>,
-    pub event_date: i64, // Unix timestamp
+    /// Date of the event.
+    /// SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
+    pub event_date_raw: Option<String>,
+    pub event_date: Option<i64>,
     pub location_id: Option<i64>,
     #[ts(skip)]
     pub attendees: serde_json::Value, // Array of email addresses
@@ -23,7 +26,7 @@ pub struct Event {
 pub struct CreateEventRequest {
     pub name: String,
     pub description: Option<String>,
-    pub event_date: i64,
+    pub event_date_raw: Option<String>,
     pub location_id: Option<i64>,
     pub attendees: Vec<String>,
 }
@@ -33,7 +36,7 @@ pub struct CreateEventRequest {
 pub struct UpdateEventRequest {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub event_date: Option<i64>,
+    pub event_date_raw: Option<String>,
     pub location_id: Option<i64>,
     pub attendees: Option<Vec<String>>,
 }

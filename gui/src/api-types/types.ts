@@ -3,7 +3,12 @@ import type { ProjectStatus } from "./ProjectStatus";
 /**
  * Project entity for managing work and hobby projects
  */
-export type Project = { id: number, name: string, description: string, status: ProjectStatus, tasks_completed: number, tasks_total: number, deadline: string | null, notifications: number, created_at: bigint, updated_at: bigint, };
+export type Project = { id: number, name: string, description: string, status: ProjectStatus, tasks_completed: number, tasks_total: number, 
+/**
+ * Date by which the project must be completed.
+ * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
+ */
+deadline_raw: string | null, deadline: bigint | null, notifications: number, created_at: bigint, updated_at: bigint, };
 
 
 export type ProjectStatus = "active" | "planning" | "on-hold" | "completed" | "archived";
@@ -12,7 +17,7 @@ export type ProjectStatus = "active" | "planning" | "on-hold" | "completed" | "a
 /**
  * Request to create a new project
  */
-export type CreateProjectRequest = { name: string, description: string, deadline: string | null, };
+export type CreateProjectRequest = { name: string, description: string, deadline_raw: string | null, };
 
 
 import type { ProjectStatus } from "./ProjectStatus";
@@ -20,7 +25,7 @@ import type { ProjectStatus } from "./ProjectStatus";
 /**
  * Request to update a project
  */
-export type UpdateProjectRequest = { name: string | null, description: string | null, status: ProjectStatus | null, deadline: string | null, };
+export type UpdateProjectRequest = { name: string | null, description: string | null, status: ProjectStatus | null, deadline_raw: string | null, };
 
 
 import type { Project } from "./Project";
@@ -31,13 +36,18 @@ import type { Project } from "./Project";
 export type ProjectsResponse = { projects: Array<Project>, };
 
 
-export type Event = { id: bigint, email_id: bigint | null, name: string, description: string | null, event_date: bigint, location_id: bigint | null, project_id: bigint | null, task_id: bigint | null, created_at: bigint, updated_at: bigint, };
+export type Event = { id: bigint, email_id: bigint | null, name: string, description: string | null, 
+/**
+ * Date of the event.
+ * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
+ */
+event_date_raw: string | null, event_date: bigint | null, location_id: bigint | null, project_id: bigint | null, task_id: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
-export type CreateEventRequest = { name: string, description: string | null, event_date: bigint, location_id: bigint | null, attendees: Array<string>, };
+export type CreateEventRequest = { name: string, description: string | null, event_date_raw: string | null, location_id: bigint | null, attendees: Array<string>, };
 
 
-export type UpdateEventRequest = { name: string | null, description: string | null, event_date: bigint | null, location_id: bigint | null, attendees: Array<string> | null, };
+export type UpdateEventRequest = { name: string | null, description: string | null, event_date_raw: string | null, location_id: bigint | null, attendees: Array<string> | null, };
 
 
 import type { Event } from "./Event";

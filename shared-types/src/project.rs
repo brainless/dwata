@@ -21,7 +21,10 @@ pub struct Project {
     pub status: ProjectStatus,
     pub tasks_completed: i32,
     pub tasks_total: i32,
-    pub deadline: Option<String>,
+    /// Date by which the project must be completed.
+    /// SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
+    pub deadline_raw: Option<String>,
+    pub deadline: Option<i64>,
     pub notifications: i32,
     pub created_at: i64,
     pub updated_at: i64,
@@ -32,7 +35,7 @@ pub struct Project {
 pub struct CreateProjectRequest {
     pub name: String,
     pub description: String,
-    pub deadline: Option<String>,
+    pub deadline_raw: Option<String>,
 }
 
 /// Request to update a project
@@ -41,7 +44,7 @@ pub struct UpdateProjectRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub status: Option<ProjectStatus>,
-    pub deadline: Option<String>,
+    pub deadline_raw: Option<String>,
 }
 
 /// Response containing a list of projects
