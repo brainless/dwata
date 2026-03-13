@@ -102,274 +102,295 @@ async fn main() -> Result<()> {
 }
 
 fn print_entities(params: &ExtractedEntitiesParams) {
-    if !params.locations.is_empty() {
-        println!("## Locations");
-        print_sep(&[4, 30, 20, 12, 30, 14]);
-        println!(
-            "| {:<2} | {:<28} | {:<18} | {:<10} | {:<28} | {:<12} |",
-            "id", "city", "region", "country", "address_line1", "postal_code"
-        );
-        print_sep(&[4, 30, 20, 12, 30, 14]);
-        for l in &params.locations {
+    let mut any = false;
+
+    if let Some(locations) = &params.locations {
+        if !locations.is_empty() {
+            any = true;
+            println!("## Locations");
+            print_sep(&[4, 30, 20, 12, 30, 14]);
             println!(
                 "| {:<2} | {:<28} | {:<18} | {:<10} | {:<28} | {:<12} |",
-                l.id,
-                trunc(l.city.as_deref().unwrap_or(""), 28),
-                trunc(l.region.as_deref().unwrap_or(""), 18),
-                trunc(l.country_code.as_deref().unwrap_or(""), 10),
-                trunc(l.address_line1.as_deref().unwrap_or(""), 28),
-                trunc(l.postal_code.as_deref().unwrap_or(""), 12),
+                "id", "city", "region", "country", "address_line1", "postal_code"
             );
+            print_sep(&[4, 30, 20, 12, 30, 14]);
+            for l in locations {
+                println!(
+                    "| {:<2} | {:<28} | {:<18} | {:<10} | {:<28} | {:<12} |",
+                    l.id,
+                    trunc(l.city.as_deref().unwrap_or(""), 28),
+                    trunc(l.region.as_deref().unwrap_or(""), 18),
+                    trunc(l.country_code.as_deref().unwrap_or(""), 10),
+                    trunc(l.address_line1.as_deref().unwrap_or(""), 28),
+                    trunc(l.postal_code.as_deref().unwrap_or(""), 12),
+                );
+            }
+            print_sep(&[4, 30, 20, 12, 30, 14]);
+            println!();
         }
-        print_sep(&[4, 30, 20, 12, 30, 14]);
-        println!();
     }
 
-    if !params.organisations.is_empty() {
-        println!("## Organisations");
-        print_sep(&[4, 35, 20, 25, 40, 12]);
-        println!(
-            "| {:<2} | {:<33} | {:<18} | {:<23} | {:<38} | {:<10} |",
-            "id", "name", "role", "industry", "website", "location_id"
-        );
-        print_sep(&[4, 35, 20, 25, 40, 12]);
-        for o in &params.organisations {
+    if let Some(organisations) = &params.organisations {
+        if !organisations.is_empty() {
+            any = true;
+            println!("## Organisations");
+            print_sep(&[4, 35, 20, 25, 40, 12]);
             println!(
                 "| {:<2} | {:<33} | {:<18} | {:<23} | {:<38} | {:<10} |",
-                o.id,
-                trunc(&o.name, 33),
-                trunc(o.role.as_deref().unwrap_or(""), 18),
-                trunc(o.industry.as_deref().unwrap_or(""), 23),
-                trunc(o.website.as_deref().unwrap_or(""), 38),
-                o.location_id.map(|v| v.to_string()).unwrap_or_default(),
+                "id", "name", "role", "industry", "website", "location_id"
             );
+            print_sep(&[4, 35, 20, 25, 40, 12]);
+            for o in organisations {
+                println!(
+                    "| {:<2} | {:<33} | {:<18} | {:<23} | {:<38} | {:<10} |",
+                    o.id,
+                    trunc(&o.name, 33),
+                    trunc(o.role.as_deref().unwrap_or(""), 18),
+                    trunc(o.industry.as_deref().unwrap_or(""), 23),
+                    trunc(o.website.as_deref().unwrap_or(""), 38),
+                    o.location_id.map(|v| v.to_string()).unwrap_or_default(),
+                );
+            }
+            print_sep(&[4, 35, 20, 25, 40, 12]);
+            println!();
         }
-        print_sep(&[4, 35, 20, 25, 40, 12]);
-        println!();
     }
 
-    if !params.persons.is_empty() {
-        println!("## Persons");
-        print_sep(&[4, 30, 35, 18, 12]);
-        println!(
-            "| {:<2} | {:<28} | {:<33} | {:<16} | {:<10} |",
-            "id", "name", "email", "phone", "org_id"
-        );
-        print_sep(&[4, 30, 35, 18, 12]);
-        for p in &params.persons {
+    if let Some(persons) = &params.persons {
+        if !persons.is_empty() {
+            any = true;
+            println!("## Persons");
+            print_sep(&[4, 30, 35, 18, 12]);
             println!(
                 "| {:<2} | {:<28} | {:<33} | {:<16} | {:<10} |",
-                p.id,
-                trunc(&p.name, 28),
-                trunc(p.email.as_deref().unwrap_or(""), 33),
-                trunc(p.phone.as_deref().unwrap_or(""), 16),
-                p.organisation_id.map(|v| v.to_string()).unwrap_or_default(),
+                "id", "name", "email", "phone", "org_id"
             );
+            print_sep(&[4, 30, 35, 18, 12]);
+            for p in persons {
+                println!(
+                    "| {:<2} | {:<28} | {:<33} | {:<16} | {:<10} |",
+                    p.id,
+                    trunc(&p.name, 28),
+                    trunc(p.email.as_deref().unwrap_or(""), 33),
+                    trunc(p.phone.as_deref().unwrap_or(""), 16),
+                    p.organisation_id.map(|v| v.to_string()).unwrap_or_default(),
+                );
+            }
+            print_sep(&[4, 30, 35, 18, 12]);
+            println!();
         }
-        print_sep(&[4, 30, 35, 18, 12]);
-        println!();
     }
 
-    if !params.bills.is_empty() {
-        println!("## Bills");
-        print_sep(&[4, 22, 20, 10, 30, 30, 12, 12]);
-        println!(
-            "| {:<2} | {:<20} | {:<18} | {:<8} | {:<28} | {:<28} | {:<10} | {:<10} |",
-            "id",
-            "doc_type",
-            "total_amount",
-            "currency",
-            "issued_date (parsed)",
-            "due_date (parsed)",
-            "org_id",
-            "sub_id"
-        );
-        print_sep(&[4, 22, 20, 10, 30, 30, 12, 12]);
-        for b in &params.bills {
-            let amount = b
-                .total_amount
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
-            let issued = b
-                .issued_date
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
-            let due = b
-                .due_date
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(bills) = &params.bills {
+        if !bills.is_empty() {
+            any = true;
+            println!("## Bills");
+            print_sep(&[4, 22, 20, 10, 30, 30, 12, 12]);
             println!(
                 "| {:<2} | {:<20} | {:<18} | {:<8} | {:<28} | {:<28} | {:<10} | {:<10} |",
-                b.id,
-                trunc(b.document_type.as_deref().unwrap_or(""), 20),
-                trunc(&amount, 18),
-                trunc(b.currency.as_deref().unwrap_or(""), 8),
-                trunc(&issued, 28),
-                trunc(&due, 28),
-                b.issuer_organisation_id
-                    .map(|v| v.to_string())
-                    .unwrap_or_default(),
-                b.subscription_id.map(|v| v.to_string()).unwrap_or_default(),
+                "id",
+                "doc_type",
+                "total_amount",
+                "currency",
+                "issued_date (parsed)",
+                "due_date (parsed)",
+                "org_id",
+                "sub_id"
             );
+            print_sep(&[4, 22, 20, 10, 30, 30, 12, 12]);
+            for b in bills {
+                let amount = b
+                    .total_amount
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                let issued = b
+                    .issued_date
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                let due = b
+                    .due_date
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                println!(
+                    "| {:<2} | {:<20} | {:<18} | {:<8} | {:<28} | {:<28} | {:<10} | {:<10} |",
+                    b.id,
+                    trunc(b.document_type.as_deref().unwrap_or(""), 20),
+                    trunc(&amount, 18),
+                    trunc(b.currency.as_deref().unwrap_or(""), 8),
+                    trunc(&issued, 28),
+                    trunc(&due, 28),
+                    b.issuer_organisation_id
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
+                    b.subscription_id.map(|v| v.to_string()).unwrap_or_default(),
+                );
+            }
+            print_sep(&[4, 22, 20, 10, 30, 30, 12, 12]);
+            println!();
         }
-        print_sep(&[4, 22, 20, 10, 30, 30, 12, 12]);
-        println!();
     }
 
-    if !params.transactions.is_empty() {
-        println!("## Transactions");
-        print_sep(&[4, 20, 10, 30, 30, 12, 12]);
-        println!(
-            "| {:<2} | {:<18} | {:<8} | {:<28} | {:<28} | {:<10} | {:<10} |",
-            "id", "amount", "currency", "date (parsed)", "reference", "payer_id", "payee_id"
-        );
-        print_sep(&[4, 20, 10, 30, 30, 12, 12]);
-        for t in &params.transactions {
-            let amount = parse_value(&t.amount).to_string();
-            let date = t
-                .transaction_date
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(transactions) = &params.transactions {
+        if !transactions.is_empty() {
+            any = true;
+            println!("## Transactions");
+            print_sep(&[4, 20, 10, 30, 30, 12, 12]);
             println!(
                 "| {:<2} | {:<18} | {:<8} | {:<28} | {:<28} | {:<10} | {:<10} |",
-                t.id,
-                trunc(&amount, 18),
-                trunc(&t.currency, 8),
-                trunc(&date, 28),
-                trunc(t.transaction_reference.as_deref().unwrap_or(""), 28),
-                t.payer_organisation_id
-                    .map(|v| v.to_string())
-                    .unwrap_or_default(),
-                t.payee_organisation_id
-                    .map(|v| v.to_string())
-                    .unwrap_or_default(),
+                "id", "amount", "currency", "date (parsed)", "reference", "payer_id", "payee_id"
             );
+            print_sep(&[4, 20, 10, 30, 30, 12, 12]);
+            for t in transactions {
+                let amount = parse_value(&t.amount).to_string();
+                let date = t
+                    .transaction_date
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                println!(
+                    "| {:<2} | {:<18} | {:<8} | {:<28} | {:<28} | {:<10} | {:<10} |",
+                    t.id,
+                    trunc(&amount, 18),
+                    trunc(&t.currency, 8),
+                    trunc(&date, 28),
+                    trunc(t.transaction_reference.as_deref().unwrap_or(""), 28),
+                    t.payer_organisation_id
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
+                    t.payee_organisation_id
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
+                );
+            }
+            print_sep(&[4, 20, 10, 30, 30, 12, 12]);
+            println!();
         }
-        print_sep(&[4, 20, 10, 30, 30, 12, 12]);
-        println!();
     }
 
-    if !params.subscriptions.is_empty() {
-        println!("## Subscriptions");
-        print_sep(&[4, 30, 25, 15, 20, 10, 12]);
-        println!(
-            "| {:<2} | {:<28} | {:<23} | {:<13} | {:<18} | {:<8} | {:<10} |",
-            "id",
-            "service_name",
-            "plan_name",
-            "billing_cycle",
-            "amount (parsed)",
-            "currency",
-            "org_id"
-        );
-        print_sep(&[4, 30, 25, 15, 20, 10, 12]);
-        for s in &params.subscriptions {
-            let amount = s
-                .amount
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
-            let next = s
-                .next_billing_date
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(subscriptions) = &params.subscriptions {
+        if !subscriptions.is_empty() {
+            any = true;
+            println!("## Subscriptions");
+            print_sep(&[4, 30, 25, 15, 20, 10, 12]);
             println!(
                 "| {:<2} | {:<28} | {:<23} | {:<13} | {:<18} | {:<8} | {:<10} |",
-                s.id,
-                trunc(&s.service_name, 28),
-                trunc(s.plan_name.as_deref().unwrap_or(""), 23),
-                trunc(s.billing_cycle.as_deref().unwrap_or(""), 13),
-                trunc(&amount, 18),
-                trunc(s.currency.as_deref().unwrap_or(""), 8),
-                s.organisation_id.map(|v| v.to_string()).unwrap_or_default(),
+                "id",
+                "service_name",
+                "plan_name",
+                "billing_cycle",
+                "amount (parsed)",
+                "currency",
+                "org_id"
             );
-            if !next.is_empty() {
-                println!("       next_billing_date: {}", next);
+            print_sep(&[4, 30, 25, 15, 20, 10, 12]);
+            for s in subscriptions {
+                let amount = s
+                    .amount
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                let next = s
+                    .next_billing_date
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                println!(
+                    "| {:<2} | {:<28} | {:<23} | {:<13} | {:<18} | {:<8} | {:<10} |",
+                    s.id,
+                    trunc(&s.service_name, 28),
+                    trunc(s.plan_name.as_deref().unwrap_or(""), 23),
+                    trunc(s.billing_cycle.as_deref().unwrap_or(""), 13),
+                    trunc(&amount, 18),
+                    trunc(s.currency.as_deref().unwrap_or(""), 8),
+                    s.organisation_id.map(|v| v.to_string()).unwrap_or_default(),
+                );
+                if !next.is_empty() {
+                    println!("       next_billing_date: {}", next);
+                }
             }
+            print_sep(&[4, 30, 25, 15, 20, 10, 12]);
+            println!();
         }
-        print_sep(&[4, 30, 25, 15, 20, 10, 12]);
-        println!();
     }
 
-    if !params.orders.is_empty() {
-        println!("## Orders");
-        print_sep(&[4, 25, 20, 20, 10, 30, 12]);
-        println!(
-            "| {:<2} | {:<23} | {:<18} | {:<18} | {:<8} | {:<28} | {:<10} |",
-            "id",
-            "order_reference",
-            "status",
-            "total_amount",
-            "currency",
-            "tracking_number",
-            "org_id"
-        );
-        print_sep(&[4, 25, 20, 20, 10, 30, 12]);
-        for o in &params.orders {
-            let amount = o
-                .total_amount
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(orders) = &params.orders {
+        if !orders.is_empty() {
+            any = true;
+            println!("## Orders");
+            print_sep(&[4, 25, 20, 20, 10, 30, 12]);
             println!(
                 "| {:<2} | {:<23} | {:<18} | {:<18} | {:<8} | {:<28} | {:<10} |",
-                o.id,
-                trunc(o.order_reference.as_deref().unwrap_or(""), 23),
-                trunc(o.status.as_deref().unwrap_or(""), 18),
-                trunc(&amount, 18),
-                trunc(o.currency.as_deref().unwrap_or(""), 8),
-                trunc(o.tracking_number.as_deref().unwrap_or(""), 28),
-                o.organisation_id.map(|v| v.to_string()).unwrap_or_default(),
+                "id",
+                "order_reference",
+                "status",
+                "total_amount",
+                "currency",
+                "tracking_number",
+                "org_id"
             );
-            if !o.items.is_empty() {
-                println!("       items: {}", o.items.join(", "));
+            print_sep(&[4, 25, 20, 20, 10, 30, 12]);
+            for o in orders {
+                let amount = o
+                    .total_amount
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                println!(
+                    "| {:<2} | {:<23} | {:<18} | {:<18} | {:<8} | {:<28} | {:<10} |",
+                    o.id,
+                    trunc(o.order_reference.as_deref().unwrap_or(""), 23),
+                    trunc(o.status.as_deref().unwrap_or(""), 18),
+                    trunc(&amount, 18),
+                    trunc(o.currency.as_deref().unwrap_or(""), 8),
+                    trunc(o.tracking_number.as_deref().unwrap_or(""), 28),
+                    o.organisation_id.map(|v| v.to_string()).unwrap_or_default(),
+                );
+                if let Some(items) = &o.items {
+                    if !items.is_empty() {
+                        println!("       items: {}", items.join(", "));
+                    }
+                }
             }
+            print_sep(&[4, 25, 20, 20, 10, 30, 12]);
+            println!();
         }
-        print_sep(&[4, 25, 20, 20, 10, 30, 12]);
-        println!();
     }
 
-    if !params.events.is_empty() {
-        println!("## Events");
-        print_sep(&[4, 35, 30, 40, 12]);
-        println!(
-            "| {:<2} | {:<33} | {:<28} | {:<38} | {:<10} |",
-            "id", "name", "event_date (parsed)", "attendees", "location_id"
-        );
-        print_sep(&[4, 35, 30, 40, 12]);
-        for e in &params.events {
-            let date = e
-                .event_date
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(events) = &params.events {
+        if !events.is_empty() {
+            any = true;
+            println!("## Events");
+            print_sep(&[4, 35, 30, 40, 12]);
             println!(
                 "| {:<2} | {:<33} | {:<28} | {:<38} | {:<10} |",
-                e.id,
-                trunc(&e.name, 33),
-                trunc(&date, 28),
-                trunc(&e.attendees.join(", "), 38),
-                e.location_id.map(|v| v.to_string()).unwrap_or_default(),
+                "id", "name", "event_date (parsed)", "attendees", "location_id"
             );
+            print_sep(&[4, 35, 30, 40, 12]);
+            for e in events {
+                let date = e
+                    .event_date
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                let attendees = e.attendees.as_deref().unwrap_or(&[]).join(", ");
+                println!(
+                    "| {:<2} | {:<33} | {:<28} | {:<38} | {:<10} |",
+                    e.id,
+                    trunc(&e.name, 33),
+                    trunc(&date, 28),
+                    trunc(&attendees, 38),
+                    e.location_id.map(|v| v.to_string()).unwrap_or_default(),
+                );
+            }
+            print_sep(&[4, 35, 30, 40, 12]);
+            println!();
         }
-        print_sep(&[4, 35, 30, 40, 12]);
-        println!();
     }
 
-    if params.locations.is_empty()
-        && params.organisations.is_empty()
-        && params.persons.is_empty()
-        && params.bills.is_empty()
-        && params.transactions.is_empty()
-        && params.subscriptions.is_empty()
-        && params.orders.is_empty()
-        && params.events.is_empty()
-    {
+    if !any {
         println!("(no entities extracted)");
     }
 }

@@ -140,7 +140,7 @@ pub struct ExtractedOrder {
     #[schemars(description = "ISO currency code or symbol")]
     pub currency: Option<String>,
     #[schemars(description = "List of product/item names or descriptions from the email")]
-    pub items: Vec<String>,
+    pub items: Option<Vec<String>>,
     pub tracking_number: Option<String>,
     #[schemars(description = "FK: id of an ExtractedTransaction that paid for this order")]
     pub transaction_id: Option<u32>,
@@ -156,7 +156,7 @@ pub struct ExtractedEvent {
     pub event_date: Option<String>,
     #[schemars(description = "FK: id of an ExtractedLocation for this event")]
     pub location_id: Option<u32>,
-    pub attendees: Vec<String>,
+    pub attendees: Option<Vec<String>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -169,27 +169,29 @@ pub struct ExtractedEvent {
 )]
 pub struct ExtractedEntitiesParams {
     #[schemars(
-        description = "Physical addresses or places mentioned (FK targets for other entities)"
+        description = "Physical addresses or places mentioned (FK targets for other entities). Omit if none found."
     )]
-    pub locations: Vec<ExtractedLocation>,
+    pub locations: Option<Vec<ExtractedLocation>>,
     #[schemars(
-        description = "Companies, institutions, banks, vendors, service providers — any organisation"
+        description = "Companies, institutions, banks, vendors, service providers — any organisation. Omit if none found."
     )]
-    pub organisations: Vec<ExtractedOrganisation>,
-    #[schemars(description = "Named individuals — sender, recipient, or any person mentioned")]
-    pub persons: Vec<ExtractedPerson>,
-    #[schemars(description = "Bills, invoices, receipts, or statements")]
-    pub bills: Vec<ExtractedBill>,
-    #[schemars(description = "Confirmed or completed payment transactions")]
-    pub transactions: Vec<ExtractedTransaction>,
+    pub organisations: Option<Vec<ExtractedOrganisation>>,
     #[schemars(
-        description = "Recurring subscriptions to services — only create if clearly a new subscription, not just a renewal bill"
+        description = "Named individuals — sender, recipient, or any person mentioned. Omit if none found."
     )]
-    pub subscriptions: Vec<ExtractedSubscription>,
-    #[schemars(description = "Product or e-commerce orders")]
-    pub orders: Vec<ExtractedOrder>,
-    #[schemars(description = "Meetings, appointments, or scheduled events")]
-    pub events: Vec<ExtractedEvent>,
+    pub persons: Option<Vec<ExtractedPerson>>,
+    #[schemars(description = "Bills, invoices, receipts, or statements. Omit if none found.")]
+    pub bills: Option<Vec<ExtractedBill>>,
+    #[schemars(description = "Confirmed or completed payment transactions. Omit if none found.")]
+    pub transactions: Option<Vec<ExtractedTransaction>>,
+    #[schemars(
+        description = "Recurring subscriptions to services — only create if clearly a new subscription, not just a renewal bill. Omit if none found."
+    )]
+    pub subscriptions: Option<Vec<ExtractedSubscription>>,
+    #[schemars(description = "Product or e-commerce orders. Omit if none found.")]
+    pub orders: Option<Vec<ExtractedOrder>>,
+    #[schemars(description = "Meetings, appointments, or scheduled events. Omit if none found.")]
+    pub events: Option<Vec<ExtractedEvent>>,
 }
 
 // ---------------------------------------------------------------------------

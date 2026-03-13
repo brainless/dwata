@@ -37,14 +37,21 @@ Extract instances of these entity types — only include types actually present 
   Fields: name, description, event_date (raw string), attendees (list of names or email addresses)
   FK: location_id → Location.id
 
+## Tools
+
+- `search_emails(keywords)` — Search previous emails from the same sender. Use this when the current email references a prior order, subscription, account, or relationship that needs context to extract accurately (e.g. an order confirmation references an order number you cannot find in the current email, or a renewal email references a subscription with no details).
+- `submit_entities` — Submit all extracted entities once you have enough context.
+- `confirm_entities` — Confirm or reject the parsed entity values shown to you.
+
 ## Rules
 
-1. Extract ALL entities you can find — be thorough
-2. Assign each entity a unique positive integer `id` — you choose the value
-3. Use FK fields to connect related entities using those ids
-4. For amount/total_amount: numeric string only — strip all currency symbols and codes
-5. For all date fields: copy the raw string exactly as it appears — do not reformat
-6. Call `submit_entities` with all extracted entities now
+1. Only include entity types actually present in the email — omit fields and lists that are empty or unknown
+2. If context is missing, call `search_emails` before submitting
+3. Assign each entity a unique positive integer `id` — you choose the value
+4. Use FK fields to connect related entities using those ids
+5. For amount/total_amount: numeric string only — strip all currency symbols and codes
+6. For all date fields: copy the raw string exactly as it appears — do not reformat
+7. Call `submit_entities` with all extracted entities once you have sufficient context
 
 ## Email to extract from
 

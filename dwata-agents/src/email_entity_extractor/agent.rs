@@ -264,199 +264,216 @@ impl EmailEntityExtractorAgent {
 fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
     let mut out = String::new();
 
-    if !params.locations.is_empty() {
-        out.push_str("### Locations\n");
-        out.push_str(&row(
-            "id",
-            "city",
-            "country_code",
-            "address_line1",
-            "postal_code",
-        ));
-        out.push_str(&sep());
-        for l in &params.locations {
+    if let Some(locations) = &params.locations {
+        if !locations.is_empty() {
+            out.push_str("### Locations\n");
             out.push_str(&row(
-                &l.id.to_string(),
-                opt(&l.city),
-                opt(&l.country_code),
-                opt(&l.address_line1),
-                opt(&l.postal_code),
+                "id",
+                "city",
+                "country_code",
+                "address_line1",
+                "postal_code",
             ));
+            out.push_str(&sep());
+            for l in locations {
+                out.push_str(&row(
+                    &l.id.to_string(),
+                    opt(&l.city),
+                    opt(&l.country_code),
+                    opt(&l.address_line1),
+                    opt(&l.postal_code),
+                ));
+            }
+            out.push('\n');
         }
-        out.push('\n');
     }
 
-    if !params.organisations.is_empty() {
-        out.push_str("### Organisations\n");
-        out.push_str(&row("id", "name", "role", "website", "location_id"));
-        out.push_str(&sep());
-        for o in &params.organisations {
-            out.push_str(&row(
-                &o.id.to_string(),
-                &o.name,
-                opt(&o.role),
-                opt(&o.website),
-                &o.location_id.map(|v| v.to_string()).unwrap_or_default(),
-            ));
+    if let Some(organisations) = &params.organisations {
+        if !organisations.is_empty() {
+            out.push_str("### Organisations\n");
+            out.push_str(&row("id", "name", "role", "website", "location_id"));
+            out.push_str(&sep());
+            for o in organisations {
+                out.push_str(&row(
+                    &o.id.to_string(),
+                    &o.name,
+                    opt(&o.role),
+                    opt(&o.website),
+                    &o.location_id.map(|v| v.to_string()).unwrap_or_default(),
+                ));
+            }
+            out.push('\n');
         }
-        out.push('\n');
     }
 
-    if !params.persons.is_empty() {
-        out.push_str("### Persons\n");
-        out.push_str(&row("id", "name", "email", "phone", "organisation_id"));
-        out.push_str(&sep());
-        for p in &params.persons {
-            out.push_str(&row(
-                &p.id.to_string(),
-                &p.name,
-                opt(&p.email),
-                opt(&p.phone),
-                &p.organisation_id.map(|v| v.to_string()).unwrap_or_default(),
-            ));
+    if let Some(persons) = &params.persons {
+        if !persons.is_empty() {
+            out.push_str("### Persons\n");
+            out.push_str(&row("id", "name", "email", "phone", "organisation_id"));
+            out.push_str(&sep());
+            for p in persons {
+                out.push_str(&row(
+                    &p.id.to_string(),
+                    &p.name,
+                    opt(&p.email),
+                    opt(&p.phone),
+                    &p.organisation_id.map(|v| v.to_string()).unwrap_or_default(),
+                ));
+            }
+            out.push('\n');
         }
-        out.push('\n');
     }
 
-    if !params.bills.is_empty() {
-        out.push_str("### Bills\n");
-        out.push_str(&row(
-            "id",
-            "doc_type",
-            "total_amount (parsed)",
-            "currency",
-            "issued_date (parsed)",
-        ));
-        out.push_str(&sep());
-        for b in &params.bills {
-            let amount_parsed = b
-                .total_amount
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
-            let date_parsed = b
-                .issued_date
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(bills) = &params.bills {
+        if !bills.is_empty() {
+            out.push_str("### Bills\n");
             out.push_str(&row(
-                &b.id.to_string(),
-                opt(&b.document_type),
-                &amount_parsed,
-                opt(&b.currency),
-                &date_parsed,
+                "id",
+                "doc_type",
+                "total_amount (parsed)",
+                "currency",
+                "issued_date (parsed)",
             ));
+            out.push_str(&sep());
+            for b in bills {
+                let amount_parsed = b
+                    .total_amount
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                let date_parsed = b
+                    .issued_date
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                out.push_str(&row(
+                    &b.id.to_string(),
+                    opt(&b.document_type),
+                    &amount_parsed,
+                    opt(&b.currency),
+                    &date_parsed,
+                ));
+            }
+            out.push('\n');
         }
-        out.push('\n');
     }
 
-    if !params.transactions.is_empty() {
-        out.push_str("### Transactions\n");
-        out.push_str(&row(
-            "id",
-            "amount (parsed)",
-            "currency",
-            "date (parsed)",
-            "reference",
-        ));
-        out.push_str(&sep());
-        for t in &params.transactions {
-            let amount_parsed = parse_value(&t.amount).to_string();
-            let date_parsed = t
-                .transaction_date
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(transactions) = &params.transactions {
+        if !transactions.is_empty() {
+            out.push_str("### Transactions\n");
             out.push_str(&row(
-                &t.id.to_string(),
-                &amount_parsed,
-                &t.currency,
-                &date_parsed,
-                opt(&t.transaction_reference),
+                "id",
+                "amount (parsed)",
+                "currency",
+                "date (parsed)",
+                "reference",
             ));
+            out.push_str(&sep());
+            for t in transactions {
+                let amount_parsed = parse_value(&t.amount).to_string();
+                let date_parsed = t
+                    .transaction_date
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                out.push_str(&row(
+                    &t.id.to_string(),
+                    &amount_parsed,
+                    &t.currency,
+                    &date_parsed,
+                    opt(&t.transaction_reference),
+                ));
+            }
+            out.push('\n');
         }
-        out.push('\n');
     }
 
-    if !params.subscriptions.is_empty() {
-        out.push_str("### Subscriptions\n");
-        out.push_str(&row(
-            "id",
-            "service_name",
-            "plan_name",
-            "billing_cycle",
-            "amount (parsed)",
-        ));
-        out.push_str(&sep());
-        for s in &params.subscriptions {
-            let amount_parsed = s
-                .amount
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(subscriptions) = &params.subscriptions {
+        if !subscriptions.is_empty() {
+            out.push_str("### Subscriptions\n");
             out.push_str(&row(
-                &s.id.to_string(),
-                &s.service_name,
-                opt(&s.plan_name),
-                opt(&s.billing_cycle),
-                &amount_parsed,
+                "id",
+                "service_name",
+                "plan_name",
+                "billing_cycle",
+                "amount (parsed)",
             ));
+            out.push_str(&sep());
+            for s in subscriptions {
+                let amount_parsed = s
+                    .amount
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                out.push_str(&row(
+                    &s.id.to_string(),
+                    &s.service_name,
+                    opt(&s.plan_name),
+                    opt(&s.billing_cycle),
+                    &amount_parsed,
+                ));
+            }
+            out.push('\n');
         }
-        out.push('\n');
     }
 
-    if !params.orders.is_empty() {
-        out.push_str("### Orders\n");
-        out.push_str(&row(
-            "id",
-            "order_reference",
-            "status",
-            "total_amount (parsed)",
-            "tracking_number",
-        ));
-        out.push_str(&sep());
-        for o in &params.orders {
-            let amount_parsed = o
-                .total_amount
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(orders) = &params.orders {
+        if !orders.is_empty() {
+            out.push_str("### Orders\n");
             out.push_str(&row(
-                &o.id.to_string(),
-                opt(&o.order_reference),
-                opt(&o.status),
-                &amount_parsed,
-                opt(&o.tracking_number),
+                "id",
+                "order_reference",
+                "status",
+                "total_amount (parsed)",
+                "tracking_number",
             ));
+            out.push_str(&sep());
+            for o in orders {
+                let amount_parsed = o
+                    .total_amount
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                out.push_str(&row(
+                    &o.id.to_string(),
+                    opt(&o.order_reference),
+                    opt(&o.status),
+                    &amount_parsed,
+                    opt(&o.tracking_number),
+                ));
+            }
+            out.push('\n');
         }
-        out.push('\n');
     }
 
-    if !params.events.is_empty() {
-        out.push_str("### Events\n");
-        out.push_str(&row(
-            "id",
-            "name",
-            "event_date (parsed)",
-            "attendees",
-            "location_id",
-        ));
-        out.push_str(&sep());
-        for e in &params.events {
-            let date_parsed = e
-                .event_date
-                .as_deref()
-                .map(|v| parse_value(v).to_string())
-                .unwrap_or_default();
+    if let Some(events) = &params.events {
+        if !events.is_empty() {
+            out.push_str("### Events\n");
             out.push_str(&row(
-                &e.id.to_string(),
-                &e.name,
-                &date_parsed,
-                &e.attendees.join(", "),
-                &e.location_id.map(|v| v.to_string()).unwrap_or_default(),
+                "id",
+                "name",
+                "event_date (parsed)",
+                "attendees",
+                "location_id",
             ));
+            out.push_str(&sep());
+            for e in events {
+                let date_parsed = e
+                    .event_date
+                    .as_deref()
+                    .map(|v| parse_value(v).to_string())
+                    .unwrap_or_default();
+                let attendees = e.attendees.as_deref().unwrap_or(&[]).join(", ");
+                out.push_str(&row(
+                    &e.id.to_string(),
+                    &e.name,
+                    &date_parsed,
+                    &attendees,
+                    &e.location_id.map(|v| v.to_string()).unwrap_or_default(),
+                ));
+            }
+            out.push('\n');
         }
-        out.push('\n');
     }
 
     if out.is_empty() {
