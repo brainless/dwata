@@ -119,6 +119,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(UpdateContactRequest::export_to_string()?));
     types.push(clean_type(ContactsResponse::export_to_string()?));
 
+    // Location types
+    types.push(clean_type(Location::export_to_string()?));
+
+    // Company types
+    types.push(clean_type(Company::export_to_string()?));
+    types.push(clean_type(CompaniesResponse::export_to_string()?));
+
+    // Person types
+    types.push(clean_type(Person::export_to_string()?));
+    types.push(clean_type(PersonsResponse::export_to_string()?));
+
     // Financial types
     types.push(clean_type(DataSourceType::export_to_string()?));
     types.push(clean_type(FinancialDocumentType::export_to_string()?));

@@ -15,20 +15,18 @@ pub mod folder;
 pub mod label;
 pub mod location;
 pub mod ollama;
-pub mod order;
 pub mod organisation;
 pub mod person;
 pub mod project;
 pub mod search;
 pub mod session;
 pub mod settings;
-pub mod subscription;
 pub mod task;
 pub mod transaction;
 pub mod vendor;
 
 pub use bill::{Bill, BillStatus, BillSubject, FinancialDocumentType, ServiceIdentifierKind};
-pub use company::{CompaniesResponse, Company, CreateCompanyRequest, UpdateCompanyRequest};
+pub use company::{CompaniesResponse, Company};
 pub use contact::{Contact, ContactsResponse, CreateContactRequest, UpdateContactRequest};
 pub use contact_link::{
     ContactLink, ContactLinkType, ContactLinksResponse, CreateContactLinkRequest,
@@ -69,17 +67,17 @@ pub use financial_template::{
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
-pub use location::{CreateLocationRequest, Location, LocationsResponse, UpdateLocationRequest};
+pub use location::Location;
 pub use ollama::{
     OllamaModelDetails, OllamaModelInfo, OllamaModelsResponse, OllamaPullModelRequest,
     OllamaPullModelResponse, OllamaStatusResponse,
 };
-pub use order::{Order, OrderStatus};
+
 pub use organisation::{
     CreateOrganisationRequest, Organisation, OrganisationRole, OrganisationsResponse,
     UpdateOrganisationRequest,
 };
-pub use person::{CreatePersonRequest, Person, PersonsResponse, UpdatePersonRequest};
+pub use person::{Person, PersonsResponse};
 pub use project::{
     CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
 };
@@ -94,7 +92,7 @@ pub use settings::{
     AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse, UpdateAiProviderApiKeysRequest,
     UpdateOAuthClientAppsRequest,
 };
-pub use subscription::{BillingCycle, Subscription, SubscriptionStatus};
+
 pub use task::{
     CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
 };

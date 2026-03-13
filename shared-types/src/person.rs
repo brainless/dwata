@@ -14,24 +14,6 @@ pub struct Person {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct CreatePersonRequest {
-    pub name: String,
-    pub email: Option<String>,
-    pub phone: Option<String>,
-    pub organisation_id: Option<i64>,
-}
-
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct UpdatePersonRequest {
-    pub name: Option<String>,
-    pub email: Option<String>,
-    pub phone: Option<String>,
-    pub organisation_id: Option<i64>,
-}
-
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct PersonsResponse {

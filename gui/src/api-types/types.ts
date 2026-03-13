@@ -31,13 +31,13 @@ import type { Project } from "./Project";
 export type ProjectsResponse = { projects: Array<Project>, };
 
 
-export type Event = { id: bigint, extraction_job_id: bigint | null, email_id: bigint | null, name: string, description: string | null, event_date: bigint, location: string | null, confidence: number | null, requires_review: boolean, is_confirmed: boolean, project_id: bigint | null, task_id: bigint | null, created_at: bigint, updated_at: bigint, };
+export type Event = { id: bigint, email_id: bigint | null, name: string, description: string | null, event_date: bigint, location_id: bigint | null, project_id: bigint | null, task_id: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
-export type CreateEventRequest = { name: string, description: string | null, event_date: bigint, location: string | null, attendees: Array<string>, };
+export type CreateEventRequest = { name: string, description: string | null, event_date: bigint, location_id: bigint | null, attendees: Array<string>, };
 
 
-export type UpdateEventRequest = { name: string | null, description: string | null, event_date: bigint | null, location: string | null, attendees: Array<string> | null, is_confirmed: boolean | null, };
+export type UpdateEventRequest = { name: string | null, description: string | null, event_date: bigint | null, location_id: bigint | null, attendees: Array<string> | null, };
 
 
 import type { Event } from "./Event";
@@ -472,153 +472,41 @@ import type { EmailLabel } from "./EmailLabel";
 export type ListLabelsResponse = { labels: Array<EmailLabel>, };
 
 
-export type DataType = "project" | "task" | "event" | "contact" | "location" | "date" | "priority" | "status" | "company";
+export type Contact = { id: bigint, email_id: bigint | null, name: string, email: string | null, phone: string | null, company_id: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
-export type ExtractionMethod = "attachment-parsing" | "pattern-based" | "gliner-ner" | "bert-ner" | "llm-based" | "hybrid";
+export type CreateContactRequest = { name: string, email: string | null, phone: string | null, company_id: bigint | null, };
 
 
-export type Attachment = { filename: string, content_type: string, content: Array<number>, };
-
-
-import type { ProjectStatus } from "./ProjectStatus";
-import type { TaskPriority } from "./TaskPriority";
-
-export type UserPreferences = { date_format: string, default_task_priority: TaskPriority, default_project_status: ProjectStatus, auto_link_threshold: number, };
-
-
-import type { ExtractedCompany } from "./ExtractedCompany";
-import type { ExtractedContact } from "./ExtractedContact";
-import type { ExtractedEvent } from "./ExtractedEvent";
-import type { ExtractedLocation } from "./ExtractedLocation";
-import type { ExtractedProject } from "./ExtractedProject";
-import type { ExtractedTask } from "./ExtractedTask";
-
-export type ExtractedEntity = { "type": "Project", "data": ExtractedProject } | { "type": "Task", "data": ExtractedTask } | { "type": "Event", "data": ExtractedEvent } | { "type": "Contact", "data": ExtractedContact } | { "type": "Location", "data": ExtractedLocation } | { "type": "Company", "data": ExtractedCompany };
-
-
-import type { ProjectStatus } from "./ProjectStatus";
-
-export type ExtractedProject = { name: string, description: string | null, deadline: string | null, status: ProjectStatus | null, };
-
-
-import type { TaskPriority } from "./TaskPriority";
-
-export type ExtractedTask = { title: string, description: string | null, priority: TaskPriority | null, due_date: string | null, assigned_to: string | null, project_id: number | null, };
-
-
-export type ExtractedEvent = { name: string, description: string | null, date: string, location: string | null, attendees: Array<string>, project_id: number | null, task_id: number | null, };
-
-
-import type { ProfileUrl } from "./ProfileUrl";
-
-export type ExtractedContact = { name: string, email: string | null, phone: string | null, organization: string | null, profile_urls: Array<ProfileUrl>, };
-
-
-export type ExtractedLocation = { name: string, address: string | null, coordinates: [number, number] | null, };
-
-
-import type { TextSource } from "./TextSource";
-
-/**
- * Location of text in email
- */
-export type TextSpan = { source: TextSource, start: number, end: number, text: string, };
-
-
-export type TextSource = { "type": "Subject" } | { "type": "Body" } | { "type": "Attachment", "data": string };
-
-
-import type { EntityRef } from "./EntityRef";
-import type { RelationType } from "./RelationType";
-
-/**
- * Relationship between entities
- */
-export type Relationship = { relation_type: RelationType, target_entity: EntityRef, confidence: number, };
-
-
-export type RelationType = "belongs-to-project" | "linked-to-task" | "assigned-to" | "located-at" | "has-deadline";
-
-
-import type { DataType } from "./DataType";
-
-export type EntityRef = { data_type: DataType, entity_id: number | null, extracted_index: number | null, };
-
-
-import type { AmbiguityOption } from "./AmbiguityOption";
-
-/**
- * Ambiguity in extraction
- */
-export type Ambiguity = { field: string, options: Array<AmbiguityOption>, reason: string, };
-
-
-export type AmbiguityOption = { value: string, confidence: number, };
-
-
-import type { ExtractionJobStatus } from "./ExtractionJobStatus";
-import type { ExtractionProgress } from "./ExtractionProgress";
-import type { ExtractionSourceType } from "./ExtractionSourceType";
-import type { ExtractorType } from "./ExtractorType";
-
-/**
- * Extraction job for processing attachments and extracting entities
- */
-export type ExtractionJob = { id: bigint, source_type: ExtractionSourceType, extractor_type: ExtractorType, status: ExtractionJobStatus, progress: ExtractionProgress, error_message: string | null, created_at: bigint, started_at: bigint | null, updated_at: bigint, completed_at: bigint | null, };
-
-
-export type ExtractionJobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
-
-
-export type ExtractionSourceType = "email-attachment" | "local-file" | "local-archive" | "email-body";
-
-
-export type ExtractorType = "attachment-parser" | "linked-in-archive" | "gliner-ner" | "llm-based";
-
-
-export type ExtractionProgress = { total_items: bigint, processed_items: bigint, extracted_entities: bigint, failed_items: bigint, events_extracted: bigint, contacts_extracted: bigint, companies_extracted: bigint, percent_complete: number, };
-
-
-import type { ArchiveType } from "./ArchiveType";
-import type { AttachmentExtractionFilter } from "./AttachmentExtractionFilter";
-
-export type ExtractionSourceConfig = { "type": "EmailAttachments", "config": { email_ids: Array<bigint> | null, attachment_types: Array<string>, status_filter: AttachmentExtractionFilter, } } | { "type": "LocalFile", "config": { file_path: string, content_type: string, } } | { "type": "LocalArchive", "config": { archive_path: string, archive_type: ArchiveType, files_to_process: Array<string>, } };
-
-
-export type AttachmentExtractionFilter = "pending" | "pending-and-failed" | "all";
-
-
-import type { ExtractionSourceConfig } from "./ExtractionSourceConfig";
-import type { ExtractionSourceType } from "./ExtractionSourceType";
-import type { ExtractorType } from "./ExtractorType";
-
-/**
- * Request to create extraction job
- */
-export type CreateExtractionJobRequest = { source_type: ExtractionSourceType, extractor_type: ExtractorType, source_config: ExtractionSourceConfig, };
-
-
-import type { ExtractionJob } from "./ExtractionJob";
-
-/**
- * Response for extraction job list
- */
-export type ExtractionJobListResponse = { jobs: Array<ExtractionJob>, };
-
-
-export type Contact = { id: bigint, extraction_job_id: bigint | null, email_id: bigint | null, name: string, email: string | null, phone: string | null, organization: string | null, confidence: number | null, requires_review: boolean, is_confirmed: boolean, is_duplicate: boolean, merged_into_contact_id: bigint | null, created_at: bigint, updated_at: bigint, };
-
-
-export type CreateContactRequest = { name: string, email: string | null, phone: string | null, organization: string | null, };
-
-
-export type UpdateContactRequest = { name: string | null, email: string | null, phone: string | null, organization: string | null, is_confirmed: boolean | null, };
+export type UpdateContactRequest = { name: string | null, email: string | null, phone: string | null, company_id: bigint | null, };
 
 
 import type { Contact } from "./Contact";
 
 export type ContactsResponse = { contacts: Array<Contact>, };
+
+
+export type Location = { id: bigint, address_line1: string | null, address_line2: string | null, city: string | null, region: string | null, 
+/**
+ * ISO 3166-1 alpha-2 or alpha-3 country code
+ */
+country_code: string | null, postal_code: string | null, created_at: bigint, updated_at: bigint, };
+
+
+export type Company = { id: bigint, name: string, description: string | null, industry: string | null, location_id: bigint | null, website: string | null, linkedin_url: string | null, created_at: bigint, updated_at: bigint, };
+
+
+import type { Company } from "./Company";
+
+export type CompaniesResponse = { companies: Array<Company>, };
+
+
+export type Person = { id: bigint, email_id: bigint | null, name: string, email: string | null, phone: string | null, organisation_id: bigint | null, created_at: bigint, updated_at: bigint, };
+
+
+import type { Person } from "./Person";
+
+export type PersonsResponse = { persons: Array<Person>, };
 
 
 export type DataSourceType = "email" | "imap" | "bank-statement" | "credit-card-statement" | "bank-feed" | "csv-upload" | "manual" | "unknown";
@@ -645,7 +533,15 @@ import type { TransactionCategory } from "./TransactionCategory";
  *                    For date-only values, use 00:00:00 UTC for that calendar day.
  *                    Nullable when parsing fails.
  */
-export type Bill = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: BillStatus, category: TransactionCategory | null, issuer_vendor_id: bigint | null, document_reference: string | null, total_amount: number | null, currency: string | null, 
+export type Bill = { id: bigint, data_source_type: DataSourceType, data_source_id: string, document_type: FinancialDocumentType, status: BillStatus, category: TransactionCategory | null, 
+/**
+ * FK to the Organisation that issued this bill (replaces issuer_vendor_id)
+ */
+issuer_organisation_id: bigint | null, 
+/**
+ * FK to the Subscription this bill belongs to (if recurring)
+ */
+subscription_id: bigint | null, document_reference: string | null, total_amount: number | null, currency: string | null, 
 /**
  * Date the bill or invoice was generated or issued by the vendor.
  * Distinct from due_date (when payment is expected) and billing_period (service window).
