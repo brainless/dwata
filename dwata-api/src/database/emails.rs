@@ -3,7 +3,8 @@ use anyhow::Result;
 use dwata_agents::simple_email_content;
 use rusqlite::params_from_iter;
 use rusqlite::types::Value;
-use shared_types::email::{AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment};
+use rusqlite::OptionalExtension;
+use shared_types::email::{Email, EmailAddress};
 use std::collections::HashSet;
 use tokio::task;
 
@@ -30,7 +31,6 @@ pub struct TemplateCandidateEmailRow {
 pub async fn insert_email(
     conn: AsyncDbConnection,
     credential_id: i64,
-    download_item_id: Option<i64>,
     uid: u32,
     folder_id: i64,
     message_id: Option<&str>,
@@ -62,21 +62,42 @@ pub async fn insert_email(
 
     let email_id: i64 = conn.query_row(
         "INSERT INTO emails
-         (download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+         (credential_id, uid, folder_id, message_id, subject, from_address, from_name,
            to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
            has_attachments, attachment_count, size_bytes, thread_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(credential_id, folder_id, uid) DO UPDATE SET
              updated_at = excluded.updated_at
            RETURNING id",
         rusqlite::params![
-            download_item_id, credential_id, uid as i32, folder_id, message_id, subject, from_address, from_name,
-            &to_json, &cc_json, &bcc_json, reply_to, date_sent, date_received,
-            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
-            has_attachments, attachment_count, size_bytes, None::<String>, now, now
+            credential_id,
+            uid as i32,
+            folder_id,
+            message_id,
+            subject,
+            from_address,
+            from_name,
+            &to_json,
+            &cc_json,
+            &bcc_json,
+            reply_to,
+            date_sent,
+            date_received,
+            body_text,
+            body_html,
+            is_read,
+            is_flagged,
+            is_draft,
+            is_answered,
+            has_attachments,
+            attachment_count,
+            size_bytes,
+            None::<String>,
+            now,
+            now
         ],
-        |row| row.get(0)
+        |row| row.get(0),
     )?;
 
     Ok(email_id)
@@ -176,7 +197,6 @@ pub async fn get_email(conn: AsyncDbConnection, email_id: i64) -> Result<Email> 
 
             Ok(Email {
                 id: row.get(0)?,
-                download_item_id: row.get(1)?,
                 credential_id: row.get(2)?,
                 uid: row.get::<_, i32>(3)? as u32,
                 folder_id: row.get(4)?,
@@ -246,8 +266,7 @@ pub async fn list_emails_by_ids(conn: AsyncDbConnection, email_ids: &[i64]) -> R
 
                 Ok(Email {
                     id: row.get(0)?,
-                    download_item_id: row.get(1)?,
-                    credential_id: row.get(2)?,
+                        credential_id: row.get(2)?,
                     uid: row.get::<_, i32>(3)? as u32,
                     folder_id: row.get(4)?,
                     message_id: row.get(5)?,
@@ -362,8 +381,7 @@ pub async fn list_emails(
 
                 Ok(Email {
                     id: row.get(0)?,
-                    download_item_id: row.get(1)?,
-                    credential_id: row.get(2)?,
+                        credential_id: row.get(2)?,
                     uid: row.get::<_, i32>(3)? as u32,
                     folder_id: row.get(4)?,
                     message_id: row.get(5)?,
@@ -716,8 +734,7 @@ pub async fn list_emails_by_label(
 
                 Ok(Email {
                     id: row.get(0)?,
-                    download_item_id: row.get(1)?,
-                    credential_id: row.get(2)?,
+                        credential_id: row.get(2)?,
                     uid: row.get::<_, i32>(3)? as u32,
                     folder_id: row.get(4)?,
                     message_id: row.get(5)?,
@@ -751,156 +768,131 @@ pub async fn list_emails_by_label(
     .await?
 }
 
-/// Insert attachment
-
-/// Insert attachment
-pub async fn insert_attachment(
+/// Insert an email together with its labels in a single transaction.
+/// Returns the email's database id.
+/// If the email already exists (credential_id + folder_id + uid conflict) it is a no-op and
+/// returns the existing id.
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_email_with_labels(
     conn: AsyncDbConnection,
-    email_id: i64,
-    filename: &str,
-    content_type: Option<&str>,
+    credential_id: i64,
+    uid: u32,
+    folder_id: i64,
+    message_id: Option<&str>,
+    subject: Option<&str>,
+    from_address: &str,
+    from_name: Option<&str>,
+    to_addresses: &[EmailAddress],
+    cc_addresses: &[EmailAddress],
+    bcc_addresses: &[EmailAddress],
+    reply_to: Option<&str>,
+    date_sent: Option<i64>,
+    date_received: i64,
+    body_text: Option<&str>,
+    body_html: Option<&str>,
+    is_read: bool,
+    is_flagged: bool,
+    is_draft: bool,
+    is_answered: bool,
+    has_attachments: bool,
+    attachment_count: i32,
     size_bytes: Option<i32>,
-    content_id: Option<&str>,
-    file_path: &str,
-    checksum: Option<&str>,
-    is_inline: bool,
+    labels: &[String],
 ) -> Result<i64> {
-    let conn = conn.lock().await;
-    let now = chrono::Utc::now().timestamp_millis();
+    // Clone everything we need inside spawn_blocking
+    let message_id = message_id.map(str::to_string);
+    let subject = subject.map(str::to_string);
+    let from_address = from_address.to_string();
+    let from_name = from_name.map(str::to_string);
+    let reply_to = reply_to.map(str::to_string);
+    let body_text = body_text.map(str::to_string);
+    let body_html = body_html.map(str::to_string);
+    let to_addresses = to_addresses.to_vec();
+    let cc_addresses = cc_addresses.to_vec();
+    let bcc_addresses = bcc_addresses.to_vec();
+    let labels = labels.to_vec();
 
-    let attachment_id: i64 = conn.query_row(
-        "INSERT INTO email_attachments
-         (email_id, filename, content_type, size_bytes, content_id, file_path, checksum,
-          is_inline, extraction_status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          RETURNING id",
-        rusqlite::params![
-            email_id,
-            filename,
-            content_type,
-            size_bytes,
-            content_id,
-            file_path,
-            checksum,
-            is_inline,
-            "pending",
-            now,
-            now
-        ],
-        |row| row.get(0),
-    )?;
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let now = chrono::Utc::now().timestamp_millis();
 
-    Ok(attachment_id)
-}
+        // Fast-path: skip entirely if UID already stored
+        let existing: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM emails WHERE credential_id = ? AND folder_id = ? AND uid = ?",
+                rusqlite::params![credential_id, folder_id, uid as i32],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(anyhow::Error::from)?;
 
-/// Get attachments for an email
-pub async fn get_email_attachments(
-    conn: AsyncDbConnection,
-    email_id: i64,
-) -> Result<Vec<EmailAttachment>> {
-    let conn = conn.lock().await;
+        if let Some(id) = existing {
+            return Ok(id);
+        }
 
-    let mut stmt = conn.prepare(
-        "SELECT id, email_id, filename, content_type, size_bytes, content_id,
-                file_path, checksum, is_inline, extraction_status, extracted_text,
-                created_at, updated_at
-         FROM email_attachments WHERE email_id = ?",
-    )?;
+        let to_json = serde_json::to_string(&to_addresses)?;
+        let cc_json = serde_json::to_string(&cc_addresses)?;
+        let bcc_json = serde_json::to_string(&bcc_addresses)?;
 
-    let attachments = stmt
-        .query_map([email_id], |row| {
-            let extraction_status_str: String = row.get(9)?;
-            let extraction_status = match extraction_status_str.as_str() {
-                "pending" => AttachmentExtractionStatus::Pending,
-                "completed" => AttachmentExtractionStatus::Completed,
-                "failed" => AttachmentExtractionStatus::Failed,
-                "skipped" => AttachmentExtractionStatus::Skipped,
-                _ => AttachmentExtractionStatus::Pending,
-            };
+        conn.execute("BEGIN TRANSACTION", []).map_err(anyhow::Error::from)?;
 
-            Ok(EmailAttachment {
-                id: row.get(0)?,
-                email_id: row.get(1)?,
-                filename: row.get(2)?,
-                content_type: row.get(3)?,
-                size_bytes: row.get(4)?,
-                content_id: row.get(5)?,
-                file_path: row.get(6)?,
-                checksum: row.get(7)?,
-                is_inline: row.get(8)?,
-                extraction_status,
-                extracted_text: row.get(10)?,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        let result: Result<i64> = (|| {
+            let email_id: i64 = conn.query_row(
+                "INSERT INTO emails
+                 (credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                   to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
+                   body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                   has_attachments, attachment_count, size_bytes, thread_id, created_at, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  ON CONFLICT(credential_id, folder_id, uid) DO UPDATE SET updated_at = excluded.updated_at
+                  RETURNING id",
+                rusqlite::params![
+                    credential_id, uid as i32, folder_id, message_id, subject,
+                    from_address, from_name,
+                    &to_json, &cc_json, &bcc_json,
+                    reply_to, date_sent, date_received,
+                    body_text, body_html,
+                    is_read, is_flagged, is_draft, is_answered,
+                    has_attachments, attachment_count, size_bytes,
+                    None::<String>, now, now
+                ],
+                |row| row.get(0),
+            )?;
 
-    Ok(attachments)
-}
+            for label_name in &labels {
+                if label_name.is_empty() {
+                    continue;
+                }
+                let label_id: i64 = conn.query_row(
+                    "INSERT INTO email_labels (credential_id, name, label_type, created_at, updated_at)
+                     VALUES (?, ?, 'user', ?, ?)
+                     ON CONFLICT(credential_id, name) DO UPDATE SET updated_at = excluded.updated_at
+                     RETURNING id",
+                    rusqlite::params![credential_id, label_name, now, now],
+                    |row| row.get(0),
+                )?;
+                conn.execute(
+                    "INSERT OR IGNORE INTO email_label_associations (email_id, label_id, created_at)
+                     VALUES (?, ?, ?)",
+                    rusqlite::params![email_id, label_id, now],
+                )?;
+            }
 
-pub async fn list_pending_attachments(
-    conn: AsyncDbConnection,
-    limit: usize,
-) -> Result<Vec<EmailAttachment>> {
-    let conn = conn.lock().await;
+            Ok(email_id)
+        })();
 
-    let mut stmt = conn.prepare(
-        "SELECT id, email_id, filename, content_type, size_bytes, content_id,
-                file_path, checksum, is_inline, extraction_status, extracted_text,
-                created_at, updated_at
-         FROM email_attachments
-         WHERE extraction_status = 'pending'
-         ORDER BY created_at ASC
-         LIMIT ?",
-    )?;
-
-    let attachments = stmt
-        .query_map([limit], |row| {
-            let extraction_status_str: String = row.get(9)?;
-            let extraction_status = match extraction_status_str.as_str() {
-                "pending" => AttachmentExtractionStatus::Pending,
-                "completed" => AttachmentExtractionStatus::Completed,
-                "failed" => AttachmentExtractionStatus::Failed,
-                "skipped" => AttachmentExtractionStatus::Skipped,
-                _ => AttachmentExtractionStatus::Pending,
-            };
-
-            Ok(EmailAttachment {
-                id: row.get(0)?,
-                email_id: row.get(1)?,
-                filename: row.get(2)?,
-                content_type: row.get(3)?,
-                size_bytes: row.get(4)?,
-                content_id: row.get(5)?,
-                file_path: row.get(6)?,
-                checksum: row.get(7)?,
-                is_inline: row.get(8)?,
-                extraction_status,
-                extracted_text: row.get(10)?,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(attachments)
-}
-
-pub async fn update_attachment_extraction_status(
-    conn: AsyncDbConnection,
-    attachment_id: i64,
-    status: &str,
-) -> Result<()> {
-    let conn = conn.lock().await;
-    let now = chrono::Utc::now().timestamp_millis();
-
-    conn.execute(
-        "UPDATE email_attachments SET extraction_status = ?, updated_at = ? WHERE id = ?",
-        rusqlite::params![status, now, attachment_id],
-    )?;
-
-    Ok(())
+        match result {
+            Ok(id) => {
+                conn.execute("COMMIT", []).map_err(anyhow::Error::from)?;
+                Ok(id)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                Err(e)
+            }
+        }
+    })
+    .await?
 }
 
 /// List emails for search indexing with pagination
@@ -926,7 +918,6 @@ pub async fn list_emails_for_indexing_page(
         let rows = stmt.query_map(rusqlite::params![after_id, limit as i64], |row| {
             let email = Email {
                 id: row.get(0)?,
-                download_item_id: row.get(1)?,
                 credential_id: row.get(2)?,
                 uid: row.get(3)?,
                 folder_id: row.get(4)?,
@@ -1004,7 +995,6 @@ pub async fn get_emails_by_ids(conn: AsyncDbConnection, ids: &[i64]) -> Result<V
             .query_map(rusqlite::params_from_iter(ids), |row| {
                 Ok(Email {
                     id: row.get(0)?,
-                    download_item_id: row.get(1)?,
                     credential_id: row.get(2)?,
                     uid: row.get(3)?,
                     folder_id: row.get(4)?,

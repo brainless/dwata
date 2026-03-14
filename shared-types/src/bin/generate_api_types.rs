@@ -58,27 +58,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Local File credential types
     types.push(clean_type(LocalFileSettings::export_to_string()?));
 
-    // Download types
-    types.push(clean_type(DownloadJob::export_to_string()?));
-    types.push(clean_type(DownloadJobStatus::export_to_string()?));
-    types.push(clean_type(DownloadProgress::export_to_string()?));
-    types.push(clean_type(SourceType::export_to_string()?));
-    types.push(clean_type(ImapDownloadState::export_to_string()?));
-    types.push(clean_type(ImapFolderStatus::export_to_string()?));
-    types.push(clean_type(ImapSyncStrategy::export_to_string()?));
-    types.push(clean_type(CloudStorageDownloadState::export_to_string()?));
-    types.push(clean_type(DirectoryStatus::export_to_string()?));
-    types.push(clean_type(FileFilter::export_to_string()?));
-    types.push(clean_type(CreateDownloadJobRequest::export_to_string()?));
-    types.push(clean_type(DownloadJobListResponse::export_to_string()?));
-    types.push(clean_type(DownloadItem::export_to_string()?));
-    types.push(clean_type(DownloadItemStatus::export_to_string()?));
+    // Email sync types
+    types.push(clean_type(EmailSyncDirection::export_to_string()?));
+    types.push(clean_type(EmailSyncSettings::export_to_string()?));
+    types.push(clean_type(TriggerEmailSyncRequest::export_to_string()?));
+    types.push(clean_type(PauseEmailSyncRequest::export_to_string()?));
+    types.push(clean_type(ResumeEmailSyncRequest::export_to_string()?));
 
     // Email types
     types.push(clean_type(Email::export_to_string()?));
     types.push(clean_type(EmailAddress::export_to_string()?));
-    types.push(clean_type(EmailAttachment::export_to_string()?));
-    types.push(clean_type(AttachmentExtractionStatus::export_to_string()?));
     types.push(clean_type(ListEmailsRequest::export_to_string()?));
     types.push(clean_type(ListEmailsResponse::export_to_string()?));
     types.push(clean_type(EmailsByIdsRequest::export_to_string()?));

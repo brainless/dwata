@@ -305,129 +305,75 @@ async fn main() -> std::io::Result<()> {
         tracing::info!("   New credentials will be automatically stored in master mode.");
     }
 
-    // Initialize download manager
-    let download_manager = Arc::new(jobs::download_manager::DownloadManager::new(
+    // Initialize email sync manager
+    let email_sync_manager = Arc::new(jobs::email_sync_manager::EmailSyncManager::new(
         db.async_connection.clone(),
         token_cache.clone(),
         oauth_client.clone(),
         keyring_service.clone(),
     ));
 
-    // Restore interrupted jobs on startup
-    if let Err(e) = download_manager.restore_interrupted_jobs().await {
-        tracing::warn!("Failed to restore interrupted jobs: {}", e);
-    }
-
-    // Ensure all credentials have download jobs (auto-create if missing)
-    if let Err(e) = download_manager.ensure_jobs_for_all_credentials().await {
-        tracing::warn!("Failed to ensure jobs for all credentials: {}", e);
-    }
-
-    let downloads_auto_start = config
-        .downloads
+    let email_downloads_auto_start = config
+        .email_downloads
         .as_ref()
-        .map(|downloads| downloads.auto_start)
+        .map(|c| c.auto_start)
         .unwrap_or(false);
 
-    if downloads_auto_start {
-        // Spawn background task for initial sync (delayed to allow full initialization)
-        let manager_clone_startup = download_manager.clone();
+    if email_downloads_auto_start {
+        // Recent sync — starts 2 seconds after server is up, then every 5 minutes
+        let manager = email_sync_manager.clone();
         tokio::spawn(async move {
-            // Wait 2 seconds for server to fully initialize
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-            if manager_clone_startup.is_shutting_down() {
+            if manager.is_shutting_down() {
                 return;
             }
-
-            tracing::info!("Running initial sync after startup delay");
-
-            // Run initial sync to check for new emails
-            if let Err(e) = manager_clone_startup.sync_all_jobs().await {
-                tracing::warn!("Failed to run initial sync: {}", e);
-            }
-        });
-
-        // Spawn historical backfill on startup
-        let manager_clone_backfill = download_manager.clone();
-        tokio::spawn(async move {
-            // Wait 10 seconds to allow recent sync to complete first
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-
-            if manager_clone_backfill.is_shutting_down() {
-                return;
+            tracing::info!("Running initial recent sync");
+            if let Err(e) = manager.sync_all_recent().await {
+                tracing::warn!("Initial recent sync failed: {}", e);
             }
 
-            tracing::info!("Starting historical backfill on startup");
-
-            // Get all credentials and start historical backfill for each
-            match crate::database::credentials::list_credentials(
-                manager_clone_backfill.get_db_connection(),
-                false,
-            )
-            .await
-            {
-                Ok(credentials) => {
-                    for credential in credentials {
-                        if credential.credential_type.requires_keychain() {
-                            if let Err(e) = manager_clone_backfill
-                                .start_historical_backfill(credential.id)
-                                .await
-                            {
-                                tracing::warn!(
-                                    "Failed to start historical backfill for credential {}: {}",
-                                    credential.id,
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to get credentials for historical backfill: {}", e);
-                }
-            }
-        });
-
-        // Spawn periodic sync task for recent emails (every 5 minutes)
-        let manager_clone = download_manager.clone();
-        tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
             loop {
                 interval.tick().await;
-                if manager_clone.is_shutting_down() {
+                if manager.is_shutting_down() {
                     break;
                 }
-                if let Err(e) = manager_clone.sync_all_jobs().await {
+                if let Err(e) = manager.sync_all_recent().await {
                     tracing::error!("Periodic recent sync failed: {}", e);
                 }
             }
         });
 
-        // Spawn periodic historical backfill task (every 10 minutes)
-        let manager_clone_backfill_periodic = download_manager.clone();
+        // Backfill — starts 10 seconds after server is up, then every 10 minutes
+        let manager = email_sync_manager.clone();
         tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            if manager.is_shutting_down() {
+                return;
+            }
+            tracing::info!("Running initial backfill");
+            if let Err(e) = manager.sync_all_backfill().await {
+                tracing::warn!("Initial backfill failed: {}", e);
+            }
+
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
             loop {
                 interval.tick().await;
-                if manager_clone_backfill_periodic.is_shutting_down() {
+                if manager.is_shutting_down() {
                     break;
                 }
-                if let Err(e) = manager_clone_backfill_periodic
-                    .sync_all_historical_backfill()
-                    .await
-                {
-                    tracing::error!("Periodic historical backfill failed: {}", e);
+                if let Err(e) = manager.sync_all_backfill().await {
+                    tracing::error!("Periodic backfill failed: {}", e);
                 }
             }
         });
     } else {
-        tracing::info!("Download auto-start disabled (downloads.auto_start = false)");
+        tracing::info!("Email download auto-start disabled (email_downloads.auto_start = false)");
     }
 
     println!("Starting server on {}:{}", host, port);
 
-    let download_manager_for_server = download_manager.clone();
+    let email_sync_manager_for_server = email_sync_manager.clone();
     let template_detection_job_state =
         helpers::template_detection_job::TemplateDetectionJobState::new();
     let server = HttpServer::new(move || {
@@ -455,7 +401,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(web::Data::new(db.clone()))
             .app_data(web::Data::new(settings_state.clone()))
-            .app_data(web::Data::new(download_manager_for_server.clone()))
+            .app_data(web::Data::new(email_sync_manager_for_server.clone()))
             .app_data(web::Data::new(oauth_client.clone()))
             .app_data(web::Data::new(state_manager.clone()))
             .app_data(web::Data::new(token_cache.clone()))
@@ -513,32 +459,20 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::oauth::google_oauth_callback),
             )
             .route(
-                "/api/downloads",
-                web::post().to(handlers::downloads::create_download_job),
+                "/api/email-downloads/sync",
+                web::post().to(handlers::email_downloads::trigger_sync),
             )
             .route(
-                "/api/downloads",
-                web::get().to(handlers::downloads::list_download_jobs),
+                "/api/email-downloads/sync-all",
+                web::post().to(handlers::email_downloads::trigger_sync_all),
             )
             .route(
-                "/api/downloads/sync",
-                web::post().to(handlers::downloads::trigger_sync),
+                "/api/email-downloads/pause",
+                web::post().to(handlers::email_downloads::pause_sync),
             )
             .route(
-                "/api/downloads/{id}",
-                web::get().to(handlers::downloads::get_download_job),
-            )
-            .route(
-                "/api/downloads/{id}/start",
-                web::post().to(handlers::downloads::start_download),
-            )
-            .route(
-                "/api/downloads/{id}/pause",
-                web::post().to(handlers::downloads::pause_download),
-            )
-            .route(
-                "/api/downloads/{id}",
-                web::delete().to(handlers::downloads::delete_download_job),
+                "/api/email-downloads/resume",
+                web::post().to(handlers::email_downloads::resume_sync),
             )
             .route("/api/emails", web::get().to(handlers::emails::list_emails))
             .route(
@@ -645,7 +579,7 @@ async fn main() -> std::io::Result<()> {
     .run();
 
     let handle = server.handle();
-    let shutdown_manager = download_manager.clone();
+    let shutdown_manager = email_sync_manager.clone();
 
     let open_in_browser =
         !cfg!(debug_assertions) && !args.no_open && std::env::var("DWATA_NO_OPEN").is_err();
@@ -667,7 +601,7 @@ async fn main() -> std::io::Result<()> {
 
         tracing::info!("Ctrl+C received, shutting down...");
         if let Err(e) = shutdown_manager.shutdown().await {
-            tracing::warn!("Failed to shutdown download manager cleanly: {}", e);
+            tracing::warn!("Failed to shutdown email sync manager cleanly: {}", e);
         }
 
         handle.stop(true).await;

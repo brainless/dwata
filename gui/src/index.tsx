@@ -3,10 +3,8 @@ import { Router, Route } from "@solidjs/router";
 import "./index.css";
 
 import App from "./App";
-import BackgroundJobs from "./pages/BackgroundJobs";
 import Calendar from "./pages/Calendar";
 import Emails from "./pages/Emails";
-import FinancialExtractions from "./pages/FinancialExtractions";
 import FinancialBills from "./pages/FinancialBills";
 import FinancialHealth from "./pages/FinancialHealth";
 import FinancialTemplateDetection from "./pages/FinancialTemplateDetection";
@@ -35,10 +33,8 @@ render(
       <Route path="/calendar" component={Calendar} />
       <Route path="/financial/transactions" component={FinancialHealth} />
       <Route path="/financial/bills" component={FinancialBills} />
-      <Route path="/financial/extractions" component={FinancialExtractions} />
       <Route path="/financial/templates" component={FinancialTemplates} />
       <Route path="/financial/templates/detect" component={FinancialTemplateDetection} />
-      <Route path="/jobs" component={BackgroundJobs} />
       <Route path="/settings" component={Settings} />
       <Route path="/settings/:tab" component={Settings} />
     </Router>

@@ -35,13 +35,12 @@ pub use credential::{
 };
 
 pub use download::{
-    CloudStorageDownloadState, CreateDownloadJobRequest, DirectoryStatus, DownloadItem,
-    DownloadItemStatus, DownloadJob, DownloadJobListResponse, DownloadJobStatus, DownloadProgress,
-    FileFilter, ImapDownloadState, ImapFolderStatus, ImapSyncStrategy, SourceType,
+    EmailSyncDirection, EmailSyncSettings, PauseEmailSyncRequest, ResumeEmailSyncRequest,
+    TriggerAllEmailSyncRequest, TriggerEmailSyncRequest,
 };
 pub use email::{
-    AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, EmailsByIdsRequest,
-    EmailsByIdsResponse, ListEmailsRequest, ListEmailsResponse,
+    Email, EmailAddress, EmailsByIdsRequest, EmailsByIdsResponse, ListEmailsRequest,
+    ListEmailsResponse,
 };
 pub use event::{Event, EventsResponse};
 pub use financial::{

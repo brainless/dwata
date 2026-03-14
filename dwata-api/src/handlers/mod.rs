@@ -1,6 +1,6 @@
 pub mod contacts;
 pub mod credentials;
-pub mod downloads;
+pub mod email_downloads;
 pub mod emails;
 pub mod events;
 pub mod financial;

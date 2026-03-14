@@ -16,7 +16,7 @@ pub struct ApiConfig {
     pub jwt: Option<JwtConfig>,
     pub cors: Option<CorsConfig>,
     pub google_oauth: Option<GoogleOAuthConfig>,
-    pub downloads: Option<DownloadsConfig>,
+    pub email_downloads: Option<EmailDownloadsConfig>,
     pub search: Option<SearchConfig>,
     pub ai_provider_api_keys: Option<AiProviderApiKeysConfig>,
     pub selected_llm: Option<SelectedLlmConfig>,
@@ -40,7 +40,7 @@ impl Default for ApiConfig {
                 allowed_origins: vec!["http://localhost:3030".to_string()],
             }),
             google_oauth: Some(GoogleOAuthConfig::default()),
-            downloads: Some(DownloadsConfig::default()),
+            email_downloads: Some(EmailDownloadsConfig::default()),
             search: Some(SearchConfig::default()),
             ai_provider_api_keys: None,
             selected_llm: Some(SelectedLlmConfig::default()),
@@ -90,7 +90,7 @@ pub struct GoogleOAuthConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct DownloadsConfig {
+pub struct EmailDownloadsConfig {
     pub auto_start: bool,
 }
 
@@ -120,7 +120,7 @@ impl Default for SelectedLlmConfig {
     }
 }
 
-impl Default for DownloadsConfig {
+impl Default for EmailDownloadsConfig {
     fn default() -> Self {
         Self { auto_start: false }
     }
