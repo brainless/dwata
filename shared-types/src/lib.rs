@@ -34,10 +34,7 @@ pub use credential::{
     SmtpAccountSettings, UpdateCredentialRequest,
 };
 
-pub use download::{
-    EmailSyncDirection, EmailSyncSettings, PauseEmailSyncRequest, ResumeEmailSyncRequest,
-    TriggerAllEmailSyncRequest, TriggerEmailSyncRequest,
-};
+pub use download::{EmailSyncDirection, TriggerAllEmailSyncRequest, TriggerEmailSyncRequest};
 pub use email::{
     Email, EmailAddress, EmailsByIdsRequest, EmailsByIdsResponse, ListEmailsRequest,
     ListEmailsResponse,

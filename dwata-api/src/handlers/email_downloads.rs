@@ -1,8 +1,5 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use shared_types::download::{
-    PauseEmailSyncRequest, ResumeEmailSyncRequest, TriggerAllEmailSyncRequest,
-    TriggerEmailSyncRequest,
-};
+use shared_types::download::{TriggerAllEmailSyncRequest, TriggerEmailSyncRequest};
 use std::sync::Arc;
 
 use crate::jobs::email_sync_manager::EmailSyncManager;
@@ -42,35 +39,5 @@ pub async fn trigger_sync_all(
     Ok(HttpResponse::Accepted().json(serde_json::json!({
         "status": "started",
         "direction": request.direction,
-    })))
-}
-
-pub async fn pause_sync(
-    manager: web::Data<Arc<EmailSyncManager>>,
-    request: web::Json<PauseEmailSyncRequest>,
-) -> ActixResult<HttpResponse> {
-    manager
-        .pause_credential(request.credential_id)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "status": "paused",
-        "credential_id": request.credential_id,
-    })))
-}
-
-pub async fn resume_sync(
-    manager: web::Data<Arc<EmailSyncManager>>,
-    request: web::Json<ResumeEmailSyncRequest>,
-) -> ActixResult<HttpResponse> {
-    manager
-        .resume_credential(request.credential_id)
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "status": "resumed",
-        "credential_id": request.credential_id,
     })))
 }

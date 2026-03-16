@@ -60,10 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Email sync types
     types.push(clean_type(EmailSyncDirection::export_to_string()?));
-    types.push(clean_type(EmailSyncSettings::export_to_string()?));
     types.push(clean_type(TriggerEmailSyncRequest::export_to_string()?));
-    types.push(clean_type(PauseEmailSyncRequest::export_to_string()?));
-    types.push(clean_type(ResumeEmailSyncRequest::export_to_string()?));
 
     // Email types
     types.push(clean_type(Email::export_to_string()?));

@@ -18,27 +18,8 @@ pub struct TriggerEmailSyncRequest {
     pub direction: EmailSyncDirection,
 }
 
-/// Request to pause email sync for a specific credential
-#[derive(Debug, Deserialize, TS)]
-pub struct PauseEmailSyncRequest {
-    pub credential_id: i64,
-}
-
-/// Request to resume email sync for a specific credential
-#[derive(Debug, Deserialize, TS)]
-pub struct ResumeEmailSyncRequest {
-    pub credential_id: i64,
-}
-
-/// Request to trigger sync for all non-paused credentials
+/// Request to trigger sync for all credentials
 #[derive(Debug, Deserialize, TS)]
 pub struct TriggerAllEmailSyncRequest {
     pub direction: EmailSyncDirection,
-}
-
-/// Persisted per-credential sync settings (stored in DB)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct EmailSyncSettings {
-    pub credential_id: i64,
-    pub is_paused: bool,
 }

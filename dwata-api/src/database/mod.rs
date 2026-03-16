@@ -1,7 +1,6 @@
 pub mod contact_links;
 pub mod contacts;
 pub mod credentials;
-pub mod email_sync_settings;
 pub mod emails;
 pub mod events;
 pub mod financial_bills;

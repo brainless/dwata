@@ -466,14 +466,6 @@ async fn main() -> std::io::Result<()> {
                 "/api/email-downloads/sync-all",
                 web::post().to(handlers::email_downloads::trigger_sync_all),
             )
-            .route(
-                "/api/email-downloads/pause",
-                web::post().to(handlers::email_downloads::pause_sync),
-            )
-            .route(
-                "/api/email-downloads/resume",
-                web::post().to(handlers::email_downloads::resume_sync),
-            )
             .route("/api/emails", web::get().to(handlers::emails::list_emails))
             .route(
                 "/api/emails/by-ids",

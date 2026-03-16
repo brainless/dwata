@@ -1,5 +1,4 @@
 use crate::database::credentials::get_credential;
-use crate::database::email_sync_settings as settings_db;
 use crate::database::emails;
 use crate::database::folders;
 use crate::database::AsyncDbConnection;
@@ -125,26 +124,9 @@ impl EmailSyncManager {
         Ok(())
     }
 
-    /// Pause syncing for a credential: abort any running task and set the DB flag.
-    pub async fn pause_credential(&self, credential_id: i64) -> Result<()> {
-        if let Some(handle) = self.active_syncs.lock().await.remove(&credential_id) {
-            handle.abort();
-        }
-        settings_db::set_paused(self.db_conn.clone(), credential_id, true).await?;
-        tracing::info!(credential_id, "email sync paused");
-        Ok(())
-    }
-
-    /// Resume syncing for a credential: clear the DB pause flag.
-    pub async fn resume_credential(&self, credential_id: i64) -> Result<()> {
-        settings_db::set_paused(self.db_conn.clone(), credential_id, false).await?;
-        tracing::info!(credential_id, "email sync resumed");
-        Ok(())
-    }
-
-    /// Trigger recent sync for all credentials that are not paused.
+    /// Trigger recent sync for all credentials.
     pub async fn sync_all_recent(&self) -> Result<()> {
-        let credentials = self.non_paused_imap_credentials().await?;
+        let credentials = self.imap_credentials().await?;
         tracing::info!(
             count = credentials.len(),
             "starting recent sync for all accounts"
@@ -160,9 +142,9 @@ impl EmailSyncManager {
         Ok(())
     }
 
-    /// Trigger backfill for all credentials that are not paused.
+    /// Trigger backfill for all credentials.
     pub async fn sync_all_backfill(&self) -> Result<()> {
-        let credentials = self.non_paused_imap_credentials().await?;
+        let credentials = self.imap_credentials().await?;
         tracing::info!(
             count = credentials.len(),
             "starting backfill for all accounts"
@@ -196,30 +178,17 @@ impl EmailSyncManager {
     // Helpers
     // -------------------------------------------------------------------------
 
-    async fn non_paused_imap_credentials(&self) -> Result<Vec<i64>> {
+    async fn imap_credentials(&self) -> Result<Vec<i64>> {
         let all_credentials =
             crate::database::credentials::list_credentials(self.db_conn.clone(), false).await?;
 
-        // Ensure settings rows exist for every IMAP/OAuth credential
-        let imap_cred_ids: Vec<i64> = all_credentials
-            .iter()
+        Ok(all_credentials
+            .into_iter()
             .filter(|c| {
                 c.credential_type == CredentialType::Imap
                     || c.credential_type == CredentialType::OAuth
             })
             .map(|c| c.id)
-            .collect();
-
-        for &cred_id in &imap_cred_ids {
-            settings_db::get_or_create_settings(self.db_conn.clone(), cred_id).await?;
-        }
-
-        let active_ids = settings_db::list_active_credential_ids(self.db_conn.clone()).await?;
-        // Intersect: only return IDs that are both IMAP and not paused
-        let active_set: std::collections::HashSet<i64> = active_ids.into_iter().collect();
-        Ok(imap_cred_ids
-            .into_iter()
-            .filter(|id| active_set.contains(id))
             .collect())
     }
 

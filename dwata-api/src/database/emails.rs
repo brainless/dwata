@@ -182,7 +182,7 @@ pub async fn get_email(conn: AsyncDbConnection, email_id: i64) -> Result<Email> 
     task::spawn_blocking(move || {
         let conn = conn.get_blocking();
         let mut stmt = conn.prepare(
-            "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+            "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                     to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
                     body_text, body_html, is_read, is_flagged, is_draft, is_answered,
                     has_attachments, attachment_count, size_bytes, thread_id,
@@ -191,37 +191,37 @@ pub async fn get_email(conn: AsyncDbConnection, email_id: i64) -> Result<Email> 
         )?;
 
         let email = stmt.query_row([email_id], |row| {
-            let to_json: String = row.get(9)?;
-            let cc_json: String = row.get(10)?;
-            let bcc_json: String = row.get(11)?;
+            let to_json: String = row.get(8)?;
+            let cc_json: String = row.get(9)?;
+            let bcc_json: String = row.get(10)?;
 
             Ok(Email {
                 id: row.get(0)?,
-                credential_id: row.get(2)?,
-                uid: row.get::<_, i32>(3)? as u32,
-                folder_id: row.get(4)?,
-                message_id: row.get(5)?,
-                subject: row.get(6)?,
-                from_address: row.get(7)?,
-                from_name: row.get(8)?,
+                credential_id: row.get(1)?,
+                uid: row.get::<_, i32>(2)? as u32,
+                folder_id: row.get(3)?,
+                message_id: row.get(4)?,
+                subject: row.get(5)?,
+                from_address: row.get(6)?,
+                from_name: row.get(7)?,
                 to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
                 cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
                 bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
-                reply_to: row.get(12)?,
-                date_sent: row.get(13)?,
-                date_received: row.get(14)?,
-                body_text: row.get(15)?,
-                body_html: row.get(16)?,
-                is_read: row.get(17)?,
-                is_flagged: row.get(18)?,
-                is_draft: row.get(19)?,
-                is_answered: row.get(20)?,
-                has_attachments: row.get(21)?,
-                attachment_count: row.get(22)?,
-                size_bytes: row.get(23)?,
-                thread_id: row.get(24)?,
-                created_at: row.get(25)?,
-                updated_at: row.get(26)?,
+                reply_to: row.get(11)?,
+                date_sent: row.get(12)?,
+                date_received: row.get(13)?,
+                body_text: row.get(14)?,
+                body_html: row.get(15)?,
+                is_read: row.get(16)?,
+                is_flagged: row.get(17)?,
+                is_draft: row.get(18)?,
+                is_answered: row.get(19)?,
+                has_attachments: row.get(20)?,
+                attachment_count: row.get(21)?,
+                size_bytes: row.get(22)?,
+                thread_id: row.get(23)?,
+                created_at: row.get(24)?,
+                updated_at: row.get(25)?,
             })
         })?;
 
@@ -247,7 +247,7 @@ pub async fn list_emails_by_ids(conn: AsyncDbConnection, email_ids: &[i64]) -> R
                 .collect::<Vec<_>>()
                 .join(", ");
             let query = format!(
-                "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                         to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
                         body_text, body_html, is_read, is_flagged, is_draft, is_answered,
                         has_attachments, attachment_count, size_bytes, thread_id,
@@ -260,37 +260,37 @@ pub async fn list_emails_by_ids(conn: AsyncDbConnection, email_ids: &[i64]) -> R
             let params: Vec<Value> = chunk.iter().copied().map(Value::from).collect();
             let mut stmt = conn.prepare(&query)?;
             let mapped = stmt.query_map(params_from_iter(params), |row| {
-                let to_json: String = row.get(9)?;
-                let cc_json: String = row.get(10)?;
-                let bcc_json: String = row.get(11)?;
+                let to_json: String = row.get(8)?;
+                let cc_json: String = row.get(9)?;
+                let bcc_json: String = row.get(10)?;
 
                 Ok(Email {
                     id: row.get(0)?,
-                        credential_id: row.get(2)?,
-                    uid: row.get::<_, i32>(3)? as u32,
-                    folder_id: row.get(4)?,
-                    message_id: row.get(5)?,
-                    subject: row.get(6)?,
-                    from_address: row.get(7)?,
-                    from_name: row.get(8)?,
+                        credential_id: row.get(1)?,
+                    uid: row.get::<_, i32>(2)? as u32,
+                    folder_id: row.get(3)?,
+                    message_id: row.get(4)?,
+                    subject: row.get(5)?,
+                    from_address: row.get(6)?,
+                    from_name: row.get(7)?,
                     to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
                     cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
                     bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
-                    reply_to: row.get(12)?,
-                    date_sent: row.get(13)?,
-                    date_received: row.get(14)?,
-                    body_text: row.get(15)?,
-                    body_html: row.get(16)?,
-                    is_read: row.get(17)?,
-                    is_flagged: row.get(18)?,
-                    is_draft: row.get(19)?,
-                    is_answered: row.get(20)?,
-                    has_attachments: row.get(21)?,
-                    attachment_count: row.get(22)?,
-                    size_bytes: row.get(23)?,
-                    thread_id: row.get(24)?,
-                    created_at: row.get(25)?,
-                    updated_at: row.get(26)?,
+                    reply_to: row.get(11)?,
+                    date_sent: row.get(12)?,
+                    date_received: row.get(13)?,
+                    body_text: row.get(14)?,
+                    body_html: row.get(15)?,
+                    is_read: row.get(16)?,
+                    is_flagged: row.get(17)?,
+                    is_draft: row.get(18)?,
+                    is_answered: row.get(19)?,
+                    has_attachments: row.get(20)?,
+                    attachment_count: row.get(21)?,
+                    size_bytes: row.get(22)?,
+                    thread_id: row.get(23)?,
+                    created_at: row.get(24)?,
+                    updated_at: row.get(25)?,
                 })
             })?;
 
@@ -324,7 +324,7 @@ pub async fn list_emails(
         let query = match (credential_id, folder_id) {
             (Some(cred), Some(fid)) => {
                 format!(
-                    "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                    "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                             to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
                             body_text, body_html, is_read, is_flagged, is_draft, is_answered,
                             has_attachments, attachment_count, size_bytes, thread_id,
@@ -336,7 +336,7 @@ pub async fn list_emails(
             }
             (Some(cred), None) => {
                 format!(
-                    "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                    "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                             to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
                             body_text, body_html, is_read, is_flagged, is_draft, is_answered,
                             has_attachments, attachment_count, size_bytes, thread_id,
@@ -348,7 +348,7 @@ pub async fn list_emails(
             }
             (None, Some(fid)) => {
                 format!(
-                    "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                    "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                             to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
                             body_text, body_html, is_read, is_flagged, is_draft, is_answered,
                             has_attachments, attachment_count, size_bytes, thread_id,
@@ -360,7 +360,7 @@ pub async fn list_emails(
             }
             (None, None) => {
                 format!(
-                    "SELECT id, download_item_id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                    "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                             to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
                             body_text, body_html, is_read, is_flagged, is_draft, is_answered,
                             has_attachments, attachment_count, size_bytes, thread_id,
@@ -375,37 +375,37 @@ pub async fn list_emails(
         let mut stmt = conn.prepare(&query)?;
         let emails = stmt
             .query_map([], |row| {
-                let to_json: String = row.get(9)?;
-                let cc_json: String = row.get(10)?;
-                let bcc_json: String = row.get(11)?;
+                let to_json: String = row.get(8)?;
+                let cc_json: String = row.get(9)?;
+                let bcc_json: String = row.get(10)?;
 
                 Ok(Email {
                     id: row.get(0)?,
-                        credential_id: row.get(2)?,
-                    uid: row.get::<_, i32>(3)? as u32,
-                    folder_id: row.get(4)?,
-                    message_id: row.get(5)?,
-                    subject: row.get(6)?,
-                    from_address: row.get(7)?,
-                    from_name: row.get(8)?,
+                        credential_id: row.get(1)?,
+                    uid: row.get::<_, i32>(2)? as u32,
+                    folder_id: row.get(3)?,
+                    message_id: row.get(4)?,
+                    subject: row.get(5)?,
+                    from_address: row.get(6)?,
+                    from_name: row.get(7)?,
                     to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
                     cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
                     bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
-                    reply_to: row.get(12)?,
-                    date_sent: row.get(13)?,
-                    date_received: row.get(14)?,
-                    body_text: row.get(15)?,
-                    body_html: row.get(16)?,
-                    is_read: row.get(17)?,
-                    is_flagged: row.get(18)?,
-                    is_draft: row.get(19)?,
-                    is_answered: row.get(20)?,
-                    has_attachments: row.get(21)?,
-                    attachment_count: row.get(22)?,
-                    size_bytes: row.get(23)?,
-                    thread_id: row.get(24)?,
-                    created_at: row.get(25)?,
-                    updated_at: row.get(26)?,
+                    reply_to: row.get(11)?,
+                    date_sent: row.get(12)?,
+                    date_received: row.get(13)?,
+                    body_text: row.get(14)?,
+                    body_html: row.get(15)?,
+                    is_read: row.get(16)?,
+                    is_flagged: row.get(17)?,
+                    is_draft: row.get(18)?,
+                    is_answered: row.get(19)?,
+                    has_attachments: row.get(20)?,
+                    attachment_count: row.get(21)?,
+                    size_bytes: row.get(22)?,
+                    thread_id: row.get(23)?,
+                    created_at: row.get(24)?,
+                    updated_at: row.get(25)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -445,10 +445,10 @@ pub async fn list_email_scan_rows(
             Ok(EmailScanRow {
                 email_id: row.get(0)?,
                 date_received: row.get(1)?,
-                from_address: row.get(2)?,
-                subject: row.get(3)?,
-                body_text: row.get(4)?,
-                body_html: row.get(5)?,
+                from_address: row.get(1)?,
+                subject: row.get(2)?,
+                body_text: row.get(3)?,
+                body_html: row.get(4)?,
             })
         })?;
 
@@ -507,10 +507,10 @@ pub async fn list_email_scan_rows_by_document_ids(
                     EmailScanRow {
                         email_id: row.get(0)?,
                         date_received: row.get(1)?,
-                        from_address: row.get(2)?,
-                        subject: row.get(3)?,
-                        body_text: row.get(4)?,
-                        body_html: row.get(5)?,
+                        from_address: row.get(1)?,
+                        subject: row.get(2)?,
+                        body_text: row.get(3)?,
+                        body_html: row.get(4)?,
                     },
                 ))
             })?;
@@ -579,10 +579,10 @@ pub async fn list_template_candidate_emails_by_sender_and_document_ids(
                     row.get::<_, i64>(1)?,
                     TemplateCandidateEmailRow {
                         email_id: row.get(0)?,
-                        from_address: row.get(2)?,
-                        subject: row.get(3)?,
-                        body_text: row.get(4)?,
-                        body_html: row.get(5)?,
+                        from_address: row.get(1)?,
+                        subject: row.get(2)?,
+                        body_text: row.get(3)?,
+                        body_html: row.get(4)?,
                     },
                 ))
             })?;
@@ -659,10 +659,10 @@ pub async fn list_unmatched_template_candidate_emails_by_sender_and_document_ids
                     row.get::<_, i64>(1)?,
                     TemplateCandidateEmailRow {
                         email_id: row.get(0)?,
-                        from_address: row.get(2)?,
-                        subject: row.get(3)?,
-                        body_text: row.get(4)?,
-                        body_html: row.get(5)?,
+                        from_address: row.get(1)?,
+                        subject: row.get(2)?,
+                        body_text: row.get(3)?,
+                        body_html: row.get(4)?,
                     },
                 ))
             })?;
@@ -712,7 +712,7 @@ pub async fn list_emails_by_label(
     task::spawn_blocking(move || {
         let conn = conn.get_blocking();
         let query = format!(
-            "SELECT e.id, e.download_item_id, e.credential_id, e.uid, e.folder_id, e.message_id, e.subject, e.from_address, e.from_name,
+            "SELECT e.id, e.credential_id, e.uid, e.folder_id, e.message_id, e.subject, e.from_address, e.from_name,
                     e.to_addresses, e.cc_addresses, e.bcc_addresses, e.reply_to, e.date_sent, e.date_received,
                     e.body_text, e.body_html, e.is_read, e.is_flagged, e.is_draft, e.is_answered,
                     e.has_attachments, e.attachment_count, e.size_bytes, e.thread_id,
@@ -728,37 +728,37 @@ pub async fn list_emails_by_label(
         let mut stmt = conn.prepare(&query)?;
         let emails = stmt
             .query_map([], |row| {
-                let to_json: String = row.get(9)?;
-                let cc_json: String = row.get(10)?;
-                let bcc_json: String = row.get(11)?;
+                let to_json: String = row.get(8)?;
+                let cc_json: String = row.get(9)?;
+                let bcc_json: String = row.get(10)?;
 
                 Ok(Email {
                     id: row.get(0)?,
-                        credential_id: row.get(2)?,
-                    uid: row.get::<_, i32>(3)? as u32,
-                    folder_id: row.get(4)?,
-                    message_id: row.get(5)?,
-                    subject: row.get(6)?,
-                    from_address: row.get(7)?,
-                    from_name: row.get(8)?,
+                        credential_id: row.get(1)?,
+                    uid: row.get::<_, i32>(2)? as u32,
+                    folder_id: row.get(3)?,
+                    message_id: row.get(4)?,
+                    subject: row.get(5)?,
+                    from_address: row.get(6)?,
+                    from_name: row.get(7)?,
                     to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
                     cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
                     bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
-                    reply_to: row.get(12)?,
-                    date_sent: row.get(13)?,
-                    date_received: row.get(14)?,
-                    body_text: row.get(15)?,
-                    body_html: row.get(16)?,
-                    is_read: row.get(17)?,
-                    is_flagged: row.get(18)?,
-                    is_draft: row.get(19)?,
-                    is_answered: row.get(20)?,
-                    has_attachments: row.get(21)?,
-                    attachment_count: row.get(22)?,
-                    size_bytes: row.get(23)?,
-                    thread_id: row.get(24)?,
-                    created_at: row.get(25)?,
-                    updated_at: row.get(26)?,
+                    reply_to: row.get(11)?,
+                    date_sent: row.get(12)?,
+                    date_received: row.get(13)?,
+                    body_text: row.get(14)?,
+                    body_html: row.get(15)?,
+                    is_read: row.get(16)?,
+                    is_flagged: row.get(17)?,
+                    is_draft: row.get(18)?,
+                    is_answered: row.get(19)?,
+                    has_attachments: row.get(20)?,
+                    attachment_count: row.get(21)?,
+                    size_bytes: row.get(22)?,
+                    thread_id: row.get(23)?,
+                    created_at: row.get(24)?,
+                    updated_at: row.get(25)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -904,7 +904,7 @@ pub async fn list_emails_for_indexing_page(
     task::spawn_blocking(move || {
         let conn = conn.get_blocking();
         let mut stmt = conn.prepare(
-            "SELECT id, download_item_id, credential_id, uid, folder_id, message_id,
+            "SELECT id, credential_id, uid, folder_id, message_id,
                     subject, from_address, from_name, to_addresses, cc_addresses, bcc_addresses,
                     reply_to, date_sent, date_received, body_text, body_html, is_read,
                     is_flagged, is_draft, is_answered, has_attachments, attachment_count,
@@ -918,31 +918,31 @@ pub async fn list_emails_for_indexing_page(
         let rows = stmt.query_map(rusqlite::params![after_id, limit as i64], |row| {
             let email = Email {
                 id: row.get(0)?,
-                credential_id: row.get(2)?,
-                uid: row.get(3)?,
-                folder_id: row.get(4)?,
-                message_id: row.get(5)?,
-                subject: row.get(6)?,
-                from_address: row.get(7)?,
-                from_name: row.get(8)?,
+                credential_id: row.get(1)?,
+                uid: row.get(2)?,
+                folder_id: row.get(3)?,
+                message_id: row.get(4)?,
+                subject: row.get(5)?,
+                from_address: row.get(6)?,
+                from_name: row.get(7)?,
                 to_addresses: serde_json::from_str(&row.get::<_, String>(9)?).unwrap_or_default(),
                 cc_addresses: serde_json::from_str(&row.get::<_, String>(10)?).unwrap_or_default(),
                 bcc_addresses: serde_json::from_str(&row.get::<_, String>(11)?).unwrap_or_default(),
-                reply_to: row.get(12)?,
-                date_sent: row.get(13)?,
-                date_received: row.get(14)?,
-                body_text: row.get(15)?,
-                body_html: row.get(16)?,
-                is_read: row.get(17)?,
-                is_flagged: row.get(18)?,
-                is_draft: row.get(19)?,
-                is_answered: row.get(20)?,
-                has_attachments: row.get(21)?,
-                attachment_count: row.get(22)?,
-                size_bytes: row.get(23)?,
-                thread_id: row.get(24)?,
-                created_at: row.get(25)?,
-                updated_at: row.get(26)?,
+                reply_to: row.get(11)?,
+                date_sent: row.get(12)?,
+                date_received: row.get(13)?,
+                body_text: row.get(14)?,
+                body_html: row.get(15)?,
+                is_read: row.get(16)?,
+                is_flagged: row.get(17)?,
+                is_draft: row.get(18)?,
+                is_answered: row.get(19)?,
+                has_attachments: row.get(20)?,
+                attachment_count: row.get(21)?,
+                size_bytes: row.get(22)?,
+                thread_id: row.get(23)?,
+                created_at: row.get(24)?,
+                updated_at: row.get(25)?,
             };
 
             // Use simple_email_content to prefer plain text but fall back to HTML-to-text conversion
@@ -980,7 +980,7 @@ pub async fn get_emails_by_ids(conn: AsyncDbConnection, ids: &[i64]) -> Result<V
             .collect::<Vec<_>>()
             .join(", ");
         let query = format!(
-            "SELECT id, download_item_id, credential_id, uid, folder_id, message_id,
+            "SELECT id, credential_id, uid, folder_id, message_id,
                     subject, from_address, from_name, to_addresses, cc_addresses, bcc_addresses,
                     reply_to, date_sent, date_received, body_text, body_html, is_read,
                     is_flagged, is_draft, is_answered, has_attachments, attachment_count,
@@ -995,34 +995,34 @@ pub async fn get_emails_by_ids(conn: AsyncDbConnection, ids: &[i64]) -> Result<V
             .query_map(rusqlite::params_from_iter(ids), |row| {
                 Ok(Email {
                     id: row.get(0)?,
-                    credential_id: row.get(2)?,
-                    uid: row.get(3)?,
-                    folder_id: row.get(4)?,
-                    message_id: row.get(5)?,
-                    subject: row.get(6)?,
-                    from_address: row.get(7)?,
-                    from_name: row.get(8)?,
+                    credential_id: row.get(1)?,
+                    uid: row.get(2)?,
+                    folder_id: row.get(3)?,
+                    message_id: row.get(4)?,
+                    subject: row.get(5)?,
+                    from_address: row.get(6)?,
+                    from_name: row.get(7)?,
                     to_addresses: serde_json::from_str(&row.get::<_, String>(9)?)
                         .unwrap_or_default(),
                     cc_addresses: serde_json::from_str(&row.get::<_, String>(10)?)
                         .unwrap_or_default(),
                     bcc_addresses: serde_json::from_str(&row.get::<_, String>(11)?)
                         .unwrap_or_default(),
-                    reply_to: row.get(12)?,
-                    date_sent: row.get(13)?,
-                    date_received: row.get(14)?,
-                    body_text: row.get(15)?,
-                    body_html: row.get(16)?,
-                    is_read: row.get(17)?,
-                    is_flagged: row.get(18)?,
-                    is_draft: row.get(19)?,
-                    is_answered: row.get(20)?,
-                    has_attachments: row.get(21)?,
-                    attachment_count: row.get(22)?,
-                    size_bytes: row.get(23)?,
-                    thread_id: row.get(24)?,
-                    created_at: row.get(25)?,
-                    updated_at: row.get(26)?,
+                    reply_to: row.get(11)?,
+                    date_sent: row.get(12)?,
+                    date_received: row.get(13)?,
+                    body_text: row.get(14)?,
+                    body_html: row.get(15)?,
+                    is_read: row.get(16)?,
+                    is_flagged: row.get(17)?,
+                    is_draft: row.get(18)?,
+                    is_answered: row.get(19)?,
+                    has_attachments: row.get(20)?,
+                    attachment_count: row.get(21)?,
+                    size_bytes: row.get(22)?,
+                    thread_id: row.get(23)?,
+                    created_at: row.get(24)?,
+                    updated_at: row.get(25)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1073,10 +1073,10 @@ pub async fn list_email_scan_rows_by_ids(
                     EmailScanRow {
                         email_id: row.get(0)?,
                         date_received: row.get(1)?,
-                        from_address: row.get(2)?,
-                        subject: row.get(3)?,
-                        body_text: row.get(4)?,
-                        body_html: row.get(5)?,
+                        from_address: row.get(1)?,
+                        subject: row.get(2)?,
+                        body_text: row.get(3)?,
+                        body_html: row.get(4)?,
                     },
                 ))
             })?;
@@ -1143,10 +1143,10 @@ pub async fn list_template_candidate_emails_by_sender_and_email_ids(
                     row.get::<_, i64>(1)?,
                     TemplateCandidateEmailRow {
                         email_id: row.get(0)?,
-                        from_address: row.get(2)?,
-                        subject: row.get(3)?,
-                        body_text: row.get(4)?,
-                        body_html: row.get(5)?,
+                        from_address: row.get(1)?,
+                        subject: row.get(2)?,
+                        body_text: row.get(3)?,
+                        body_html: row.get(4)?,
                     },
                 ))
             })?;
@@ -1222,10 +1222,10 @@ pub async fn list_unmatched_template_candidate_emails_by_sender_and_email_ids(
                     row.get::<_, i64>(1)?,
                     TemplateCandidateEmailRow {
                         email_id: row.get(0)?,
-                        from_address: row.get(2)?,
-                        subject: row.get(3)?,
-                        body_text: row.get(4)?,
-                        body_html: row.get(5)?,
+                        from_address: row.get(1)?,
+                        subject: row.get(2)?,
+                        body_text: row.get(3)?,
+                        body_html: row.get(4)?,
                     },
                 ))
             })?;
