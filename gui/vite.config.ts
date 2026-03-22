@@ -28,6 +28,7 @@ export default defineConfig({
   plugins: [devtools(), tailwindcss(), solidPlugin()],
   server: {
     port: guiPort,
+    strictPort: true,
     proxy: {
       "/api": `http://127.0.0.1:${backendPort}`,
     },
