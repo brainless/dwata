@@ -17,3 +17,4 @@ chrono.workspace = true
 uuid.workspace = true
 ts-rs = "8.0"
 thiserror = "1.0"
+schemars = "0.8"

@@ -50,7 +50,7 @@ pub async fn insert_financial_transaction(
     let inserted_id = sqlx::query_scalar::<_, i64>(
         "INSERT OR IGNORE INTO financial_transactions
          (data_source_type, data_source_id, amount, currency,
-          transaction_date_raw, transaction_date, payer_vendor_id, payee_vendor_id,
+          transaction_date_raw, transaction_date, payer_organisation_id, payee_organisation_id,
           status, source_file, bill_id, requires_review, extracted_at, created_at, updated_at, transaction_reference)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id",
@@ -61,8 +61,8 @@ pub async fn insert_financial_transaction(
     .bind(&transaction.currency)
     .bind(&transaction.transaction_date_raw)
     .bind(transaction_date_ref)
-    .bind(transaction.payer_vendor_id)
-    .bind(transaction.payee_vendor_id)
+    .bind(transaction.payer_organisation_id)
+    .bind(transaction.payee_organisation_id)
     .bind(status)
     .bind(source_file_ref)
     .bind(transaction.bill_id)
@@ -108,8 +108,8 @@ pub async fn insert_financial_transaction(
 
 pub async fn list_financial_transactions_filtered(
     pool: &SqlitePool,
-    payer_vendor_id: Option<i64>,
-    payee_vendor_id: Option<i64>,
+    payer_organisation_id: Option<i64>,
+    payee_organisation_id: Option<i64>,
     bill_id: Option<i64>,
     start_date: Option<i64>,
     end_date: Option<i64>,
@@ -133,12 +133,12 @@ pub async fn list_financial_transactions_filtered(
         qb.push(clause);
     };
 
-    if let Some(v) = payer_vendor_id {
-        push_filter(&mut count_qb, "ft.payer_vendor_id = ");
+    if let Some(v) = payer_organisation_id {
+        push_filter(&mut count_qb, "ft.payer_organisation_id = ");
         count_qb.push_bind(v);
     }
-    if let Some(v) = payee_vendor_id {
-        push_filter(&mut count_qb, "ft.payee_vendor_id = ");
+    if let Some(v) = payee_organisation_id {
+        push_filter(&mut count_qb, "ft.payee_organisation_id = ");
         count_qb.push_bind(v);
     }
     if let Some(v) = bill_id {
@@ -166,7 +166,7 @@ pub async fn list_financial_transactions_filtered(
 
     let mut data_qb = QueryBuilder::<Sqlite>::new(
         "SELECT ft.id, ft.data_source_type, ft.data_source_id, ft.amount, ft.currency,
-                ft.transaction_date_raw, ft.transaction_date, ft.payer_vendor_id, ft.payee_vendor_id,
+                ft.transaction_date_raw, ft.transaction_date, ft.payer_organisation_id, ft.payee_organisation_id,
                 ft.status, ft.source_file, ft.bill_id, ft.extracted_at, ft.transaction_reference
          FROM financial_transactions ft",
     );
@@ -181,12 +181,12 @@ pub async fn list_financial_transactions_filtered(
         qb.push(clause);
     };
 
-    if let Some(v) = payer_vendor_id {
-        push_filter(&mut data_qb, "ft.payer_vendor_id = ");
+    if let Some(v) = payer_organisation_id {
+        push_filter(&mut data_qb, "ft.payer_organisation_id = ");
         data_qb.push_bind(v);
     }
-    if let Some(v) = payee_vendor_id {
-        push_filter(&mut data_qb, "ft.payee_vendor_id = ");
+    if let Some(v) = payee_organisation_id {
+        push_filter(&mut data_qb, "ft.payee_organisation_id = ");
         data_qb.push_bind(v);
     }
     if let Some(v) = bill_id {
@@ -240,8 +240,8 @@ pub async fn list_financial_transactions_filtered(
                 currency: row.try_get(4)?,
                 transaction_date_raw: row.try_get(5)?,
                 transaction_date: row.try_get(6)?,
-                payer_vendor_id: row.try_get(7)?,
-                payee_vendor_id: row.try_get(8)?,
+                payer_organisation_id: row.try_get(7)?,
+                payee_organisation_id: row.try_get(8)?,
                 status,
                 source_file: row.try_get(10)?,
                 bill_id: row.try_get(11)?,

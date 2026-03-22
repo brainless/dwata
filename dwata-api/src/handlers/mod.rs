@@ -1,8 +1,6 @@
-pub mod companies;
 pub mod contacts;
 pub mod credentials;
-pub mod documents;
-pub mod downloads;
+pub mod email_downloads;
 pub mod emails;
 pub mod events;
 pub mod financial;
@@ -10,5 +8,7 @@ pub mod folders;
 pub mod labels;
 pub mod oauth;
 pub mod ollama;
-pub mod positions;
+pub mod organisations;
+pub mod persons;
+pub mod search;
 pub mod settings;

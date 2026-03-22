@@ -1,9 +1,6 @@
-pub mod companies;
 pub mod contact_links;
 pub mod contacts;
 pub mod credentials;
-pub mod documents;
-pub mod downloads;
 pub mod emails;
 pub mod events;
 pub mod financial_bills;
@@ -13,7 +10,8 @@ pub mod folders;
 pub mod labels;
 pub mod linkedin_connections;
 pub mod models;
-pub mod positions;
+pub mod organisations;
+pub mod persons;
 pub mod queries;
 
 mod embedded {

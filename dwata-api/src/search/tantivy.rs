@@ -1,7 +1,5 @@
 use anyhow::{anyhow, Result};
-use shared_types::{
-    Document, DocumentKind, SearchDocumentsRequest, SearchField, SearchHit, SearchTerm,
-};
+use shared_types::{HitId, SearchField, SearchHit, SearchRequest, SearchTarget, SearchTerm};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tantivy::collector::{Count, TopDocs};
@@ -22,28 +20,49 @@ pub struct TantivySearchIndex {
 
 #[derive(Clone)]
 pub struct TantivyFields {
-    pub document_id: Field,
-    pub kind: Field,
-    pub source_id: Field,
-    pub credential_id: Field,
-    pub title: Field,
-    pub from_address: Field,
+    // ID fields (mutually exclusive)
+    pub email_id: Field,
+    pub file_id: Field,
+    // Universal fields
     pub body_text: Field,
-    pub attachment_text: Field,
+    pub filename: Field,
     pub date_received: Field,
-    pub date_modified: Field,
-    pub indexed_at: Field,
+    // Email-specific fields
+    pub subject: Field,
+    pub from_address: Field,
+    // Filtering
+    pub credential_id: Field,
 }
 
+/// Text fields extracted for indexing
 #[derive(Debug, Clone)]
 pub struct IndexedTextFields {
-    pub title: Option<String>,
-    pub from_address: Option<String>,
     pub body_text: Option<String>,
-    pub attachment_text: Option<String>,
+    pub filename: Option<String>,
+    pub subject: Option<String>,
+    pub from_address: Option<String>,
     pub credential_id: Option<i64>,
 }
 
+impl IndexedTextFields {
+    /// Create from email data
+    pub fn from_email(
+        body_text: Option<String>,
+        subject: Option<String>,
+        from_address: String,
+        credential_id: i64,
+    ) -> Self {
+        Self {
+            body_text,
+            filename: None,
+            subject,
+            from_address: Some(from_address),
+            credential_id: Some(credential_id),
+        }
+    }
+}
+
+/// Result of a search operation
 #[derive(Debug, Clone)]
 pub struct TantivySearchResult {
     pub hits: Vec<SearchHit>,
@@ -65,29 +84,26 @@ pub fn build_schema() -> Schema {
             .set_index_option(IndexRecordOption::WithFreqsAndPositions),
     );
 
-    builder.add_u64_field("document_id", INDEXED | STORED | FAST);
-    builder.add_text_field("kind", exact_text.clone());
-    builder.add_u64_field("source_id", INDEXED | FAST);
-    builder.add_u64_field("credential_id", INDEXED | FAST);
-    builder.add_text_field("title", free_text.clone());
-    builder.add_text_field("from_address", exact_text.clone());
-    builder.add_text_field("body_text", free_text.clone());
-    builder.add_text_field("attachment_text", free_text);
+    // ID fields (0 means not set for that type)
+    builder.add_u64_field("email_id", INDEXED | STORED | FAST);
+    builder.add_u64_field("file_id", INDEXED | STORED | FAST);
 
+    // Universal fields
+    builder.add_text_field("body_text", free_text.clone());
+    builder.add_text_field("filename", free_text.clone());
+
+    // Email-specific fields
+    builder.add_text_field("subject", free_text.clone());
+    builder.add_text_field("from_address", exact_text.clone());
+
+    // Filtering
+    builder.add_u64_field("credential_id", INDEXED | FAST);
+
+    // Date field
     let i64_fast = NumericOptions::default().set_indexed().set_fast();
-    builder.add_i64_field("date_received", i64_fast.clone());
-    builder.add_i64_field("date_modified", i64_fast.clone());
-    builder.add_i64_field("indexed_at", i64_fast);
+    builder.add_i64_field("date_received", i64_fast);
 
     builder.build()
-}
-
-fn kind_to_str(kind: &DocumentKind) -> &'static str {
-    match kind {
-        DocumentKind::Email => "email",
-        DocumentKind::Attachment => "attachment",
-        DocumentKind::File => "file",
-    }
 }
 
 fn fields_from_schema(schema: &Schema) -> Result<TantivyFields> {
@@ -98,17 +114,14 @@ fn fields_from_schema(schema: &Schema) -> Result<TantivyFields> {
     };
 
     Ok(TantivyFields {
-        document_id: get("document_id")?,
-        kind: get("kind")?,
-        source_id: get("source_id")?,
-        credential_id: get("credential_id")?,
-        title: get("title")?,
-        from_address: get("from_address")?,
+        email_id: get("email_id")?,
+        file_id: get("file_id")?,
         body_text: get("body_text")?,
-        attachment_text: get("attachment_text")?,
+        filename: get("filename")?,
+        subject: get("subject")?,
+        from_address: get("from_address")?,
+        credential_id: get("credential_id")?,
         date_received: get("date_received")?,
-        date_modified: get("date_modified")?,
-        indexed_at: get("indexed_at")?,
     })
 }
 
@@ -143,18 +156,19 @@ impl TantivySearchIndex {
             .replace(':', "\\:")
     }
 
-    pub fn index_document(&self, doc_row: &Document, extracted: &IndexedTextFields) -> Result<()> {
+    /// Index an email
+    pub fn index_email(&self, email_id: i64, extracted: &IndexedTextFields) -> Result<()> {
         let mut writer = self.writer.lock().map_err(|_| anyhow!("poisoned writer"))?;
-        self.index_document_with_writer(&mut writer, doc_row, extracted)?;
+        self.index_email_with_writer(&mut writer, email_id, extracted)?;
         writer.commit()?;
         self.reader.reload()?;
         Ok(())
     }
 
-    fn index_document_with_writer(
+    fn index_email_with_writer(
         &self,
         writer: &mut IndexWriter,
-        doc_row: &Document,
+        email_id: i64,
         extracted: &IndexedTextFields,
     ) -> Result<()> {
         let from_address = extracted
@@ -162,41 +176,43 @@ impl TantivySearchIndex {
             .clone()
             .unwrap_or_default()
             .to_lowercase();
+
+        // Delete any existing document with this email_id
         writer.delete_term(Term::from_field_u64(
-            self.fields.document_id,
-            doc_row.id.max(0) as u64,
+            self.fields.email_id,
+            email_id.max(0) as u64,
         ));
+
         writer.add_document(doc!(
-            self.fields.document_id => doc_row.id.max(0) as u64,
-            self.fields.kind => kind_to_str(&doc_row.kind),
-            self.fields.source_id => doc_row.source_id.max(0) as u64,
-            self.fields.credential_id => extracted.credential_id.unwrap_or(0).max(0) as u64,
-            self.fields.title => extracted.title.clone().or_else(|| doc_row.title.clone()).unwrap_or_default(),
-            self.fields.from_address => from_address,
+            self.fields.email_id => email_id.max(0) as u64,
+            self.fields.file_id => 0u64,  // Not a file
             self.fields.body_text => extracted.body_text.clone().unwrap_or_default(),
-            self.fields.attachment_text => extracted.attachment_text.clone().unwrap_or_default(),
-            self.fields.date_received => doc_row.date_received.unwrap_or(0),
-            self.fields.date_modified => doc_row.date_modified.unwrap_or(0),
-            self.fields.indexed_at => chrono::Utc::now().timestamp_millis(),
+            self.fields.filename => extracted.filename.clone().unwrap_or_default(),
+            self.fields.subject => extracted.subject.clone().unwrap_or_default(),
+            self.fields.from_address => from_address,
+            self.fields.credential_id => extracted.credential_id.unwrap_or(0).max(0) as u64,
+            self.fields.date_received => 0i64,  // TODO: Add date to IndexedTextFields if needed
         ))?;
         Ok(())
     }
 
-    pub fn index_documents_page(&self, rows: &[(Document, IndexedTextFields)]) -> Result<()> {
+    /// Index multiple emails in a batch
+    pub fn index_emails(&self, emails: &[(i64, IndexedTextFields)]) -> Result<()> {
         let mut writer = self.writer.lock().map_err(|_| anyhow!("poisoned writer"))?;
-        for (doc_row, extracted) in rows {
-            self.index_document_with_writer(&mut writer, doc_row, extracted)?;
+        for (email_id, extracted) in emails {
+            self.index_email_with_writer(&mut writer, *email_id, extracted)?;
         }
         writer.commit()?;
         self.reader.reload()?;
         Ok(())
     }
 
-    pub fn delete_document(&self, document_id: i64) -> Result<()> {
+    /// Delete an email from the index
+    pub fn delete_email(&self, email_id: i64) -> Result<()> {
         let mut writer = self.writer.lock().map_err(|_| anyhow!("poisoned writer"))?;
         writer.delete_term(Term::from_field_u64(
-            self.fields.document_id,
-            document_id.max(0) as u64,
+            self.fields.email_id,
+            email_id.max(0) as u64,
         ));
         writer.commit()?;
         self.reader.reload()?;
@@ -217,9 +233,9 @@ impl TantivySearchIndex {
             let parser = QueryParser::for_index(
                 &self.index,
                 vec![
-                    self.fields.title,
+                    self.fields.subject,
                     self.fields.body_text,
-                    self.fields.attachment_text,
+                    self.fields.filename,
                 ],
             );
             let escaped = Self::escape_query_value(&term.value);
@@ -242,14 +258,14 @@ impl TantivySearchIndex {
 
         let target_fields = match term.field {
             SearchField::Any => vec![
-                self.fields.title,
+                self.fields.subject,
                 self.fields.body_text,
-                self.fields.attachment_text,
+                self.fields.filename,
             ],
-            SearchField::Title => vec![self.fields.title],
+            SearchField::Subject => vec![self.fields.subject],
             SearchField::FromAddress => vec![self.fields.from_address],
             SearchField::BodyText => vec![self.fields.body_text],
-            SearchField::AttachmentText => vec![self.fields.attachment_text],
+            SearchField::Filename => vec![self.fields.filename],
         };
 
         let parser = QueryParser::for_index(&self.index, target_fields);
@@ -263,7 +279,7 @@ impl TantivySearchIndex {
         Ok(parser.parse_query(&query_str)?)
     }
 
-    pub fn search(&self, request: &SearchDocumentsRequest) -> Result<TantivySearchResult> {
+    pub fn search(&self, request: &SearchRequest) -> Result<TantivySearchResult> {
         if request.terms.is_empty() {
             return Err(anyhow!("terms must not be empty"));
         }
@@ -282,24 +298,29 @@ impl TantivySearchIndex {
             .map(|t| self.build_term_query(t).map(|q| (Occur::Must, q)))
             .collect::<Result<Vec<_>>>()?;
 
-        if let Some(kind) = &request.kind {
-            must_clauses.push((
-                Occur::Must,
-                Box::new(TermQuery::new(
-                    Term::from_field_text(self.fields.kind, kind_to_str(kind)),
-                    IndexRecordOption::Basic,
-                )),
-            ));
-        }
-
-        if let Some(source_id) = request.source_id {
-            must_clauses.push((
-                Occur::Must,
-                Box::new(TermQuery::new(
-                    Term::from_field_u64(self.fields.source_id, source_id.max(0) as u64),
-                    IndexRecordOption::Basic,
-                )),
-            ));
+        // Filter by target type
+        match request.target {
+            SearchTarget::Email => {
+                must_clauses.push((
+                    Occur::Must,
+                    Box::new(TermQuery::new(
+                        Term::from_field_u64(self.fields.email_id, 0u64),
+                        IndexRecordOption::Basic,
+                    )),
+                ));
+            }
+            SearchTarget::File => {
+                must_clauses.push((
+                    Occur::Must,
+                    Box::new(TermQuery::new(
+                        Term::from_field_u64(self.fields.file_id, 0u64),
+                        IndexRecordOption::Basic,
+                    )),
+                ));
+            }
+            SearchTarget::All => {
+                // No filter - include both emails and files
+            }
         }
 
         if let Some(credential_id) = request.credential_id {
@@ -324,11 +345,25 @@ impl TantivySearchIndex {
         let mut hits = Vec::with_capacity(top_docs.len());
         for (score, addr) in top_docs {
             let retrieved: TantivyDocument = searcher.doc(addr)?;
-            let document_id = retrieved
-                .get_first(self.fields.document_id)
+
+            // Determine if this is an email or file hit
+            let email_id = retrieved
+                .get_first(self.fields.email_id)
                 .and_then(|v| v.as_u64())
-                .ok_or_else(|| anyhow!("document_id missing in index doc"))?
-                as i64;
+                .unwrap_or(0);
+            let file_id = retrieved
+                .get_first(self.fields.file_id)
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+
+            let hit_id = if email_id > 0 {
+                HitId::Email(email_id as i64)
+            } else if file_id > 0 {
+                HitId::File(file_id as i64)
+            } else {
+                // Skip invalid hits
+                continue;
+            };
 
             let snippet = retrieved
                 .get_first(self.fields.body_text)
@@ -336,10 +371,36 @@ impl TantivySearchIndex {
                 .map(|s| s.chars().take(160).collect::<String>())
                 .filter(|s| !s.is_empty());
 
+            let subject = retrieved
+                .get_first(self.fields.subject)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty());
+
+            let filename = retrieved
+                .get_first(self.fields.filename)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty());
+
+            let from_address = retrieved
+                .get_first(self.fields.from_address)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty());
+
+            let date_received = retrieved
+                .get_first(self.fields.date_received)
+                .and_then(|v| v.as_i64());
+
             hits.push(SearchHit {
-                document_id,
+                hit_id,
                 score,
                 snippet,
+                subject,
+                filename,
+                from_address,
+                date_received,
             });
         }
 

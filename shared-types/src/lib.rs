@@ -1,11 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 pub mod bill;
-pub mod company;
 pub mod contact;
 pub mod contact_link;
 pub mod credential;
-pub mod document;
 pub mod download;
 pub mod email;
 pub mod event;
@@ -13,41 +11,35 @@ pub mod financial;
 pub mod financial_template;
 pub mod folder;
 pub mod label;
+pub mod location;
 pub mod ollama;
-pub mod position;
+pub mod order;
+pub mod organisation;
+pub mod person;
 pub mod project;
 pub mod search;
 pub mod session;
 pub mod settings;
+pub mod subscription;
 pub mod task;
 pub mod transaction;
-pub mod vendor;
-
-pub use bill::{Bill, BillStatus, BillSubject, FinancialDocumentType, ServiceIdentifierKind};
-pub use company::{CompaniesResponse, Company, CreateCompanyRequest, UpdateCompanyRequest};
-pub use contact::{Contact, ContactsResponse, CreateContactRequest, UpdateContactRequest};
+pub use bill::{Bill, BillStatus, BillSubject, ServiceIdentifierKind};
+pub use contact::{Contact, ContactsResponse};
 pub use contact_link::{
     ContactLink, ContactLinkType, ContactLinksResponse, CreateContactLinkRequest,
 };
 pub use credential::{
-    ApiKeySettings, CreateCredentialRequest, CreateImapCredentialRequest, CredentialListResponse,
-    CredentialMetadata, CredentialType, ImapAccountSettings, ImapAuthMethod,
-    ImapCredentialMetadata, PasswordResponse, SmtpAccountSettings, UpdateCredentialRequest,
+    ApiKeySettings, CreateCredentialRequest, CredentialListResponse, CredentialMetadata,
+    CredentialType, ImapAccountSettings, ImapAuthMethod, ImapCredentialMetadata, PasswordResponse,
+    SmtpAccountSettings, UpdateCredentialRequest,
 };
-pub use document::{
-    Document, DocumentCursor, DocumentKind, DocumentSortBy, DocumentSource, DocumentSourceType,
-    ListDocumentsRequest, ListDocumentsResponse, SourceAccessState, SourcePermissionState,
-};
-pub use download::{
-    CloudStorageDownloadState, CreateDownloadJobRequest, DirectoryStatus, DownloadItem,
-    DownloadItemStatus, DownloadJob, DownloadJobListResponse, DownloadJobStatus, DownloadProgress,
-    FileFilter, ImapDownloadState, ImapFolderStatus, ImapSyncStrategy, SourceType,
-};
+
+pub use download::{EmailSyncDirection, TriggerAllEmailSyncRequest, TriggerEmailSyncRequest};
 pub use email::{
-    AttachmentExtractionStatus, Email, EmailAddress, EmailAttachment, EmailsByIdsRequest,
-    EmailsByIdsResponse, ListEmailsRequest, ListEmailsResponse,
+    Email, EmailAddress, EmailsByIdsRequest, EmailsByIdsResponse, ListEmailsRequest,
+    ListEmailsResponse,
 };
-pub use event::{CreateEventRequest, Event, EventsResponse, UpdateEventRequest};
+pub use event::{Event, EventsResponse};
 pub use financial::{
     CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialPagination,
     FinancialSummary, ListFinancialBillsResponse,
@@ -65,30 +57,35 @@ pub use financial_template::{
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};
+pub use location::Location;
 pub use ollama::{
     OllamaModelDetails, OllamaModelInfo, OllamaModelsResponse, OllamaPullModelRequest,
     OllamaPullModelResponse, OllamaStatusResponse,
 };
-pub use position::{CreatePositionRequest, Position, PositionsResponse};
-pub use project::{
-    CreateProjectRequest, Project, ProjectStatus, ProjectsResponse, UpdateProjectRequest,
+pub use order::{Order, OrderStatus, OrdersResponse};
+
+pub use organisation::{
+    CreateOrganisationRequest, Organisation, OrganisationRole, OrganisationsResponse,
+    UpdateOrganisationRequest,
 };
+pub use person::{Person, PersonsResponse};
+pub use project::{Project, ProjectStatus};
 pub use search::{
-    SearchDocumentsRequest, SearchDocumentsResponse, SearchField, SearchHit, SearchTerm,
+    HitId, SearchField, SearchFieldLegacy, SearchHit, SearchHitLegacy, SearchRequest,
+    SearchResponse, SearchTarget, SearchTerm, SearchTermLegacy,
 };
 pub use session::{
-    AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionListResponse,
-    SessionMessage, SessionResponse, SessionToolCall,
+    AgentMessage, AgentSession, AgentToolCall, SessionListItem, SessionMessage, SessionResponse,
+    SessionToolCall,
 };
 pub use settings::{
     AiProviderApiKeyConfig, OAuthClientAppConfig, SettingsResponse, UpdateAiProviderApiKeysRequest,
     UpdateOAuthClientAppsRequest,
 };
-pub use task::{
-    CreateTaskRequest, Task, TaskPriority, TaskStatus, TasksResponse, UpdateTaskRequest,
-};
+pub use subscription::{BillingCycle, Subscription, SubscriptionsResponse};
+
+pub use task::{Task, TaskPriority, TaskStatus};
 pub use transaction::{DataSourceType, Transaction, TransactionCategory, TransactionStatus};
-pub use vendor::{Vendor, VendorType};
 
 /// Error response for API endpoints
 #[derive(Debug, Serialize, Deserialize)]

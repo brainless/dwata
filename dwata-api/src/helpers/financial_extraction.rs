@@ -3,9 +3,7 @@ use crate::database::{financial_bills as bill_db, financial_transactions as txn_
 use anyhow::Result;
 use dwata_agents::{extract_values_using_template, parse_amount, parse_date, simple_email_content};
 use serde::Serialize;
-use shared_types::{
-    Bill, BillStatus, DataSourceType, FinancialDocumentType, Transaction, TransactionStatus,
-};
+use shared_types::{Bill, BillStatus, DataSourceType, Transaction, TransactionStatus};
 use sqlx::Row;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -261,8 +259,8 @@ fn build_transaction_from_fields(
             .unwrap_or_else(|| "USD".to_string()),
         transaction_date_raw: date_raw,
         transaction_date: date,
-        payer_vendor_id: None,
-        payee_vendor_id: None,
+        payer_organisation_id: None,
+        payee_organisation_id: None,
         status: TransactionStatus::Paid,
         source_file: None,
         extracted_at,
@@ -311,10 +309,10 @@ fn build_bill_from_fields(
         id: 0,
         data_source_type: DataSourceType::Email,
         data_source_id: email_id.to_string(),
-        document_type: FinancialDocumentType::Bill,
+
         status,
         category: None,
-        issuer_vendor_id: None,
+        issuer_organisation_id: None,
         document_reference: fields.get("document_reference").cloned(),
         total_amount: Some(amount),
         currency: Some(
@@ -331,6 +329,7 @@ fn build_bill_from_fields(
         billing_period_start: None,
         billing_period_end_raw: None,
         billing_period_end: None,
+        subscription_id: None,
         created_at: now_s,
         updated_at: now_s,
     })

@@ -168,58 +168,6 @@ pub struct CreateCredentialRequest {
     pub extra_metadata: Option<String>,
 }
 
-/// Type-safe request for creating IMAP credentials
-#[derive(Debug, Deserialize, TS)]
-pub struct CreateImapCredentialRequest {
-    pub identifier: String,
-    pub username: String,
-    pub password: String,
-    pub settings: ImapAccountSettings,
-    pub notes: Option<String>,
-}
-
-impl CreateImapCredentialRequest {
-    /// Convert to generic CreateCredentialRequest
-    pub fn into_generic(self) -> Result<CreateCredentialRequest, serde_json::Error> {
-        Ok(CreateCredentialRequest {
-            credential_type: CredentialType::Imap,
-            identifier: self.identifier,
-            username: self.username,
-            password: Some(self.password),
-            service_name: Some(self.settings.host.clone()),
-            port: Some(self.settings.port),
-            use_tls: Some(self.settings.use_tls),
-            notes: self.notes,
-            extra_metadata: Some(self.settings.to_json_string()?),
-        })
-    }
-}
-
-/// Type-safe request for creating local file credentials
-#[derive(Debug, Deserialize, TS)]
-pub struct CreateLocalFileCredentialRequest {
-    pub identifier: String,
-    pub settings: LocalFileSettings,
-    pub notes: Option<String>,
-}
-
-impl CreateLocalFileCredentialRequest {
-    /// Convert to generic CreateCredentialRequest
-    pub fn into_generic(self) -> Result<CreateCredentialRequest, serde_json::Error> {
-        Ok(CreateCredentialRequest {
-            credential_type: CredentialType::LocalFile,
-            identifier: self.identifier,
-            username: "local".to_string(),
-            password: None,
-            service_name: None,
-            port: None,
-            use_tls: None,
-            notes: self.notes,
-            extra_metadata: Some(self.settings.to_json_string()?),
-        })
-    }
-}
-
 #[derive(Debug, Deserialize, TS)]
 pub struct UpdateCredentialRequest {
     pub username: Option<String>,

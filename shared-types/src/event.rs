@@ -5,37 +5,19 @@ use ts_rs::TS;
 #[ts(export)]
 pub struct Event {
     pub id: i64,
-    pub email_id: Option<i64>,
     pub name: String,
     pub description: Option<String>,
-    pub event_date: i64, // Unix timestamp
-    pub location: Option<String>,
+    /// Date of the event.
+    /// SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
+    pub event_date_raw: Option<String>,
+    pub event_date: Option<i64>,
+    pub location_id: Option<i64>,
     #[ts(skip)]
     pub attendees: serde_json::Value, // Array of email addresses
     pub project_id: Option<i64>,
     pub task_id: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
-}
-
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct CreateEventRequest {
-    pub name: String,
-    pub description: Option<String>,
-    pub event_date: i64,
-    pub location: Option<String>,
-    pub attendees: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct UpdateEventRequest {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub event_date: Option<i64>,
-    pub location: Option<String>,
-    pub attendees: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, TS)]

@@ -1,1 +1,1 @@
-pub mod download_manager;
+pub mod email_sync_manager;

@@ -122,7 +122,7 @@ pub struct TemplateDetectionDebugState {
     pub keyword_query: String,
     pub keyword_list: Vec<String>,
     pub max_candidate_emails: usize,
-    pub matched_document_ids_count: usize,
+    pub matched_email_ids_count: usize,
     pub sender_ranking: Vec<TemplateDetectionSenderRank>,
     pub candidate_email_ids: Vec<i64>,
     pub sender_debug: Vec<TemplateDetectionSenderDebug>,

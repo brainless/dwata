@@ -1,6 +1,5 @@
 CREATE TABLE emails (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    download_item_id INTEGER,
     credential_id INTEGER NOT NULL,
     folder_id INTEGER,
     uid INTEGER NOT NULL,
@@ -31,7 +30,6 @@ CREATE TABLE emails (
 );
 
 CREATE UNIQUE INDEX idx_emails_unique_uid ON emails(credential_id, folder_id, uid);
-CREATE INDEX idx_emails_download_item ON emails(download_item_id);
 CREATE INDEX idx_emails_credential ON emails(credential_id);
 CREATE INDEX idx_emails_credential_date ON emails(credential_id, date_received DESC);
 CREATE INDEX idx_emails_folder_date ON emails(folder_id, date_received DESC);

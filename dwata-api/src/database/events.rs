@@ -7,8 +7,9 @@ pub async fn insert_event(
     email_id: Option<i64>,
     name: String,
     description: Option<String>,
-    event_date: i64,
-    location: Option<String>,
+    event_date_raw: Option<String>,
+    event_date: Option<i64>,
+    location_id: Option<i64>,
     attendees: Vec<String>,
 ) -> Result<i64> {
     let conn = conn.lock().await;
@@ -18,15 +19,16 @@ pub async fn insert_event(
 
     let id: i64 = conn.query_row(
         "INSERT INTO events
-         (email_id, name, description, event_date, location, attendees, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         (email_id, name, description, event_date_raw, event_date, location_id, attendees, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
             email_id,
             &name,
             description.as_ref(),
+            event_date_raw,
             event_date,
-            location.as_ref(),
+            location_id,
             &attendees_json,
             now,
             now
@@ -41,7 +43,7 @@ pub async fn get_event(conn: AsyncDbConnection, id: i64) -> Result<Event> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, email_id, name, description, event_date, location, attendees,
+        "SELECT id, name, description, event_date_raw, event_date, location_id, attendees,
                 project_id, task_id, created_at, updated_at
          FROM events
          WHERE id = ?",
@@ -54,11 +56,11 @@ pub async fn get_event(conn: AsyncDbConnection, id: i64) -> Result<Event> {
 
         Ok(Event {
             id: row.get(0)?,
-            email_id: row.get(1)?,
-            name: row.get(2)?,
-            description: row.get(3)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            event_date_raw: row.get(3)?,
             event_date: row.get(4)?,
-            location: row.get(5)?,
+            location_id: row.get(5)?,
             attendees,
             project_id: row.get(7)?,
             task_id: row.get(8)?,

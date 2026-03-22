@@ -1,4 +1,4 @@
-use shared_types::credential::{CreateLocalFileCredentialRequest, LocalFileSettings};
+use shared_types::credential::LocalFileSettings;
 use shared_types::*;
 use std::fs;
 use std::path::Path;
@@ -11,30 +11,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Project types
     types.push(clean_type(Project::export_to_string()?));
     types.push(clean_type(ProjectStatus::export_to_string()?));
-    types.push(clean_type(CreateProjectRequest::export_to_string()?));
-    types.push(clean_type(UpdateProjectRequest::export_to_string()?));
-    types.push(clean_type(ProjectsResponse::export_to_string()?));
 
     // Event types
     types.push(clean_type(Event::export_to_string()?));
-    types.push(clean_type(CreateEventRequest::export_to_string()?));
-    types.push(clean_type(UpdateEventRequest::export_to_string()?));
     types.push(clean_type(EventsResponse::export_to_string()?));
 
     // Task types
     types.push(clean_type(Task::export_to_string()?));
     types.push(clean_type(TaskStatus::export_to_string()?));
     types.push(clean_type(TaskPriority::export_to_string()?));
-    types.push(clean_type(CreateTaskRequest::export_to_string()?));
-    types.push(clean_type(UpdateTaskRequest::export_to_string()?));
-    types.push(clean_type(TasksResponse::export_to_string()?));
 
     // Session types
     types.push(clean_type(SessionMessage::export_to_string()?));
     types.push(clean_type(SessionToolCall::export_to_string()?));
     types.push(clean_type(SessionResponse::export_to_string()?));
     types.push(clean_type(SessionListItem::export_to_string()?));
-    types.push(clean_type(SessionListResponse::export_to_string()?));
 
     // Settings types
     types.push(clean_type(AiProviderApiKeyConfig::export_to_string()?));
@@ -56,7 +47,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // IMAP credential types
     types.push(clean_type(ImapAuthMethod::export_to_string()?));
     types.push(clean_type(ImapAccountSettings::export_to_string()?));
-    types.push(clean_type(CreateImapCredentialRequest::export_to_string()?));
     types.push(clean_type(ImapCredentialMetadata::export_to_string()?));
 
     // SMTP credential types
@@ -67,43 +57,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Local File credential types
     types.push(clean_type(LocalFileSettings::export_to_string()?));
-    types.push(clean_type(
-        CreateLocalFileCredentialRequest::export_to_string()?,
-    ));
 
-    // Download types
-    types.push(clean_type(DownloadJob::export_to_string()?));
-    types.push(clean_type(DownloadJobStatus::export_to_string()?));
-    types.push(clean_type(DownloadProgress::export_to_string()?));
-    types.push(clean_type(SourceType::export_to_string()?));
-    types.push(clean_type(ImapDownloadState::export_to_string()?));
-    types.push(clean_type(ImapFolderStatus::export_to_string()?));
-    types.push(clean_type(ImapSyncStrategy::export_to_string()?));
-    types.push(clean_type(CloudStorageDownloadState::export_to_string()?));
-    types.push(clean_type(DirectoryStatus::export_to_string()?));
-    types.push(clean_type(FileFilter::export_to_string()?));
-    types.push(clean_type(CreateDownloadJobRequest::export_to_string()?));
-    types.push(clean_type(DownloadJobListResponse::export_to_string()?));
-    types.push(clean_type(DownloadItem::export_to_string()?));
-    types.push(clean_type(DownloadItemStatus::export_to_string()?));
+    // Email sync types
+    types.push(clean_type(EmailSyncDirection::export_to_string()?));
+    types.push(clean_type(TriggerEmailSyncRequest::export_to_string()?));
 
     // Email types
     types.push(clean_type(Email::export_to_string()?));
     types.push(clean_type(EmailAddress::export_to_string()?));
-    types.push(clean_type(EmailAttachment::export_to_string()?));
-    types.push(clean_type(AttachmentExtractionStatus::export_to_string()?));
     types.push(clean_type(ListEmailsRequest::export_to_string()?));
     types.push(clean_type(ListEmailsResponse::export_to_string()?));
     types.push(clean_type(EmailsByIdsRequest::export_to_string()?));
     types.push(clean_type(EmailsByIdsResponse::export_to_string()?));
-
-    // Document types
-    types.push(clean_type(DocumentSourceType::export_to_string()?));
-    types.push(clean_type(SourceAccessState::export_to_string()?));
-    types.push(clean_type(SourcePermissionState::export_to_string()?));
-    types.push(clean_type(DocumentKind::export_to_string()?));
-    types.push(clean_type(DocumentSource::export_to_string()?));
-    types.push(clean_type(Document::export_to_string()?));
 
     // Email Folder and Label types
     types.push(clean_type(EmailFolder::export_to_string()?));
@@ -115,13 +80,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Contact types
     types.push(clean_type(Contact::export_to_string()?));
-    types.push(clean_type(CreateContactRequest::export_to_string()?));
-    types.push(clean_type(UpdateContactRequest::export_to_string()?));
     types.push(clean_type(ContactsResponse::export_to_string()?));
+
+    // Location types
+    types.push(clean_type(Location::export_to_string()?));
+
+    // Person types
+    types.push(clean_type(Person::export_to_string()?));
+    types.push(clean_type(PersonsResponse::export_to_string()?));
 
     // Financial types
     types.push(clean_type(DataSourceType::export_to_string()?));
-    types.push(clean_type(FinancialDocumentType::export_to_string()?));
     types.push(clean_type(Bill::export_to_string()?));
     types.push(clean_type(BillStatus::export_to_string()?));
     types.push(clean_type(BillSubject::export_to_string()?));
@@ -129,8 +98,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(Transaction::export_to_string()?));
     types.push(clean_type(TransactionCategory::export_to_string()?));
     types.push(clean_type(TransactionStatus::export_to_string()?));
-    types.push(clean_type(Vendor::export_to_string()?));
-    types.push(clean_type(VendorType::export_to_string()?));
+    types.push(clean_type(Subscription::export_to_string()?));
+    types.push(clean_type(BillingCycle::export_to_string()?));
+    types.push(clean_type(SubscriptionsResponse::export_to_string()?));
+    types.push(clean_type(Order::export_to_string()?));
+    types.push(clean_type(OrderStatus::export_to_string()?));
+    types.push(clean_type(OrdersResponse::export_to_string()?));
     types.push(clean_type(FinancialSummary::export_to_string()?));
     types.push(clean_type(FinancialExtractionSummary::export_to_string()?));
     types.push(clean_type(FinancialHealth::export_to_string()?));

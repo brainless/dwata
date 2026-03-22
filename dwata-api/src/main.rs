@@ -174,22 +174,7 @@ async fn main() -> std::io::Result<()> {
     );
     tracing::info!("Tantivy index path: {}", search_index_path.display());
 
-    match crate::database::documents::backfill_email_documents_from_emails(
-        db.async_connection.clone(),
-    )
-    .await
-    {
-        Ok(inserted) => {
-            tracing::info!(
-                "Email document backfill complete: inserted {} missing rows",
-                inserted
-            );
-        }
-        Err(err) => {
-            tracing::warn!("Email document backfill failed: {}", err);
-        }
-    }
-
+    // Start email search index backfill
     let search_index_backfill = search_index.clone();
     let db_for_backfill = db.clone();
     tokio::spawn(async move {
@@ -200,7 +185,7 @@ async fn main() -> std::io::Result<()> {
         let mut total_failed = 0usize;
         let mut pages_processed = 0usize;
         loop {
-            let page = match crate::database::documents::list_documents_for_indexing_page(
+            let page = match crate::database::emails::list_emails_for_indexing_page(
                 db_for_backfill.async_connection.clone(),
                 after_id,
                 page_size,
@@ -219,17 +204,19 @@ async fn main() -> std::io::Result<()> {
             }
 
             total_seen += page.len();
-            let page_rows = page
-                .iter()
-                .map(|row| (row.document.clone(), row.indexed_text.clone()))
-                .collect::<Vec<_>>();
+            let page_rows: Vec<(i64, crate::search::tantivy::IndexedTextFields)> = page
+                .into_iter()
+                .map(|(email, indexed_text)| (email.id, indexed_text))
+                .collect();
             let page_count = page_rows.len();
-            if let Err(err) = search_index_backfill.index_documents_page(&page_rows) {
+            if let Err(err) = search_index_backfill.index_emails(&page_rows) {
                 total_failed += page_count;
+                let first_id = page_rows.first().map(|(id, _)| *id);
+                let last_id = page_rows.last().map(|(id, _)| *id);
                 tracing::warn!(
                     page_size = page_count,
-                    first_doc_id = page.first().map(|r| r.document.id),
-                    last_doc_id = page.last().map(|r| r.document.id),
+                    first_email_id = first_id,
+                    last_email_id = last_id,
                     error = %err,
                     "Backfill page failed to index"
                 );
@@ -247,8 +234,8 @@ async fn main() -> std::io::Result<()> {
                 );
             }
 
-            if let Some(last) = page.last() {
-                after_id = last.document.id;
+            if let Some((last_id, _)) = page_rows.last() {
+                after_id = *last_id;
             }
         }
         tracing::info!(
@@ -318,129 +305,75 @@ async fn main() -> std::io::Result<()> {
         tracing::info!("   New credentials will be automatically stored in master mode.");
     }
 
-    // Initialize download manager
-    let download_manager = Arc::new(jobs::download_manager::DownloadManager::new(
+    // Initialize email sync manager
+    let email_sync_manager = Arc::new(jobs::email_sync_manager::EmailSyncManager::new(
         db.async_connection.clone(),
         token_cache.clone(),
         oauth_client.clone(),
         keyring_service.clone(),
     ));
 
-    // Restore interrupted jobs on startup
-    if let Err(e) = download_manager.restore_interrupted_jobs().await {
-        tracing::warn!("Failed to restore interrupted jobs: {}", e);
-    }
-
-    // Ensure all credentials have download jobs (auto-create if missing)
-    if let Err(e) = download_manager.ensure_jobs_for_all_credentials().await {
-        tracing::warn!("Failed to ensure jobs for all credentials: {}", e);
-    }
-
-    let downloads_auto_start = config
-        .downloads
+    let email_downloads_auto_start = config
+        .email_downloads
         .as_ref()
-        .map(|downloads| downloads.auto_start)
+        .map(|c| c.auto_start)
         .unwrap_or(false);
 
-    if downloads_auto_start {
-        // Spawn background task for initial sync (delayed to allow full initialization)
-        let manager_clone_startup = download_manager.clone();
+    if email_downloads_auto_start {
+        // Recent sync — starts 2 seconds after server is up, then every 5 minutes
+        let manager = email_sync_manager.clone();
         tokio::spawn(async move {
-            // Wait 2 seconds for server to fully initialize
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-            if manager_clone_startup.is_shutting_down() {
+            if manager.is_shutting_down() {
                 return;
             }
-
-            tracing::info!("Running initial sync after startup delay");
-
-            // Run initial sync to check for new emails
-            if let Err(e) = manager_clone_startup.sync_all_jobs().await {
-                tracing::warn!("Failed to run initial sync: {}", e);
-            }
-        });
-
-        // Spawn historical backfill on startup
-        let manager_clone_backfill = download_manager.clone();
-        tokio::spawn(async move {
-            // Wait 10 seconds to allow recent sync to complete first
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-
-            if manager_clone_backfill.is_shutting_down() {
-                return;
+            tracing::info!("Running initial recent sync");
+            if let Err(e) = manager.sync_all_recent().await {
+                tracing::warn!("Initial recent sync failed: {}", e);
             }
 
-            tracing::info!("Starting historical backfill on startup");
-
-            // Get all credentials and start historical backfill for each
-            match crate::database::credentials::list_credentials(
-                manager_clone_backfill.get_db_connection(),
-                false,
-            )
-            .await
-            {
-                Ok(credentials) => {
-                    for credential in credentials {
-                        if credential.credential_type.requires_keychain() {
-                            if let Err(e) = manager_clone_backfill
-                                .start_historical_backfill(credential.id)
-                                .await
-                            {
-                                tracing::warn!(
-                                    "Failed to start historical backfill for credential {}: {}",
-                                    credential.id,
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to get credentials for historical backfill: {}", e);
-                }
-            }
-        });
-
-        // Spawn periodic sync task for recent emails (every 5 minutes)
-        let manager_clone = download_manager.clone();
-        tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
             loop {
                 interval.tick().await;
-                if manager_clone.is_shutting_down() {
+                if manager.is_shutting_down() {
                     break;
                 }
-                if let Err(e) = manager_clone.sync_all_jobs().await {
+                if let Err(e) = manager.sync_all_recent().await {
                     tracing::error!("Periodic recent sync failed: {}", e);
                 }
             }
         });
 
-        // Spawn periodic historical backfill task (every 10 minutes)
-        let manager_clone_backfill_periodic = download_manager.clone();
+        // Backfill — starts 10 seconds after server is up, then every 10 minutes
+        let manager = email_sync_manager.clone();
         tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            if manager.is_shutting_down() {
+                return;
+            }
+            tracing::info!("Running initial backfill");
+            if let Err(e) = manager.sync_all_backfill().await {
+                tracing::warn!("Initial backfill failed: {}", e);
+            }
+
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
             loop {
                 interval.tick().await;
-                if manager_clone_backfill_periodic.is_shutting_down() {
+                if manager.is_shutting_down() {
                     break;
                 }
-                if let Err(e) = manager_clone_backfill_periodic
-                    .sync_all_historical_backfill()
-                    .await
-                {
-                    tracing::error!("Periodic historical backfill failed: {}", e);
+                if let Err(e) = manager.sync_all_backfill().await {
+                    tracing::error!("Periodic backfill failed: {}", e);
                 }
             }
         });
     } else {
-        tracing::info!("Download auto-start disabled (downloads.auto_start = false)");
+        tracing::info!("Email download auto-start disabled (email_downloads.auto_start = false)");
     }
 
     println!("Starting server on {}:{}", host, port);
 
-    let download_manager_for_server = download_manager.clone();
+    let email_sync_manager_for_server = email_sync_manager.clone();
     let template_detection_job_state =
         helpers::template_detection_job::TemplateDetectionJobState::new();
     let server = HttpServer::new(move || {
@@ -468,7 +401,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(web::Data::new(db.clone()))
             .app_data(web::Data::new(settings_state.clone()))
-            .app_data(web::Data::new(download_manager_for_server.clone()))
+            .app_data(web::Data::new(email_sync_manager_for_server.clone()))
             .app_data(web::Data::new(oauth_client.clone()))
             .app_data(web::Data::new(state_manager.clone()))
             .app_data(web::Data::new(token_cache.clone()))
@@ -526,32 +459,12 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::oauth::google_oauth_callback),
             )
             .route(
-                "/api/downloads",
-                web::post().to(handlers::downloads::create_download_job),
+                "/api/email-downloads/sync",
+                web::post().to(handlers::email_downloads::trigger_sync),
             )
             .route(
-                "/api/downloads",
-                web::get().to(handlers::downloads::list_download_jobs),
-            )
-            .route(
-                "/api/downloads/sync",
-                web::post().to(handlers::downloads::trigger_sync),
-            )
-            .route(
-                "/api/downloads/{id}",
-                web::get().to(handlers::downloads::get_download_job),
-            )
-            .route(
-                "/api/downloads/{id}/start",
-                web::post().to(handlers::downloads::start_download),
-            )
-            .route(
-                "/api/downloads/{id}/pause",
-                web::post().to(handlers::downloads::pause_download),
-            )
-            .route(
-                "/api/downloads/{id}",
-                web::delete().to(handlers::downloads::delete_download_job),
+                "/api/email-downloads/sync-all",
+                web::post().to(handlers::email_downloads::trigger_sync_all),
             )
             .route("/api/emails", web::get().to(handlers::emails::list_emails))
             .route(
@@ -566,18 +479,7 @@ async fn main() -> std::io::Result<()> {
                 "/api/emails/{id}/labels",
                 web::get().to(handlers::emails::get_email_labels),
             )
-            .route(
-                "/api/documents",
-                web::get().to(handlers::documents::list_documents),
-            )
-            .route(
-                "/api/documents/search",
-                web::get().to(handlers::documents::search_documents),
-            )
-            .route(
-                "/api/documents/{id}",
-                web::get().to(handlers::documents::get_document),
-            )
+            .route("/api/search", web::get().to(handlers::search::search))
             .route(
                 "/api/credentials/{credential_id}/folders",
                 web::get().to(handlers::folders::list_folders),
@@ -620,24 +522,12 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::contacts::get_contact_links),
             )
             .route(
-                "/api/companies",
-                web::get().to(handlers::companies::list_companies),
+                "/api/organisations",
+                web::get().to(handlers::organisations::list_organisations),
             )
             .route(
-                "/api/companies/{id}",
-                web::get().to(handlers::companies::get_company),
-            )
-            .route(
-                "/api/positions",
-                web::get().to(handlers::positions::list_positions),
-            )
-            .route(
-                "/api/positions/{id}",
-                web::get().to(handlers::positions::get_position),
-            )
-            .route(
-                "/api/contacts/{id}/positions",
-                web::get().to(handlers::positions::list_contact_positions),
+                "/api/organisations/{id}",
+                web::get().to(handlers::organisations::get_organisation),
             )
             .route(
                 "/api/financial/transactions",
@@ -681,7 +571,7 @@ async fn main() -> std::io::Result<()> {
     .run();
 
     let handle = server.handle();
-    let shutdown_manager = download_manager.clone();
+    let shutdown_manager = email_sync_manager.clone();
 
     let open_in_browser =
         !cfg!(debug_assertions) && !args.no_open && std::env::var("DWATA_NO_OPEN").is_err();
@@ -703,7 +593,7 @@ async fn main() -> std::io::Result<()> {
 
         tracing::info!("Ctrl+C received, shutting down...");
         if let Err(e) = shutdown_manager.shutdown().await {
-            tracing::warn!("Failed to shutdown download manager cleanly: {}", e);
+            tracing::warn!("Failed to shutdown email sync manager cleanly: {}", e);
         }
 
         handle.stop(true).await;

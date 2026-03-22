@@ -6,7 +6,6 @@ use ts_rs::TS;
 #[ts(export)]
 pub struct Email {
     pub id: i64,
-    pub download_item_id: Option<i64>,
     pub credential_id: i64,
 
     // IMAP Metadata
@@ -53,34 +52,6 @@ pub struct Email {
 pub struct EmailAddress {
     pub email: String,
     pub name: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct EmailAttachment {
-    pub id: i64,
-    pub email_id: i64,
-    pub filename: String,
-    pub content_type: Option<String>,
-    pub size_bytes: Option<i32>,
-    pub content_id: Option<String>,
-    pub file_path: String,
-    pub checksum: Option<String>,
-    pub is_inline: bool,
-    pub extraction_status: AttachmentExtractionStatus,
-    pub extracted_text: Option<String>,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(rename_all = "kebab-case")]
-pub enum AttachmentExtractionStatus {
-    Pending,
-    Completed,
-    Failed,
-    Skipped,
 }
 
 /// Request to list emails
