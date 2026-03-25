@@ -14,7 +14,16 @@
     "withGlobalTauri": true,
     "security": {
       "csp": null
-    }
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Dwata",
+        "width": 1100,
+        "height": 720,
+        "resizable": true
+      }
+    ]
   },
   "bundle": {
     "active": true,
