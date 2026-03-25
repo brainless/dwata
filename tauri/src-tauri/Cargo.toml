@@ -1,0 +1,17 @@
+[package]
+name = "dwata-desktop"
+version = "0.1.0"
+description = "Dwata desktop app"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[build-dependencies]
+tauri-build = { path = "../../../tauri/crates/tauri-build", features = [] }
+
+[dependencies]
+tauri = { path = "../../../tauri/crates/tauri", features = [ "image-ico", "image-png"] }
+
+[features]
+prod = ["tauri/custom-protocol"]
+
+[workspace]

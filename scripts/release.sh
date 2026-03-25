@@ -153,9 +153,24 @@ package_json = Path("gui/package.json")
 data = json.loads(package_json.read_text())
 data["version"] = gui_version
 package_json.write_text(json.dumps(data, indent=2) + "\n")
+
+tauri_cargo = Path("tauri/src-tauri/Cargo.toml")
+if tauri_cargo.exists():
+  tauri_text = tauri_cargo.read_text()
+  pattern = re.compile(r'(^version\s*=\s*")[^"]+(")', re.MULTILINE)
+  new_text, count = pattern.subn(rf'\g<1>{api_version}\g<2>', tauri_text, count=1)
+  if count != 1:
+    raise SystemExit("Failed to update tauri/src-tauri/Cargo.toml version")
+  tauri_cargo.write_text(new_text)
+
+tauri_conf = Path("tauri/src-tauri/tauri.conf.json")
+if tauri_conf.exists():
+  conf = json.loads(tauri_conf.read_text())
+  conf["version"] = api_version
+  tauri_conf.write_text(json.dumps(conf, indent=2) + "\n")
 PY
 
-git add Cargo.toml gui/package.json
+git add Cargo.toml gui/package.json tauri/src-tauri/Cargo.toml tauri/src-tauri/tauri.conf.json
 git commit -m "Release $TAG"
 git tag "$TAG"
 git push origin main

@@ -1,0 +1,33 @@
+{
+  "$schema": "../../../tauri/crates/tauri-schema-generator/schemas/config.schema.json",
+  "productName": "Dwata",
+  "version": "0.1.0",
+  "identifier": "com.dwata.app",
+  "build": {
+    "frontendDist": "../../gui/dist",
+    "devUrl": "http://localhost:9210",
+    "beforeDevCommand": "npm --prefix ../gui run dev",
+    "beforeBuildCommand": "npm --prefix ../gui run build",
+    "removeUnusedCommands": true
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Dwata",
+        "width": 1100,
+        "height": 720,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "externalBin": ["../bin/dwata-api"],
+    "icon": []
+  }
+}

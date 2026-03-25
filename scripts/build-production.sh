@@ -3,11 +3,16 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "Tauri packaging is macOS-only for now. Run this script on macOS."
+  exit 1
+fi
+
 echo "==> Generating API types"
 (cd "$ROOT/shared-types" && cargo run --bin generate_api_types)
 
-echo "==> Building GUI (Vite)"
-(cd "$ROOT/gui" && npm ci && npm run build)
+echo "==> Installing GUI dependencies"
+(cd "$ROOT/gui" && npm ci)
 
 echo "==> Building dwata-api (release)"
 CONFIG_PATH="${DWATA_OAUTH_CONFIG_PATH:-}"
@@ -59,5 +64,20 @@ fi
 
 (cd "$ROOT" && CONFIG_PATH="$CONFIG_PATH" cargo build -p dwata-api --release)
 
+TARGET_TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
+if [[ -z "$TARGET_TRIPLE" ]]; then
+  echo "Failed to determine Rust host target triple."
+  exit 1
+fi
+
+SIDECAR_DIR="$ROOT/tauri/bin"
+SIDECAR_BIN="$SIDECAR_DIR/dwata-api-$TARGET_TRIPLE"
+mkdir -p "$SIDECAR_DIR"
+cp "$ROOT/target/release/dwata-api" "$SIDECAR_BIN"
+chmod +x "$SIDECAR_BIN"
+
+echo "==> Building Tauri app (macOS)"
+(cd "$ROOT/tauri" && npm ci && npm run build)
+
 echo "==> Done"
-echo "Binary: $ROOT/target/release/dwata-api"
+echo "Tauri bundle output: $ROOT/tauri/src-tauri/target/release/bundle"

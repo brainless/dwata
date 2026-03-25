@@ -8,11 +8,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
@@ -29,6 +25,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Tauri CLI
+        shell: bash
+        run: |
+          cargo install tauri-cli --locked
+
       - name: Checkout llm-sdk dependency
         shell: bash
         run: |
@@ -41,103 +42,31 @@ jobs:
           DWATA_DEFAULT_GOOGLE_CLIENT_SECRET: ${{ secrets.DWATA_GOOGLE_CLIENT_SECRET }}
         run: ./scripts/build-production.sh
 
-      - name: Rename binary for release
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            mv target/release/dwata-api.exe target/release/dwata.exe
-          else
-            mv target/release/dwata-api target/release/dwata
-          fi
-
-      - name: Build static Linux binary (musl)
-        if: startsWith(matrix.os, 'ubuntu')
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools musl-dev
-          rustup target add x86_64-unknown-linux-musl
-          cargo build --release --target x86_64-unknown-linux-musl -p dwata-api --features vendored-openssl
-          mv target/x86_64-unknown-linux-musl/release/dwata-api target/x86_64-unknown-linux-musl/release/dwata
-
-      - name: Install Linux packaging tools
-        if: startsWith(matrix.os, 'ubuntu')
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y rpm
-          cargo install cargo-deb cargo-generate-rpm
-
-      - name: Package Linux artifacts
-        if: startsWith(matrix.os, 'ubuntu')
+      - name: Collect macOS Tauri artifacts
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          BIN="target/release/dwata"
-          MUSL_BIN="target/x86_64-unknown-linux-musl/release/dwata"
-
-          # Regular dynamically linked binary
-          tar -czf "dwata-${VERSION}-linux-x64.tar.gz" "$BIN"
-
-          # Static musl binary (universal, works on any Linux distro)
-          tar -czf "dwata-${VERSION}-linux-x64-static.tar.gz" "$MUSL_BIN"
-
-          # Debian package
-          cargo deb -p dwata-api --no-build --output "dwata-${VERSION}-linux-x64.deb"
-
-          # RPM package
-          cargo generate-rpm -p dwata-api --output "dwata-${VERSION}-linux-x64.rpm"
-
-      - name: Install macOS packaging tools
-        if: startsWith(matrix.os, 'macos')
-        shell: bash
-        run: |
-          cargo install cargo-bundle
-
-      - name: Package macOS artifacts
-        if: startsWith(matrix.os, 'macos')
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          BIN="target/release/dwata"
-
-          # Create tar.gz (existing)
-          tar -czf "dwata-${VERSION}-macos-x64.tar.gz" "$BIN"
-
-          # Create DMG using cargo-bundle
-          cargo bundle --release -p dwata-api
-
-          # Find the generated DMG and rename it
-          DMG_PATH=$(find target/release/bundle/osx -name "*.dmg" | head -n 1)
+          BUNDLE_DIR="tauri/src-tauri/target/release/bundle"
+          DMG_PATH=$(find "$BUNDLE_DIR" -name "*.dmg" | head -n 1)
           if [ -n "$DMG_PATH" ]; then
-            cp "$DMG_PATH" "dwata-${VERSION}-macos-x64.dmg"
+            cp "$DMG_PATH" "dwata-${VERSION}-macos.dmg"
           fi
-
-      - name: Package Windows artifacts
-        if: startsWith(matrix.os, 'windows')
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          BIN="target/release/dwata.exe"
-          7z a "dwata-${VERSION}-windows-x64.zip" "$BIN"
+          APP_PATH=$(find "$BUNDLE_DIR" -name "*.app" | head -n 1)
+          if [ -n "$APP_PATH" ]; then
+            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "dwata-${VERSION}-macos.app.zip"
+          fi
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dwata-${{ matrix.os }}
+          name: dwata-macos
           path: |
-            dwata-*.tar.gz
-            dwata-*.zip
-            dwata-*.deb
-            dwata-*.rpm
             dwata-*.dmg
+            dwata-*.app.zip
 
       - name: Attach artifacts to GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dwata-*.tar.gz
-            dwata-*.zip
-            dwata-*.deb
-            dwata-*.rpm
             dwata-*.dmg
+            dwata-*.app.zip
