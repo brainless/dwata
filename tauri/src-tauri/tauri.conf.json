@@ -1,7 +1,7 @@
 {
   "$schema": "../../../tauri/crates/tauri-schema-generator/schemas/config.schema.json",
   "productName": "Dwata",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "identifier": "com.dwata.app",
   "build": {
     "frontendDist": "../../gui/dist",
@@ -27,7 +27,9 @@
   },
   "bundle": {
     "active": true,
-    "externalBin": ["../bin/dwata-api"],
+    "externalBin": [
+      "../bin/dwata-api"
+    ],
     "icon": []
   }
 }
