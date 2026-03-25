@@ -12,42 +12,8 @@ mod integrations;
 mod jobs;
 mod search;
 
-#[cfg(not(debug_assertions))]
-mod gui_embed {
-    use super::*;
-    use rust_embed::RustEmbed;
+const GUI_EMBED_ENABLED: bool = false;
 
-    #[derive(RustEmbed)]
-    #[folder = "../gui/dist"]
-    struct GuiAssets;
-
-    fn gui_response_for_path(path: &str) -> HttpResponse {
-        if let Some(content) = GuiAssets::get(path) {
-            let mime = mime_guess::from_path(path).first_or_octet_stream();
-            HttpResponse::Ok()
-                .content_type(mime.as_ref())
-                .body(content.data.into_owned())
-        } else {
-            match GuiAssets::get("index.html") {
-                Some(index) => HttpResponse::Ok()
-                    .content_type("text/html; charset=utf-8")
-                    .body(index.data.into_owned()),
-                None => HttpResponse::InternalServerError().body("GUI assets not found"),
-            }
-        }
-    }
-
-    pub async fn serve_gui(req: HttpRequest) -> HttpResponse {
-        let path = req.path().trim_start_matches('/');
-        if path == "api" || path.starts_with("api/") {
-            return HttpResponse::NotFound().finish();
-        }
-        let path = if path.is_empty() { "index.html" } else { path };
-        gui_response_for_path(path)
-    }
-}
-
-#[cfg(debug_assertions)]
 mod gui_embed {
     use super::*;
 
@@ -573,8 +539,10 @@ async fn main() -> std::io::Result<()> {
     let handle = server.handle();
     let shutdown_manager = email_sync_manager.clone();
 
-    let open_in_browser =
-        !cfg!(debug_assertions) && !args.no_open && std::env::var("DWATA_NO_OPEN").is_err();
+    let open_in_browser = GUI_EMBED_ENABLED
+        && !cfg!(debug_assertions)
+        && !args.no_open
+        && std::env::var("DWATA_NO_OPEN").is_err();
     if open_in_browser {
         let url = format!("http://{}:{}/", host, port);
         tokio::spawn(async move {
