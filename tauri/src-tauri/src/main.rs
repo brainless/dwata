@@ -12,22 +12,29 @@ fn start_api(app: &tauri::AppHandle) -> Result<Child, String> {
             .map_err(|e| format!("failed to spawn DWATA_API_PATH: {e}"));
     }
 
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("failed to resolve resource dir: {e}"))?;
+    let mut candidates = Vec::new();
 
-    let mut candidate = resource_dir.join("dwata-api");
+    if let Ok(exe_dir) = app.path().executable_dir() {
+        candidates.push(exe_dir.join("dwata-api"));
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("dwata-api"));
+    }
+
     if cfg!(target_os = "windows") {
-        candidate.set_extension("exe");
+        for candidate in &mut candidates {
+            candidate.set_extension("exe");
+        }
     }
 
-    if !candidate.exists() {
-        return Err(format!(
-            "dwata-api sidecar not found at {} (set DWATA_API_PATH for dev)",
-            candidate.display()
-        ));
-    }
+    let candidate = candidates
+        .into_iter()
+        .find(|path| path.exists())
+        .ok_or_else(|| {
+            "dwata-api sidecar not found in executable or resource dir (set DWATA_API_PATH for dev)"
+                .to_string()
+        })?;
 
     Command::new(candidate)
         .spawn()
