@@ -1,8 +1,12 @@
 -- V6: Knowledge Graph tables
 --
--- All KG entity tables are created here. Using CREATE TABLE IF NOT EXISTS
--- so re-running against a dev database that already has hand-created tables
--- does not error out.
+-- All KG entity tables in one migration.
+-- Using CREATE TABLE IF NOT EXISTS so re-running against a dev database
+-- with hand-created tables does not error out.
+
+-- =============================================================================
+-- Core identity entities
+-- =============================================================================
 
 CREATE TABLE IF NOT EXISTS locations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -13,7 +17,7 @@ CREATE TABLE IF NOT EXISTS locations (
     region          TEXT,
     country_code    TEXT,                       -- ISO 3166-1 alpha-2 or alpha-3
     postal_code     TEXT,
-    search_summary  TEXT,                       -- BM25-indexed summary for entity pre-population
+    search_summary  TEXT,                       -- BM25-indexed for pre-population
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL
 );
@@ -27,13 +31,11 @@ CREATE TABLE IF NOT EXISTS organisations (
     location_id     INTEGER REFERENCES locations(id),
     website         TEXT,
     linkedin_url    TEXT,
-    search_summary  TEXT,                       -- BM25-indexed summary for entity pre-population
+    search_summary  TEXT,                       -- BM25-indexed for pre-population
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL
 );
 
--- Junction table: one row per (organisation, role) pair.
--- An organisation can play multiple roles (e.g. both Business and PaymentPlatform).
 CREATE TABLE IF NOT EXISTS organisation_roles (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     organisation_id     INTEGER NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
@@ -50,14 +52,13 @@ CREATE TABLE IF NOT EXISTS persons (
     email           TEXT,
     phone           TEXT,
     organisation_id INTEGER REFERENCES organisations(id),
-    search_summary  TEXT,                       -- BM25-indexed summary for entity pre-population
+    search_summary  TEXT,                       -- BM25-indexed for pre-population
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_persons_email ON persons(email) WHERE email IS NOT NULL;
 
--- Social/professional profile links for a person.
 CREATE TABLE IF NOT EXISTS contact_links (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     person_id   INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
@@ -72,6 +73,10 @@ CREATE TABLE IF NOT EXISTS contact_links (
 
 CREATE INDEX IF NOT EXISTS idx_contact_links_person ON contact_links(person_id);
 
+-- =============================================================================
+-- Financial entities
+-- =============================================================================
+
 CREATE TABLE IF NOT EXISTS subscriptions (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     organisation_id         INTEGER REFERENCES organisations(id),
@@ -84,10 +89,51 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     next_billing_date       INTEGER,            -- UTC ms
     start_date_raw          TEXT,
     start_date              INTEGER,            -- UTC ms
+    search_summary          TEXT,               -- BM25-indexed for pre-population
     source_email_id         INTEGER REFERENCES emails(id),
     created_at              INTEGER NOT NULL,
     updated_at              INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS bills (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    organisation_id             INTEGER REFERENCES organisations(id),
+    document_reference           TEXT,                       -- invoice/bill number
+    total_amount                TEXT,                       -- numeric string (raw from email)
+    currency                    TEXT,
+    issued_date_raw              TEXT,
+    issued_date                  INTEGER,                    -- UTC ms
+    due_date_raw                TEXT,
+    due_date                    INTEGER,                    -- UTC ms
+    billing_period_start_raw    TEXT,
+    billing_period_start        INTEGER,                    -- UTC ms
+    billing_period_end_raw      TEXT,
+    billing_period_end          INTEGER,                    -- UTC ms
+    search_summary              TEXT,                       -- BM25-indexed for pre-population
+    source_email_id             INTEGER REFERENCES emails(id),
+    created_at                  INTEGER NOT NULL,
+    updated_at                  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    amount                  TEXT,                       -- numeric string (raw from email)
+    currency                TEXT,
+    transaction_date_raw    TEXT,
+    transaction_date        INTEGER,                    -- UTC ms
+    transaction_reference    TEXT,
+    payer_organisation_id   INTEGER REFERENCES organisations(id),
+    payee_organisation_id   INTEGER REFERENCES organisations(id),
+    bill_id                 INTEGER REFERENCES bills(id),
+    search_summary          TEXT,                       -- BM25-indexed for pre-population
+    source_email_id         INTEGER REFERENCES emails(id),
+    created_at              INTEGER NOT NULL,
+    updated_at              INTEGER NOT NULL
+);
+
+-- =============================================================================
+-- Commerce entities
+-- =============================================================================
 
 CREATE TABLE IF NOT EXISTS orders (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,10 +147,15 @@ CREATE TABLE IF NOT EXISTS orders (
     items           TEXT,                       -- JSON: array of {name, quantity?, unit_price?}
     tracking_number TEXT,
     transaction_id  INTEGER,                    -- informational FK to transactions table
+    search_summary  TEXT,                       -- BM25-indexed for pre-population
     source_email_id INTEGER REFERENCES emails(id),
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL
 );
+
+-- =============================================================================
+-- Calendar entities
+-- =============================================================================
 
 CREATE TABLE IF NOT EXISTS events (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,6 +167,7 @@ CREATE TABLE IF NOT EXISTS events (
     attendees       TEXT,                       -- JSON: array of person IDs (integers)
     project_id      INTEGER,
     task_id         INTEGER,
+    search_summary  TEXT,                       -- BM25-indexed for pre-population
     source_email_id INTEGER REFERENCES emails(id),
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL

@@ -1,5 +1,8 @@
 pub mod date_parser;
 pub mod email_entity_extractor;
+pub mod entity_search;
+pub mod entity_type_manifest;
+pub mod kg_pass_context;
 pub mod llm_template_variable_extractor;
 pub mod statement_extractor;
 pub mod storage;
@@ -8,6 +11,11 @@ pub mod template_document_labeler;
 pub mod template_value_extractor;
 
 pub use email_entity_extractor::{EmailEntityExtractorAgent, ExtractedEntitiesParams};
+pub use entity_search::{
+    EntitySearchProvider, EntitySearchResult, NamedEntityKind, SearchEntitiesParams,
+};
+pub use entity_type_manifest::{existing_entities_section, generate_entity_manifest};
+pub use kg_pass_context::{KgExtractionPass, KgPassType};
 pub use llm_template_variable_extractor::{
     LlmTemplateVariableExtractorAgent, TemplateVariable, TemplateVariableParams,
     TemplateVariableType,
