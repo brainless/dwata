@@ -55,7 +55,7 @@ fn build_schema() -> Schema {
             .set_index_option(IndexRecordOption::WithFreqsAndPositions),
     );
 
-    let exact_text = TextOptions::default().set_indexing_options(
+    let exact_text = TextOptions::default().set_stored().set_indexing_options(
         TextFieldIndexing::default()
             .set_tokenizer("raw")
             .set_index_option(IndexRecordOption::WithFreqsAndPositions),
@@ -282,17 +282,21 @@ impl EntitySearchIndex {
                     "subscription" => NamedEntityKind::Subscription,
                     "order" => NamedEntityKind::Order,
                     "event" => NamedEntityKind::Event,
-                    _ => return Err(anyhow!("unknown entity type: {}", type_str)),
+                    other => {
+                        tracing::warn!("Skipping Tantivy doc with unrecognised entity_type={:?} (id={}); index may be stale — reindex to fix", other, entity_id);
+                        return None;
+                    }
                 };
 
-                Ok(EntitySearchResult {
+                Some(Ok(EntitySearchResult {
                     id: entity_id,
                     entity_type: kind,
                     score: 1.0,
                     name,
                     search_summary,
-                })
+                }))
             })
+            .flatten()
             .collect()
     }
 }

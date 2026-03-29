@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
 use dwata_agents::email_entity_extractor::types::{
     ExtractedBill, ExtractedEvent, ExtractedLocation, ExtractedOrder, ExtractedOrganisation,
     ExtractedPerson, ExtractedSubscription, ExtractedTransaction,
 };
 use dwata_agents::entity_search::NamedEntityKind;
+use dwata_agents::kg_persistence::KgPersistenceProvider;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
 
-use crate::database::AsyncDbConnection;
 use crate::search::entity_index::EntitySearchIndex;
 
 pub struct KgPersistenceLayer {
@@ -127,24 +128,57 @@ impl KgPersistenceLayer {
 
         let location_db_id = self.resolve_fk(id_map, org.location_id);
 
-        let db_id: i64 = conn.query_row(
-            "INSERT INTO organisations
-             (name, description, industry, email, location_id, website, search_summary, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-             RETURNING id",
-            params![
-                &org.name,
-                Option::<&str>::None,
-                org.industry.as_ref(),
-                org.email.as_ref(),
-                location_db_id,
-                org.website.as_ref(),
-                org.search_summary.as_ref(),
-                now,
-                now,
-            ],
-            |row| row.get(0),
-        )?;
+        // Deduplicate by name: if an org with this name already exists, reuse it.
+        let existing_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM organisations WHERE name = ? LIMIT 1",
+                params![&org.name],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let db_id = if let Some(id) = existing_id {
+            // Update fields that may have been filled in by this extraction.
+            conn.execute(
+                "UPDATE organisations SET
+                     industry    = COALESCE(industry, ?),
+                     email       = COALESCE(email, ?),
+                     location_id = COALESCE(location_id, ?),
+                     website     = COALESCE(website, ?),
+                     search_summary = COALESCE(search_summary, ?),
+                     updated_at  = ?
+                 WHERE id = ?",
+                params![
+                    org.industry.as_ref(),
+                    org.email.as_ref(),
+                    location_db_id,
+                    org.website.as_ref(),
+                    org.search_summary.as_ref(),
+                    now,
+                    id,
+                ],
+            )?;
+            id
+        } else {
+            conn.query_row(
+                "INSERT INTO organisations
+                 (name, description, industry, email, location_id, website, search_summary, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 RETURNING id",
+                params![
+                    &org.name,
+                    Option::<&str>::None,
+                    org.industry.as_ref(),
+                    org.email.as_ref(),
+                    location_db_id,
+                    org.website.as_ref(),
+                    org.search_summary.as_ref(),
+                    now,
+                    now,
+                ],
+                |row| row.get(0),
+            )?
+        };
 
         for role in &org.roles {
             conn.execute(
@@ -175,25 +209,55 @@ impl KgPersistenceLayer {
 
         let org_db_id = self.resolve_fk(id_map, person.organisation_id);
 
-        let db_id: i64 = conn.query_row(
-            "INSERT INTO persons
-             (email_id, name, email, phone, organisation_id, search_summary, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             RETURNING id",
-            params![
-                source_email_id
-                    .or(person.email_id)
-                    .filter(|_| person.email_id.is_some()),
-                &person.name,
-                person.email.as_ref(),
-                person.phone.as_ref(),
-                org_db_id,
-                person.search_summary.as_ref(),
-                now,
-                now,
-            ],
-            |row| row.get(0),
-        )?;
+        // Deduplicate by email address when available (unique index enforces this).
+        let existing_id: Option<i64> = person.email.as_deref().and_then(|email| {
+            conn.query_row(
+                "SELECT id FROM persons WHERE email = ? LIMIT 1",
+                params![email],
+                |row| row.get(0),
+            )
+            .ok()
+        });
+
+        let db_id = if let Some(id) = existing_id {
+            // Enrich fields that may be newly available.
+            conn.execute(
+                "UPDATE persons SET
+                     organisation_id = COALESCE(organisation_id, ?),
+                     phone           = COALESCE(phone, ?),
+                     search_summary  = COALESCE(search_summary, ?),
+                     updated_at      = ?
+                 WHERE id = ?",
+                params![
+                    org_db_id,
+                    person.phone.as_ref(),
+                    person.search_summary.as_ref(),
+                    now,
+                    id,
+                ],
+            )?;
+            id
+        } else {
+            conn.query_row(
+                "INSERT INTO persons
+                 (email_id, name, email, phone, organisation_id, search_summary, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 RETURNING id",
+                params![
+                    source_email_id
+                        .or(person.email_id)
+                        .filter(|_| person.email_id.is_some()),
+                    &person.name,
+                    person.email.as_ref(),
+                    person.phone.as_ref(),
+                    org_db_id,
+                    person.search_summary.as_ref(),
+                    now,
+                    now,
+                ],
+                |row| row.get(0),
+            )?
+        };
 
         id_map.insert(person.id, db_id);
         self.index_entity(
@@ -267,15 +331,16 @@ impl KgPersistenceLayer {
 
         let db_id: i64 = conn.query_row(
             "INSERT INTO bills
-             (organisation_id, document_reference, total_amount, currency,
+             (organisation_id, subscription_id, document_reference, total_amount, currency,
               issued_date_raw, issued_date, due_date_raw, due_date,
               billing_period_start_raw, billing_period_start,
               billing_period_end_raw, billing_period_end,
               source_email_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING id",
             params![
                 org_db_id,
+                sub_db_id,
                 bill.document_reference.as_ref(),
                 bill.total_amount.as_ref(),
                 bill.currency.as_ref(),
@@ -320,7 +385,6 @@ impl KgPersistenceLayer {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING id",
             params![
-                &tx.amount.to_string(),
                 &tx.amount.to_string(),
                 &tx.currency,
                 tx.transaction_date.as_ref(),
@@ -604,5 +668,17 @@ impl InsertableEntity for ExtractedEvent {
         id_map: &mut HashMap<i64, i64>,
     ) -> anyhow::Result<i64> {
         layer.insert_event(self, source_email_id, id_map)
+    }
+}
+
+#[async_trait]
+impl KgPersistenceProvider for KgPersistenceLayer {
+    async fn persist_pass_result(
+        &self,
+        params: &dwata_agents::email_entity_extractor::types::ExtractedEntitiesParams,
+        source_email_id: Option<i64>,
+    ) -> anyhow::Result<()> {
+        self.persist_extraction_result(params, source_email_id)?;
+        Ok(())
     }
 }

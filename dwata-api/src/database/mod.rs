@@ -52,6 +52,11 @@ impl AsyncDbConnection {
             .get()
             .expect("Failed to get DB connection from pool")
     }
+
+    /// Return a clone of the underlying pool (e.g. for `KgPersistenceLayer`).
+    pub fn pool(&self) -> Pool<SqliteConnectionManager> {
+        (*self.pool).clone()
+    }
 }
 
 pub struct Database {

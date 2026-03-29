@@ -62,4 +62,18 @@ pub struct LabelDocumentParams {
         description = "True if document confirms a completed payment or debit (needs transaction extraction)"
     )]
     pub has_transaction: bool,
+
+    /// True if the document contains a meeting, appointment, or calendar event.
+    /// Signals: "meeting", "appointment", "scheduled", "invite", "calendar", "event", "join us".
+    #[schemars(
+        description = "True if document contains a meeting, appointment, or calendar event (needs event extraction)"
+    )]
+    pub has_event: bool,
+
+    /// True if the document contains an e-commerce order or shipment.
+    /// Signals: "order", "shipment", "tracking", "shipped", "delivered", "your purchase", "item".
+    #[schemars(
+        description = "True if document contains an e-commerce order or shipment (needs order extraction)"
+    )]
+    pub has_order: bool,
 }
