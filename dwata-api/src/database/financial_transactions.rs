@@ -254,6 +254,54 @@ pub async fn list_financial_transactions_filtered(
     Ok((transactions, total_count as usize))
 }
 
+pub async fn get_financial_transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transaction>> {
+    let row = sqlx::query(
+        "SELECT ft.id, ft.data_source_type, ft.data_source_id, ft.amount, ft.currency,
+                ft.transaction_date_raw, ft.transaction_date, ft.payer_organisation_id, ft.payee_organisation_id,
+                ft.status, ft.source_file, ft.bill_id, ft.extracted_at, ft.transaction_reference
+         FROM financial_transactions ft
+         WHERE ft.id = ?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        Some(row) => {
+            let data_source_type_str: String = row.try_get(1)?;
+            let status_str: String = row.try_get(9)?;
+            let status = match status_str.as_str() {
+                "paid" => TransactionStatus::Paid,
+                "cancelled" => TransactionStatus::Cancelled,
+                "refunded" => TransactionStatus::Refunded,
+                other => {
+                    return Err(anyhow!(
+                        "Unsupported transaction status in financial_transactions: {other}"
+                    ))
+                }
+            };
+
+            Ok(Some(Transaction {
+                id: row.try_get(0)?,
+                data_source_type: data_source_type_from_str(&data_source_type_str),
+                data_source_id: row.try_get(2)?,
+                amount: row.try_get(3)?,
+                currency: row.try_get(4)?,
+                transaction_date_raw: row.try_get(5)?,
+                transaction_date: row.try_get(6)?,
+                payer_organisation_id: row.try_get(7)?,
+                payee_organisation_id: row.try_get(8)?,
+                status,
+                source_file: row.try_get(10)?,
+                bill_id: row.try_get(11)?,
+                extracted_at: row.try_get(12)?,
+                transaction_reference: row.try_get(13)?,
+            }))
+        }
+        None => Ok(None),
+    }
+}
+
 pub async fn list_financial_transactions(
     pool: &SqlitePool,
     limit: usize,

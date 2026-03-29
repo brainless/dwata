@@ -9,10 +9,13 @@ pub mod folders;
 pub mod kg_entities;
 pub mod labels;
 pub mod linkedin_connections;
+pub mod locations;
 pub mod models;
+pub mod orders;
 pub mod organisations;
 pub mod persons;
 pub mod queries;
+pub mod subscriptions;
 
 mod embedded {
     refinery::embed_migrations!("migrations");

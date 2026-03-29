@@ -80,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Location types
     types.push(clean_type(Location::export_to_string()?));
+    types.push(clean_type(LocationsResponse::export_to_string()?));
 
     // Person types
     types.push(clean_type(Person::export_to_string()?));

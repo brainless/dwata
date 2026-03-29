@@ -1,7 +1,7 @@
 use crate::config::ApiConfig;
 use crate::database::{
-    financial_bills as bills_db, financial_templates as templates_db, financial_transactions as db,
-    Database,
+    financial_bills as bills_db, financial_templates as templates_db,
+    financial_transactions as transactions_db, Database,
 };
 use crate::helpers::template_detection_job::TemplateDetectionJobState;
 use crate::search::tantivy::TantivySearchIndex;
@@ -116,7 +116,7 @@ pub async fn list_transactions(
         .transpose()
         .map_err(|e| actix_web::error::ErrorBadRequest(e.to_string()))?;
 
-    let (transactions, total_count) = db::list_financial_transactions_filtered(
+    let (transactions, total_count) = transactions_db::list_financial_transactions_filtered(
         &db.sqlx_pool,
         query.payer_vendor_id,
         query.payee_vendor_id,
@@ -261,7 +261,7 @@ pub async fn get_summary(
     query: web::Query<SummaryQuery>,
 ) -> ActixResult<HttpResponse> {
     let summary: FinancialSummary =
-        db::get_financial_summary(&db.sqlx_pool, &query.start_date, &query.end_date)
+        transactions_db::get_financial_summary(&db.sqlx_pool, &query.start_date, &query.end_date)
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -397,4 +397,36 @@ pub async fn extract_financial(
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(result))
+}
+
+pub async fn get_bill(
+    db: web::Data<Arc<Database>>,
+    path: web::Path<i64>,
+) -> ActixResult<HttpResponse> {
+    let bill_id = path.into_inner();
+
+    let bill = bills_db::get_financial_bill(&db.sqlx_pool, bill_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    match bill {
+        Some(bill) => Ok(HttpResponse::Ok().json(bill)),
+        None => Err(actix_web::error::ErrorNotFound("Bill not found".to_string()).into()),
+    }
+}
+
+pub async fn get_transaction(
+    db: web::Data<Arc<Database>>,
+    path: web::Path<i64>,
+) -> ActixResult<HttpResponse> {
+    let transaction_id = path.into_inner();
+
+    let transaction = transactions_db::get_financial_transaction(&db.sqlx_pool, transaction_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    match transaction {
+        Some(transaction) => Ok(HttpResponse::Ok().json(transaction)),
+        None => Err(actix_web::error::ErrorNotFound("Transaction not found".to_string()).into()),
+    }
 }

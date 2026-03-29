@@ -19,3 +19,9 @@ pub struct Location {
     pub created_at: i64,
     pub updated_at: i64,
 }
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct LocationsResponse {
+    pub locations: Vec<Location>,
+}

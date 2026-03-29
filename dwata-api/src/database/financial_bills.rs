@@ -230,6 +230,52 @@ pub async fn list_financial_bills_filtered(
     Ok((bills, total_count as usize))
 }
 
+pub async fn get_financial_bill(pool: &SqlitePool, id: i64) -> Result<Option<Bill>> {
+    let row = sqlx::query(
+        "SELECT fb.id, fb.data_source_type, fb.data_source_id, fb.status,
+                fb.issuer_organisation_id, fb.subscription_id, fb.document_reference, fb.total_amount, fb.currency,
+                fb.issued_date_raw, fb.issued_date, fb.due_date_raw, fb.due_date,
+                fb.billing_period_start_raw, fb.billing_period_start,
+                fb.billing_period_end_raw, fb.billing_period_end,
+                fb.created_at, fb.updated_at
+         FROM financial_bills fb
+         WHERE fb.id = ?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        Some(row) => {
+            let data_source_type_str: String = row.try_get(1)?;
+            let status_str: String = row.try_get(3)?;
+            Ok(Some(Bill {
+                id: row.try_get(0)?,
+                data_source_type: data_source_type_from_str(&data_source_type_str),
+                data_source_id: row.try_get(2)?,
+                status: bill_status_from_str(&status_str),
+                category: None,
+                issuer_organisation_id: row.try_get(4)?,
+                subscription_id: row.try_get(5)?,
+                document_reference: row.try_get(6)?,
+                total_amount: row.try_get(7)?,
+                currency: row.try_get(8)?,
+                issued_date_raw: row.try_get(9)?,
+                issued_date: row.try_get(10)?,
+                due_date_raw: row.try_get(11)?,
+                due_date: row.try_get(12)?,
+                billing_period_start_raw: row.try_get(13)?,
+                billing_period_start: row.try_get(14)?,
+                billing_period_end_raw: row.try_get(15)?,
+                billing_period_end: row.try_get(16)?,
+                created_at: row.try_get(17)?,
+                updated_at: row.try_get(18)?,
+            }))
+        }
+        None => Ok(None),
+    }
+}
+
 pub async fn count_unpaid_and_overdue_bills_for_period(
     pool: &SqlitePool,
     start_date: &str,

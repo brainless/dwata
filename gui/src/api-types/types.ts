@@ -19,7 +19,15 @@ export type Event = { id: bigint, name: string, description: string | null,
  * Date of the event.
  * SQLite column type: TEXT (raw) / BIGINT UTC ms (parsed)
  */
-event_date_raw: string | null, event_date: bigint | null, location_id: bigint | null, project_id: bigint | null, task_id: bigint | null, created_at: bigint, updated_at: bigint, };
+event_date_raw: string | null, event_date: bigint | null, location_id: bigint | null, 
+/**
+ * Person IDs of attendees (FK to persons table).
+ */
+attendees: Array<bigint>, project_id: bigint | null, task_id: bigint | null, 
+/**
+ * FK to the email this event was extracted from.
+ */
+source_email_id: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
 import type { Event } from "./Event";
@@ -235,81 +243,15 @@ description: string | null,
 file_type: string | null, };
 
 
-import type { DownloadJobStatus } from "./DownloadJobStatus";
-import type { DownloadProgress } from "./DownloadProgress";
-import type { JobType } from "./JobType";
-import type { SourceType } from "./SourceType";
+export type EmailSyncDirection = "recent" | "backfill";
+
+
+import type { EmailSyncDirection } from "./EmailSyncDirection";
 
 /**
- * Represents a long-running download job
+ * Request to trigger an email sync for a specific credential
  */
-export type DownloadJob = { id: bigint, source_type: SourceType, credential_id: bigint, job_type: JobType, status: DownloadJobStatus, progress: DownloadProgress, error_message: string | null, created_at: bigint, started_at: bigint | null, updated_at: bigint, completed_at: bigint | null, last_sync_at: bigint | null, };
-
-
-export type DownloadJobStatus = "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
-
-
-export type DownloadProgress = { total_items: bigint, downloaded_items: bigint, failed_items: bigint, skipped_items: bigint, in_progress_items: bigint, remaining_items: bigint, percent_complete: number, bytes_downloaded: bigint, items_per_second: number, estimated_completion_secs: bigint | null, };
-
-
-export type SourceType = "imap" | "google-drive" | "dropbox" | "one-drive" | "local-file";
-
-
-import type { ImapFolderStatus } from "./ImapFolderStatus";
-import type { ImapSyncStrategy } from "./ImapSyncStrategy";
-
-/**
- * IMAP-specific download state
- */
-export type ImapDownloadState = { folders: Array<ImapFolderStatus>, sync_strategy: ImapSyncStrategy, fetch_batch_size: number, max_age_months: number | null, };
-
-
-export type ImapFolderStatus = { name: string, total_messages: number, downloaded_messages: number, failed_messages: number, skipped_messages: number, last_synced_uid: number | null, is_complete: boolean, };
-
-
-export type ImapSyncStrategy = "full-sync" | "inbox-only" | { "selected-folders": Array<string> } | "new-only" | { "date-range": { from: string, to: string, } };
-
-
-import type { DirectoryStatus } from "./DirectoryStatus";
-import type { FileFilter } from "./FileFilter";
-
-/**
- * Cloud storage-specific state (for future)
- */
-export type CloudStorageDownloadState = { root_path: string, directories: Array<DirectoryStatus>, file_filter: FileFilter | null, };
-
-
-export type DirectoryStatus = { path: string, total_files: number, downloaded_files: number, failed_files: number, is_complete: boolean, };
-
-
-export type FileFilter = { extensions: Array<string> | null, pattern: string | null, min_size_bytes: bigint | null, max_size_bytes: bigint | null, };
-
-
-import type { SourceType } from "./SourceType";
-
-/**
- * Request to create a new download job
- */
-export type CreateDownloadJobRequest = { credential_id: bigint, source_type: SourceType, };
-
-
-import type { DownloadJob } from "./DownloadJob";
-
-/**
- * Response for download job list
- */
-export type DownloadJobListResponse = { jobs: Array<DownloadJob>, };
-
-
-import type { DownloadItemStatus } from "./DownloadItemStatus";
-
-/**
- * Individual download item
- */
-export type DownloadItem = { id: bigint, job_id: bigint, source_identifier: string, source_folder: string | null, item_type: string, status: DownloadItemStatus, size_bytes: bigint | null, error_message: string | null, created_at: bigint, downloaded_at: bigint | null, };
-
-
-export type DownloadItemStatus = "pending" | "downloading" | "completed" | "failed" | "skipped";
+export type TriggerEmailSyncRequest = { credential_id: bigint, direction: EmailSyncDirection, };
 
 
 import type { EmailAddress } from "./EmailAddress";
@@ -317,18 +259,10 @@ import type { EmailAddress } from "./EmailAddress";
 /**
  * Represents a stored email
  */
-export type Email = { id: bigint, download_item_id: bigint | null, credential_id: bigint, uid: number, folder_id: bigint, message_id: string | null, subject: string | null, from_address: string, from_name: string | null, to_addresses: Array<EmailAddress>, cc_addresses: Array<EmailAddress>, bcc_addresses: Array<EmailAddress>, reply_to: string | null, date_sent: bigint | null, date_received: bigint, body_text: string | null, body_html: string | null, is_read: boolean, is_flagged: boolean, is_draft: boolean, is_answered: boolean, has_attachments: boolean, attachment_count: number, size_bytes: number | null, thread_id: string | null, created_at: bigint, updated_at: bigint, };
+export type Email = { id: bigint, credential_id: bigint, uid: number, folder_id: bigint, message_id: string | null, subject: string | null, from_address: string, from_name: string | null, to_addresses: Array<EmailAddress>, cc_addresses: Array<EmailAddress>, bcc_addresses: Array<EmailAddress>, reply_to: string | null, date_sent: bigint | null, date_received: bigint, body_text: string | null, body_html: string | null, is_read: boolean, is_flagged: boolean, is_draft: boolean, is_answered: boolean, has_attachments: boolean, attachment_count: number, size_bytes: number | null, thread_id: string | null, created_at: bigint, updated_at: bigint, };
 
 
 export type EmailAddress = { email: string, name: string | null, };
-
-
-import type { AttachmentExtractionStatus } from "./AttachmentExtractionStatus";
-
-export type EmailAttachment = { id: bigint, email_id: bigint, filename: string, content_type: string | null, size_bytes: number | null, content_id: string | null, file_path: string, checksum: string | null, is_inline: boolean, extraction_status: AttachmentExtractionStatus, extracted_text: string | null, created_at: bigint, updated_at: bigint, };
-
-
-export type AttachmentExtractionStatus = "pending" | "completed" | "failed" | "skipped";
 
 
 /**
@@ -381,22 +315,32 @@ import type { EmailLabel } from "./EmailLabel";
 export type ListLabelsResponse = { labels: Array<EmailLabel>, };
 
 
-export type Contact = { id: bigint, email_id: bigint | null, name: string, email: string | null, phone: string | null, company_id: bigint | null, created_at: bigint, updated_at: bigint, };
-
-
-import type { Contact } from "./Contact";
-
-export type ContactsResponse = { contacts: Array<Contact>, };
-
-
-export type Location = { id: bigint, address_line1: string | null, address_line2: string | null, city: string | null, region: string | null, 
+export type Location = { id: bigint, 
+/**
+ * Named place, e.g. "Central Park", "Delhi Airport". Nullable for pure address locations.
+ */
+name: string | null, address_line1: string | null, address_line2: string | null, city: string | null, region: string | null, 
 /**
  * ISO 3166-1 alpha-2 or alpha-3 country code
  */
-country_code: string | null, postal_code: string | null, created_at: bigint, updated_at: bigint, };
+country_code: string | null, postal_code: string | null, 
+/**
+ * LLM-generated summary for BM25 search during future extraction passes.
+ */
+search_summary: string | null, created_at: bigint, updated_at: bigint, };
 
 
-export type Person = { id: bigint, email_id: bigint | null, name: string, email: string | null, phone: string | null, organisation_id: bigint | null, created_at: bigint, updated_at: bigint, };
+import type { Location } from "./Location";
+
+export type LocationsResponse = { locations: Array<Location>, };
+
+
+export type Person = { id: bigint, email_id: bigint | null, name: string, email: string | null, phone: string | null, organisation_id: bigint | null, 
+/**
+ * LLM-generated summary for BM25 search during future extraction passes.
+ * Should capture relational context: e.g. "engineer at Acme Corp, john@acme.com"
+ */
+search_summary: string | null, created_at: bigint, updated_at: bigint, };
 
 
 import type { Person } from "./Person";
@@ -514,7 +458,11 @@ start_date_raw: string | null,
 /**
  * Parsed UTC timestamp in milliseconds
  */
-start_date: bigint | null, created_at: bigint, updated_at: bigint, };
+start_date: bigint | null, 
+/**
+ * FK to the email this subscription was extracted from.
+ */
+source_email_id: bigint | null, created_at: bigint, updated_at: bigint, };
 
 
 export type BillingCycle = "weekly" | "monthly" | "quarterly" | "semi_annual" | "annual" | "other";
@@ -525,6 +473,7 @@ import type { Subscription } from "./Subscription";
 export type SubscriptionsResponse = { subscriptions: Array<Subscription>, };
 
 
+import type { OrderItem } from "./OrderItem";
 import type { OrderStatus } from "./OrderStatus";
 
 /**
@@ -542,11 +491,21 @@ order_date_raw: string | null,
 /**
  * Parsed UTC timestamp in milliseconds
  */
-order_date: bigint | null, status: OrderStatus | null, total_amount: number | null, currency: string | null, tracking_number: string | null, 
+order_date: bigint | null, status: OrderStatus | null, total_amount: number | null, currency: string | null, items: Array<OrderItem>, tracking_number: string | null, 
 /**
  * FK to the Transaction that paid for this order
  */
-transaction_id: bigint | null, created_at: bigint, updated_at: bigint, };
+transaction_id: bigint | null, 
+/**
+ * FK to the email this order was extracted from.
+ */
+source_email_id: bigint | null, created_at: bigint, updated_at: bigint, };
+
+
+/**
+ * A single line item within an order.
+ */
+export type OrderItem = { name: string, quantity: number | null, unit_price: number | null, };
 
 
 export type OrderStatus = "placed" | "confirmed" | "shipped" | "out_for_delivery" | "delivered" | "cancelled" | "returned" | "refunded" | "unknown";

@@ -476,6 +476,27 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::events::get_event),
             )
             .route(
+                "/api/locations",
+                web::get().to(handlers::locations::list_locations),
+            )
+            .route(
+                "/api/locations/{id}",
+                web::get().to(handlers::locations::get_location),
+            )
+            .route(
+                "/api/subscriptions",
+                web::get().to(handlers::subscriptions::list_subscriptions),
+            )
+            .route(
+                "/api/subscriptions/{id}",
+                web::get().to(handlers::subscriptions::get_subscription),
+            )
+            .route("/api/orders", web::get().to(handlers::orders::list_orders))
+            .route(
+                "/api/orders/{id}",
+                web::get().to(handlers::orders::get_order),
+            )
+            .route(
                 "/api/persons",
                 web::get().to(handlers::persons::list_persons),
             )
@@ -500,8 +521,16 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::financial::list_transactions),
             )
             .route(
+                "/api/financial/transactions/{id}",
+                web::get().to(handlers::financial::get_transaction),
+            )
+            .route(
                 "/api/financial/bills",
                 web::get().to(handlers::financial::list_bills),
+            )
+            .route(
+                "/api/financial/bills/{id}",
+                web::get().to(handlers::financial::get_bill),
             )
             .route(
                 "/api/financial/summary",
