@@ -9,8 +9,13 @@ import FinancialBills from "./pages/FinancialBills";
 import FinancialHealth from "./pages/FinancialHealth";
 import FinancialTemplateDetection from "./pages/FinancialTemplateDetection";
 import FinancialTemplates from "./pages/FinancialTemplates";
+import Locations from "./pages/Locations";
+import Orders from "./pages/Orders";
+import Organisations from "./pages/Organisations";
+import Persons from "./pages/Persons";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
+import Subscriptions from "./pages/Subscriptions";
 import Tasks from "./pages/Tasks";
 
 render(
@@ -35,6 +40,11 @@ render(
       <Route path="/financial/bills" component={FinancialBills} />
       <Route path="/financial/templates" component={FinancialTemplates} />
       <Route path="/financial/templates/detect" component={FinancialTemplateDetection} />
+      <Route path="/kg/subscriptions" component={Subscriptions} />
+      <Route path="/kg/orders" component={Orders} />
+      <Route path="/kg/organisations" component={Organisations} />
+      <Route path="/kg/persons" component={Persons} />
+      <Route path="/kg/locations" component={Locations} />
       <Route path="/settings" component={Settings} />
       <Route path="/settings/:tab" component={Settings} />
     </Router>

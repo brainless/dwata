@@ -6,6 +6,11 @@ import {
   HiOutlineCurrencyDollar,
   HiOutlineCpuChip,
   HiOutlineDocumentText,
+  HiOutlineShoppingBag,
+  HiOutlineBuildingOffice2,
+  HiOutlineUser,
+  HiOutlineMapPin,
+  HiOutlineArrowPath,
 } from "solid-icons/hi";
 
 export default function Sidebar() {
@@ -60,6 +65,56 @@ export default function Sidebar() {
             >
               <HiOutlineDocumentText class="w-5 h-5 flex-shrink-0" />
               <span class="is-drawer-close:hidden ml-3">Bills</span>
+            </A>
+          </div>
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/kg/subscriptions"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineArrowPath class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Subscriptions</span>
+            </A>
+          </div>
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/kg/orders"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineShoppingBag class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Orders</span>
+            </A>
+          </div>
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/kg/organisations"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineBuildingOffice2 class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Organisations</span>
+            </A>
+          </div>
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/kg/persons"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineUser class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">People</span>
+            </A>
+          </div>
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/kg/locations"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineMapPin class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Locations</span>
             </A>
           </div>
 
