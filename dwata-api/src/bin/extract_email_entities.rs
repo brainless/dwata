@@ -141,7 +141,12 @@ fn print_entities(params: &ExtractedEntitiesParams) {
             );
             print_sep(&[4, 35, 20, 25, 40, 12]);
             for o in organisations {
-                let role_str = o.role.map(|r| r.to_string()).unwrap_or_default();
+                let role_str = o
+                    .roles
+                    .iter()
+                    .map(|r| r.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 println!(
                     "| {:<2} | {:<33} | {:<18} | {:<23} | {:<38} | {:<10} |",
                     o.id,

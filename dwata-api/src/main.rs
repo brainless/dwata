@@ -476,16 +476,16 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::events::get_event),
             )
             .route(
-                "/api/contacts",
-                web::get().to(handlers::contacts::list_contacts),
+                "/api/persons",
+                web::get().to(handlers::persons::list_persons),
             )
             .route(
-                "/api/contacts/{id}",
-                web::get().to(handlers::contacts::get_contact),
+                "/api/persons/{id}",
+                web::get().to(handlers::persons::get_person),
             )
             .route(
-                "/api/contacts/{id}/links",
-                web::get().to(handlers::contacts::get_contact_links),
+                "/api/persons/{id}/links",
+                web::get().to(handlers::persons::get_person_links),
             )
             .route(
                 "/api/organisations",

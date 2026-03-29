@@ -16,7 +16,8 @@ pub enum ContactLinkType {
 #[ts(export)]
 pub struct ContactLink {
     pub id: i64,
-    pub contact_id: i64,
+    /// FK to the persons table.
+    pub person_id: i64,
     pub link_type: ContactLinkType,
     pub url: String,
     pub label: Option<String>,
@@ -29,7 +30,7 @@ pub struct ContactLink {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateContactLinkRequest {
-    pub contact_id: i64,
+    pub person_id: i64,
     pub link_type: ContactLinkType,
     pub url: String,
     pub label: Option<String>,

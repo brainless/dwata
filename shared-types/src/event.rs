@@ -12,10 +12,12 @@ pub struct Event {
     pub event_date_raw: Option<String>,
     pub event_date: Option<i64>,
     pub location_id: Option<i64>,
-    #[ts(skip)]
-    pub attendees: serde_json::Value, // Array of email addresses
+    /// Person IDs of attendees (FK to persons table).
+    pub attendees: Vec<i64>,
     pub project_id: Option<i64>,
     pub task_id: Option<i64>,
+    /// FK to the email this event was extracted from.
+    pub source_email_id: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }

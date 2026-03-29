@@ -7,25 +7,29 @@ pub async fn insert_organisation(
     name: String,
     description: Option<String>,
     industry: Option<String>,
+    email: Option<String>,
     location_id: Option<i64>,
     website: Option<String>,
     linkedin_url: Option<String>,
+    search_summary: Option<String>,
 ) -> Result<i64> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp();
 
     let id: i64 = conn.query_row(
         "INSERT INTO organisations
-         (name, description, industry, location_id, website, linkedin_url, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         (name, description, industry, email, location_id, website, linkedin_url, search_summary, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
             &name,
             description.as_ref(),
             industry.as_ref(),
+            email.as_ref(),
             location_id,
             website.as_ref(),
             linkedin_url.as_ref(),
+            search_summary.as_ref(),
             now,
             now
         ],
@@ -53,34 +57,52 @@ pub async fn get_or_create_organisation(
         }
     }
 
-    insert_organisation(conn, name, None, None, location_id, None, None).await
+    insert_organisation(conn, name, None, None, None, location_id, None, None, None).await
 }
 
 pub async fn get_organisation(conn: AsyncDbConnection, id: i64) -> Result<Organisation> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, industry, role, location_id, website, linkedin_url,
-                created_at, updated_at
+        "SELECT id, name, description, industry, email, location_id, website, linkedin_url,
+                search_summary, created_at, updated_at
          FROM organisations
          WHERE id = ?",
     )?;
 
-    stmt.query_row([id], |row| {
-        Ok(Organisation {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            description: row.get(2)?,
-            industry: row.get(3)?,
-            role: None, // TODO: parse from string column when schema is added
-            location_id: row.get(5)?,
-            website: row.get(6)?,
-            linkedin_url: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
+    let org = stmt
+        .query_row([id], |row| {
+            Ok(Organisation {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                industry: row.get(3)?,
+                email: row.get(4)?,
+                roles: vec![], // populated by a separate query below
+                location_id: row.get(5)?,
+                website: row.get(6)?,
+                linkedin_url: row.get(7)?,
+                search_summary: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
         })
-    })
-    .map_err(|e| anyhow::anyhow!("Failed to get organisation: {}", e))
+        .map_err(|e| anyhow::anyhow!("Failed to get organisation: {}", e))?;
+
+    // Load roles from the junction table
+    let mut role_stmt =
+        conn.prepare("SELECT role FROM organisation_roles WHERE organisation_id = ?")?;
+
+    let roles: Vec<shared_types::OrganisationRole> = role_stmt
+        .query_map([id], |row| {
+            let role_str: String = row.get(0)?;
+            Ok(role_str)
+        })?
+        .filter_map(|r| r.ok())
+        .filter_map(|s| serde_json::from_value(serde_json::Value::String(s)).ok())
+        .collect();
+
+    Ok(Organisation { roles, ..org })
 }
 
 pub async fn list_organisations(

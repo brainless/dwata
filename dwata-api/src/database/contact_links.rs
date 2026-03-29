@@ -4,7 +4,7 @@ use shared_types::{ContactLink, ContactLinkType};
 
 pub async fn insert_contact_link(
     conn: AsyncDbConnection,
-    contact_id: i64,
+    person_id: i64,
     link_type: ContactLinkType,
     url: String,
     label: Option<String>,
@@ -15,8 +15,8 @@ pub async fn insert_contact_link(
     let link_type_str = format!("{:?}", link_type).to_lowercase();
 
     let result: Result<i64, _> = conn.query_row(
-        "SELECT id FROM contact_links WHERE contact_id = ? AND link_type = ? AND url = ?",
-        rusqlite::params![contact_id, &link_type_str, &url],
+        "SELECT id FROM contact_links WHERE person_id = ? AND link_type = ? AND url = ?",
+        rusqlite::params![person_id, &link_type_str, &url],
         |row| row.get(0),
     );
 
@@ -26,11 +26,11 @@ pub async fn insert_contact_link(
 
     let id: i64 = conn.query_row(
         "INSERT INTO contact_links
-         (contact_id, link_type, url, label, is_primary, created_at, updated_at)
+         (person_id, link_type, url, label, is_primary, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
-            contact_id,
+            person_id,
             &link_type_str,
             &url,
             label.as_ref(),
@@ -44,20 +44,17 @@ pub async fn insert_contact_link(
     Ok(id)
 }
 
-pub async fn get_contact_links(
-    conn: AsyncDbConnection,
-    contact_id: i64,
-) -> Result<Vec<ContactLink>> {
+pub async fn get_person_links(conn: AsyncDbConnection, person_id: i64) -> Result<Vec<ContactLink>> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, contact_id, link_type, url, label, is_primary, is_verified, created_at, updated_at
+        "SELECT id, person_id, link_type, url, label, is_primary, is_verified, created_at, updated_at
          FROM contact_links
-         WHERE contact_id = ?",
+         WHERE person_id = ?",
     )?;
 
     let links = stmt
-        .query_map([contact_id], |row| {
+        .query_map([person_id], |row| {
             let link_type_str: String = row.get(2)?;
             let link_type = match link_type_str.as_str() {
                 "linkedin" => ContactLinkType::Linkedin,
@@ -69,7 +66,7 @@ pub async fn get_contact_links(
 
             Ok(ContactLink {
                 id: row.get(0)?,
-                contact_id: row.get(1)?,
+                person_id: row.get(1)?,
                 link_type,
                 url: row.get(3)?,
                 label: row.get(4)?,
@@ -80,7 +77,7 @@ pub async fn get_contact_links(
             })
         })?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| anyhow::anyhow!("Failed to get contact links: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to get person links: {}", e))?;
 
     Ok(links)
 }

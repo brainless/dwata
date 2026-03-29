@@ -9,6 +9,7 @@ pub async fn insert_person(
     email: Option<String>,
     phone: Option<String>,
     organisation_id: Option<i64>,
+    search_summary: Option<String>,
 ) -> Result<i64> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp();
@@ -30,8 +31,8 @@ pub async fn insert_person(
 
     let id: i64 = conn.query_row(
         "INSERT INTO persons
-         (email_id, name, email, phone, organisation_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+         (email_id, name, email, phone, organisation_id, search_summary, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
             email_id,
@@ -39,6 +40,7 @@ pub async fn insert_person(
             email.as_ref(),
             phone.as_ref(),
             organisation_id,
+            search_summary.as_ref(),
             now,
             now
         ],
@@ -52,7 +54,7 @@ pub async fn get_person(conn: AsyncDbConnection, id: i64) -> Result<Person> {
     let conn = conn.lock().await;
 
     let mut stmt = conn.prepare(
-        "SELECT id, email_id, name, email, phone, organisation_id, created_at, updated_at
+        "SELECT id, email_id, name, email, phone, organisation_id, search_summary, created_at, updated_at
          FROM persons
          WHERE id = ?",
     )?;
@@ -65,8 +67,9 @@ pub async fn get_person(conn: AsyncDbConnection, id: i64) -> Result<Person> {
             email: row.get(3)?,
             phone: row.get(4)?,
             organisation_id: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
+            search_summary: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
         })
     })
     .map_err(|e| anyhow::anyhow!("Failed to get person: {}", e))

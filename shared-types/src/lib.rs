@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 pub mod bill;
-pub mod contact;
 pub mod contact_link;
 pub mod credential;
 pub mod download;
@@ -24,7 +23,6 @@ pub mod subscription;
 pub mod task;
 pub mod transaction;
 pub use bill::{Bill, BillStatus, BillSubject, ServiceIdentifierKind};
-pub use contact::{Contact, ContactsResponse};
 pub use contact_link::{
     ContactLink, ContactLinkType, ContactLinksResponse, CreateContactLinkRequest,
 };
@@ -62,7 +60,7 @@ pub use ollama::{
     OllamaModelDetails, OllamaModelInfo, OllamaModelsResponse, OllamaPullModelRequest,
     OllamaPullModelResponse, OllamaStatusResponse,
 };
-pub use order::{Order, OrderStatus, OrdersResponse};
+pub use order::{Order, OrderItem, OrderStatus, OrdersResponse};
 
 pub use organisation::{
     CreateOrganisationRequest, Organisation, OrganisationRole, OrganisationsResponse,

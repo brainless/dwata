@@ -78,10 +78,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(ListLabelsRequest::export_to_string()?));
     types.push(clean_type(ListLabelsResponse::export_to_string()?));
 
-    // Contact types
-    types.push(clean_type(Contact::export_to_string()?));
-    types.push(clean_type(ContactsResponse::export_to_string()?));
-
     // Location types
     types.push(clean_type(Location::export_to_string()?));
 
@@ -102,6 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(BillingCycle::export_to_string()?));
     types.push(clean_type(SubscriptionsResponse::export_to_string()?));
     types.push(clean_type(Order::export_to_string()?));
+    types.push(clean_type(OrderItem::export_to_string()?));
     types.push(clean_type(OrderStatus::export_to_string()?));
     types.push(clean_type(OrdersResponse::export_to_string()?));
     types.push(clean_type(FinancialSummary::export_to_string()?));

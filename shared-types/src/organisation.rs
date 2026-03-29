@@ -57,10 +57,16 @@ pub struct Organisation {
     pub name: String,
     pub description: Option<String>,
     pub industry: Option<String>,
-    pub role: Option<OrganisationRole>,
+    /// Primary contact or billing email for this organisation.
+    pub email: Option<String>,
+    /// All roles this organisation plays; stored in a separate organisation_roles table.
+    pub roles: Vec<OrganisationRole>,
     pub location_id: Option<i64>,
     pub website: Option<String>,
     pub linkedin_url: Option<String>,
+    /// LLM-generated summary for BM25 search during future extraction passes.
+    /// e.g. "streaming service, monthly billing via credit card, support at help@netflix.com"
+    pub search_summary: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -71,10 +77,12 @@ pub struct CreateOrganisationRequest {
     pub name: String,
     pub description: Option<String>,
     pub industry: Option<String>,
-    pub role: Option<OrganisationRole>,
+    pub email: Option<String>,
+    pub roles: Vec<OrganisationRole>,
     pub location_id: Option<i64>,
     pub website: Option<String>,
     pub linkedin_url: Option<String>,
+    pub search_summary: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -83,10 +91,12 @@ pub struct UpdateOrganisationRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub industry: Option<String>,
-    pub role: Option<OrganisationRole>,
+    pub email: Option<String>,
+    pub roles: Option<Vec<OrganisationRole>>,
     pub location_id: Option<i64>,
     pub website: Option<String>,
     pub linkedin_url: Option<String>,
+    pub search_summary: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]

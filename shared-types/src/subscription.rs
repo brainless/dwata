@@ -1,8 +1,9 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// Billing cycle options for subscriptions
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BillingCycle {
     Weekly,
@@ -36,6 +37,8 @@ pub struct Subscription {
     pub start_date_raw: Option<String>,
     /// Parsed UTC timestamp in milliseconds
     pub start_date: Option<i64>,
+    /// FK to the email this subscription was extracted from.
+    pub source_email_id: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }

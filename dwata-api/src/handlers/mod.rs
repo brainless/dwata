@@ -1,4 +1,3 @@
-pub mod contacts;
 pub mod credentials;
 pub mod email_downloads;
 pub mod emails;

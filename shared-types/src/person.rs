@@ -10,6 +10,9 @@ pub struct Person {
     pub email: Option<String>,
     pub phone: Option<String>,
     pub organisation_id: Option<i64>,
+    /// LLM-generated summary for BM25 search during future extraction passes.
+    /// Should capture relational context: e.g. "engineer at Acme Corp, john@acme.com"
+    pub search_summary: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }

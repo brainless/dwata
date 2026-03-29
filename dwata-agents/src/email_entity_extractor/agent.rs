@@ -294,7 +294,17 @@ fn build_parsed_table(params: &ExtractedEntitiesParams) -> String {
             out.push_str(&row("id", "name", "role", "website", "location_id"));
             out.push_str(&sep());
             for o in organisations {
-                let role_str = o.role.map(|r| r.to_string());
+                let role_str = if o.roles.is_empty() {
+                    None
+                } else {
+                    Some(
+                        o.roles
+                            .iter()
+                            .map(|r| r.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    )
+                };
                 out.push_str(&row(
                     &o.id.to_string(),
                     &o.name,

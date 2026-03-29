@@ -4,13 +4,13 @@ use shared_types::Event;
 
 pub async fn insert_event(
     conn: AsyncDbConnection,
-    email_id: Option<i64>,
+    source_email_id: Option<i64>,
     name: String,
     description: Option<String>,
     event_date_raw: Option<String>,
     event_date: Option<i64>,
     location_id: Option<i64>,
-    attendees: Vec<String>,
+    attendees: Vec<i64>,
 ) -> Result<i64> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp();
@@ -19,11 +19,11 @@ pub async fn insert_event(
 
     let id: i64 = conn.query_row(
         "INSERT INTO events
-         (email_id, name, description, event_date_raw, event_date, location_id, attendees, created_at, updated_at)
+         (source_email_id, name, description, event_date_raw, event_date, location_id, attendees, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id",
         rusqlite::params![
-            email_id,
+            source_email_id,
             &name,
             description.as_ref(),
             event_date_raw,
@@ -44,15 +44,14 @@ pub async fn get_event(conn: AsyncDbConnection, id: i64) -> Result<Event> {
 
     let mut stmt = conn.prepare(
         "SELECT id, name, description, event_date_raw, event_date, location_id, attendees,
-                project_id, task_id, created_at, updated_at
+                project_id, task_id, source_email_id, created_at, updated_at
          FROM events
          WHERE id = ?",
     )?;
 
     stmt.query_row([id], |row| {
         let attendees_json: String = row.get(6)?;
-        let attendees: serde_json::Value =
-            serde_json::from_str(&attendees_json).unwrap_or(serde_json::json!([]));
+        let attendees: Vec<i64> = serde_json::from_str(&attendees_json).unwrap_or_default();
 
         Ok(Event {
             id: row.get(0)?,
@@ -64,8 +63,9 @@ pub async fn get_event(conn: AsyncDbConnection, id: i64) -> Result<Event> {
             attendees,
             project_id: row.get(7)?,
             task_id: row.get(8)?,
-            created_at: row.get(9)?,
-            updated_at: row.get(10)?,
+            source_email_id: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
         })
     })
     .map_err(|e| anyhow::anyhow!("Failed to get event: {}", e))

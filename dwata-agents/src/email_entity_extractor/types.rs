@@ -12,6 +12,8 @@ pub struct ExtractedLocation {
         description = "Unique positive integer id you assign — other entities reference this"
     )]
     pub id: i64,
+    /// Named place, e.g. "Central Park". Omit for pure street addresses.
+    pub name: Option<String>,
     pub address_line1: Option<String>,
     pub address_line2: Option<String>,
     pub city: Option<String>,
@@ -19,6 +21,10 @@ pub struct ExtractedLocation {
     #[schemars(description = "ISO 3166-1 alpha-2 or alpha-3 country code if identifiable")]
     pub country_code: Option<String>,
     pub postal_code: Option<String>,
+    #[schemars(
+        description = "Short BM25-searchable summary capturing relational context, e.g. 'downtown New York, near Central Park'"
+    )]
+    pub search_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -28,12 +34,18 @@ pub struct ExtractedOrganisation {
     pub name: String,
     pub industry: Option<String>,
     pub website: Option<String>,
+    /// Primary contact or billing email for this organisation, e.g. billing@netflix.com
+    pub email: Option<String>,
     #[schemars(
-        description = "Role of this organisation: Business, Bank, Insurer, PaymentPlatform, Employer, Utility, ServiceProvider, Government, Educational, NonProfit, Unknown"
+        description = "All roles this organisation plays. Each value must be one of: Business, Bank, Insurer, PaymentPlatform, Employer, Utility, ServiceProvider, Government, Educational, NonProfit, Unknown"
     )]
-    pub role: Option<OrganisationRole>,
+    pub roles: Vec<OrganisationRole>,
     #[schemars(description = "FK: id of an ExtractedLocation for this organisation's address")]
     pub location_id: Option<i64>,
+    #[schemars(
+        description = "Short BM25-searchable summary capturing relational context, e.g. 'streaming service, monthly billing via credit card, support at help@netflix.com'"
+    )]
+    pub search_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -47,6 +59,10 @@ pub struct ExtractedPerson {
     pub phone: Option<String>,
     #[schemars(description = "FK: id of an ExtractedOrganisation this person belongs to")]
     pub organisation_id: Option<i64>,
+    #[schemars(
+        description = "Short BM25-searchable summary capturing relational context, e.g. 'engineer at Acme Corp, john@acme.com'"
+    )]
+    pub search_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -153,6 +169,7 @@ pub struct ExtractedEvent {
     pub event_date: Option<String>,
     #[schemars(description = "FK: id of an ExtractedLocation for this event")]
     pub location_id: Option<i64>,
+    /// Email addresses of attendees (resolved to person IDs server-side after extraction).
     pub attendees: Option<Vec<String>>,
 }
 
