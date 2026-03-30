@@ -7,7 +7,6 @@ pub mod download;
 pub mod email;
 pub mod event;
 pub mod financial;
-pub mod financial_template;
 pub mod folder;
 pub mod label;
 pub mod location;
@@ -41,12 +40,6 @@ pub use event::{Event, EventsResponse};
 pub use financial::{
     CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialPagination,
     FinancialSummary, ListFinancialBillsResponse,
-};
-pub use financial_template::{
-    DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse, FinancialExtractionTemplate,
-    FinancialTemplateApplicability, FinancialTemplateFieldMapping, FinancialTemplateStatus,
-    FinancialTemplateType, FinancialTemplateVariable, FinancialTemplateWithVariables,
-    ListFinancialTemplatesResponse,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};

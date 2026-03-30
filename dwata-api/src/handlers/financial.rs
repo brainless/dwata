@@ -1,23 +1,12 @@
 use crate::config::ApiConfig;
 use crate::database::{
-    financial_bills as bills_db, financial_templates as templates_db,
-    financial_transactions as transactions_db, Database,
+    financial_bills as bills_db, financial_transactions as transactions_db, Database,
 };
 use crate::search::tantivy::TantivySearchIndex;
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
-use shared_types::{
-    BillStatus, DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,
-    FinancialExtractionTemplate, FinancialPagination, FinancialSummary,
-    FinancialTemplateFieldMapping, FinancialTemplateWithVariables, ListFinancialBillsResponse,
-    ListFinancialTemplatesResponse,
-};
+use shared_types::{BillStatus, FinancialPagination, FinancialSummary, ListFinancialBillsResponse};
 use std::sync::Arc;
-#[derive(Deserialize)]
-pub struct ExtractFinancialRequest {
-    #[serde(default)]
-    pub credential_id: Option<i64>,
-}
 
 #[derive(Deserialize)]
 pub struct TransactionFilters {
@@ -64,13 +53,9 @@ pub struct BillFilters {
 }
 
 #[derive(Deserialize)]
-pub struct TemplatesQuery {
-    #[serde(default = "default_templates_limit")]
-    pub limit: usize,
-}
-
-fn default_templates_limit() -> usize {
-    200
+pub struct SummaryQuery {
+    start_date: String,
+    end_date: String,
 }
 
 pub async fn list_transactions(
@@ -175,62 +160,6 @@ pub async fn list_bills(
     }))
 }
 
-pub async fn list_templates(
-    db: web::Data<Arc<Database>>,
-    query: web::Query<TemplatesQuery>,
-) -> ActixResult<HttpResponse> {
-    let limit = query.limit.clamp(1, 500);
-    let rows =
-        templates_db::list_active_templates_with_variables(db.async_connection.clone(), limit)
-            .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    let templates = rows
-        .into_iter()
-        .map(|row| FinancialTemplateWithVariables {
-            template: FinancialExtractionTemplate {
-                id: row.id,
-                data_source_type: row.data_source_type,
-                data_source_id: row.data_source_id,
-                template_type: row.template_type,
-                template_body: row.template_body,
-                status: row.status,
-                version: row.version,
-                created_at: row.created_at,
-                updated_at: row.updated_at,
-            },
-            variables: row
-                .variables
-                .into_iter()
-                .map(|v| FinancialTemplateFieldMapping {
-                    placeholder_name: v.placeholder_name,
-                    target_field: v.target_field,
-                })
-                .collect(),
-        })
-        .collect::<Vec<_>>();
-
-    Ok(HttpResponse::Ok().json(ListFinancialTemplatesResponse { templates }))
-}
-
-pub async fn delete_templates(
-    db: web::Data<Arc<Database>>,
-    request: web::Json<DeleteFinancialTemplatesRequest>,
-) -> ActixResult<HttpResponse> {
-    let deleted_count =
-        templates_db::delete_templates_by_ids(db.async_connection.clone(), &request.template_ids)
-            .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(DeleteFinancialTemplatesResponse { deleted_count }))
-}
-
-#[derive(Deserialize)]
-pub struct SummaryQuery {
-    start_date: String,
-    end_date: String,
-}
-
 pub async fn get_summary(
     db: web::Data<Arc<Database>>,
     query: web::Query<SummaryQuery>,
@@ -241,22 +170,6 @@ pub async fn get_summary(
             .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(summary))
-}
-
-pub async fn extract_financial(
-    db: web::Data<Arc<Database>>,
-    config: web::Data<Arc<crate::config::ApiConfig>>,
-    request: web::Json<ExtractFinancialRequest>,
-) -> ActixResult<HttpResponse> {
-    let result = crate::helpers::financial_extraction::extract_financial_from_templates(
-        db.get_ref().clone(),
-        config.get_ref(),
-        request.credential_id,
-    )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(result))
 }
 
 pub async fn get_bill(

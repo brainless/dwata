@@ -240,9 +240,6 @@ export default function FinancialHealth() {
         )}
         {isExtracting() ? "Extracting..." : "Run Extraction"}
       </button>
-      <A href="/financial/templates" class="btn btn-ghost btn-sm">
-        Templates
-      </A>
     </>
   );
 

@@ -1,5 +1,4 @@
 pub mod database;
-pub mod financial_extraction;
 pub mod google_oauth;
 pub mod imap_oauth;
 pub mod keyring_service;

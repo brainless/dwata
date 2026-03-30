@@ -84,13 +84,7 @@ export default function FinancialBills() {
     fetchBills();
   });
 
-  const footerActions = (
-    <>
-      <A href="/financial/templates" class="btn btn-ghost btn-sm">
-        Templates
-      </A>
-    </>
-  );
+  const footerActions = null;
 
   return (
     <FinancialPageLayout

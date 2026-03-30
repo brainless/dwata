@@ -25,7 +25,4 @@ pub use kg_pass_context::{KgExtractionPass, KgPassType};
 pub use kg_persistence::KgPersistenceProvider;
 pub use statement_extractor::{ColumnarSheet, StatementField, StatementTemplate};
 pub use storage::{AgentStorage, Message, Session, ToolCall};
-pub use text_extraction::{
-    extract_values_using_template, parse_amount, parse_date, simple_email_content,
-    SimpleEmailContent,
-};
+pub use text_extraction::{parse_amount, parse_date, simple_email_content, SimpleEmailContent};

@@ -7,8 +7,6 @@ import Calendar from "./pages/Calendar";
 import Emails from "./pages/Emails";
 import FinancialBills from "./pages/FinancialBills";
 import FinancialHealth from "./pages/FinancialHealth";
-import FinancialTemplateDetection from "./pages/FinancialTemplateDetection";
-import FinancialTemplates from "./pages/FinancialTemplates";
 import Locations from "./pages/Locations";
 import Orders from "./pages/Orders";
 import Organisations from "./pages/Organisations";
@@ -38,8 +36,6 @@ render(
       <Route path="/calendar" component={Calendar} />
       <Route path="/financial/transactions" component={FinancialHealth} />
       <Route path="/financial/bills" component={FinancialBills} />
-      <Route path="/financial/templates" component={FinancialTemplates} />
-      <Route path="/financial/templates/detect" component={FinancialTemplateDetection} />
       <Route path="/kg/subscriptions" component={Subscriptions} />
       <Route path="/kg/orders" component={Orders} />
       <Route path="/kg/organisations" component={Organisations} />
