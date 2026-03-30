@@ -57,7 +57,7 @@ Use Ollama with a local model (Ministral 3: 3b), OpenAI (GPT-4o Nano), or Google
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/brainless/dwata/releases).
 
-Run the dwata API server and open the GUI in your browser at `http://localhost:3030`.
+Launch the Dwata desktop app (Tauri). It starts the `dwata-api` sidecar automatically and loads the GUI inside the app window.
 
 ### Connecting Gmail
 

@@ -7,19 +7,20 @@
 ## Prerequisites
 
 - **Rust**: Required for building the API server (`dwata-api`) and shared types
-- **Node.js and npm**: Required for running the GUI application
+- **Node.js and npm**: Required for running the GUI and Tauri desktop app
 - **SQLite CLI**: Optional, if you want to run SQL queries directly against the database
 
 ## Project Structure
 
-The dwata project is organized as a Cargo workspace with three main components:
+The dwata project is organized as a Cargo workspace plus frontend and desktop app packages:
 
 ### Workspace Configuration
 
 The root `Cargo.toml` defines the workspace members:
 ```toml
 members = [
-    "dwata-api", "extractors",
+    "dwata-agents",
+    "dwata-api",
     "shared-types",
 ]
 exclude = [
@@ -27,7 +28,15 @@ exclude = [
 ]
 ```
 
-### 1. `dwata-api` - Backend API Server
+### 1. `dwata-agents` - KG Extraction Agents
+
+Location: `/dwata-agents/`
+
+Main email KG extractor: `dwata-agents/src/kg_email_extractor/`
+
+See `docs/06-knowledge-graph-extraction.md` for the pass architecture, gating, and persistence/search flow.
+
+### 2. `dwata-api` - Backend API Server
 
 Location: `/dwata-api/`
 
@@ -68,7 +77,7 @@ dirs = "5.0"
 - `src/jobs/` - Background job management
   - `download_manager.rs` - Manages download jobs
 
-### 2. `shared-types` - Type Definitions
+### 3. `shared-types` - Type Definitions
 
 Location: `/shared-types/`
 
@@ -110,7 +119,7 @@ To generate types:
 cargo run --bin generate_api_types
 ```
 
-### 3. `gui` - Frontend Application
+### 4. `gui` - Frontend Application
 
 Location: `/gui/`
 
@@ -370,9 +379,15 @@ let (total, expired) = keyring_service.cache_stats().await;
 - Individual credentials are invalidated when updated or deleted
 - TTL ensures passwords don't stay in memory indefinitely
 
+### 5. `tauri` - Desktop App Shell
+
+Location: `/tauri/`
+
+The Tauri app wraps the SolidJS GUI and starts `dwata-api` as a sidecar. It is the primary desktop build target.
+
 ## Running the Project
 
-### Running the API Server
+### Running the API Server (Standalone)
 
 ```bash
 cd dwata-api
@@ -391,11 +406,13 @@ The server will:
 
 ## GitHub Actions Secrets
 
-The `build-release` workflow can embed default Google OAuth credentials at build time. Set these repository secrets:
+The `build-release` workflow builds the Tauri desktop app (and bundles the `dwata-api` sidecar). It can embed default Google OAuth credentials at build time. Set these repository secrets:
 - `DWATA_GOOGLE_CLIENT_ID`
 - `DWATA_GOOGLE_CLIENT_SECRET`
 
-### Running the GUI
+Release automation (`scripts/release.sh` and `scripts/build-production.sh`) targets the Tauri desktop app bundle, not a standalone `dwata-api` + GUI release.
+
+### Running the GUI (Web)
 
 ```bash
 cd gui
@@ -404,6 +421,14 @@ npm run dev
 ```
 
 This starts the development server, typically on `http://localhost:3030`.
+
+### Running the Desktop App (Tauri)
+
+```bash
+cd tauri
+npm install
+npm run dev
+```
 
 ### Generating TypeScript Types
 
