@@ -4,6 +4,7 @@ import "./index.css";
 
 import App from "./App";
 import Calendar from "./pages/Calendar";
+import DataExtraction from "./pages/DataExtraction";
 import Emails from "./pages/Emails";
 import FinancialBills from "./pages/FinancialBills";
 import FinancialTransactions from "./pages/FinancialTransactions";
@@ -41,6 +42,7 @@ render(
       <Route path="/kg/organisations" component={Organisations} />
       <Route path="/kg/persons" component={Persons} />
       <Route path="/kg/locations" component={Locations} />
+      <Route path="/data-extraction" component={DataExtraction} />
       <Route path="/settings" component={Settings} />
       <Route path="/settings/:tab" component={Settings} />
     </Router>

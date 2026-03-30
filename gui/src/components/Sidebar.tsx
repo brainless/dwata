@@ -121,6 +121,18 @@ export default function Sidebar() {
           {/* Spacer */}
           <div class="flex-grow"></div>
 
+          {/* Data Extraction - above Settings */}
+          <div class="px-4 py-2 w-full">
+            <A
+              href="/data-extraction"
+              class="menu-item flex items-center py-2 px-3 rounded transition-colors hover:bg-base-300 is-drawer-close:justify-center is-drawer-open:justify-start"
+              activeClass="bg-primary text-primary-content"
+            >
+              <HiOutlineCpuChip class="w-5 h-5 flex-shrink-0" />
+              <span class="is-drawer-close:hidden ml-3">Data Extraction</span>
+            </A>
+          </div>
+
           {/* Settings at bottom */}
           <div class="px-4 py-2 w-full">
             <A

@@ -1,3 +1,4 @@
+pub mod clear_data;
 pub mod credentials;
 pub mod email_downloads;
 pub mod emails;

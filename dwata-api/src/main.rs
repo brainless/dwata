@@ -390,6 +390,10 @@ async fn main() -> std::io::Result<()> {
                 web::post().to(handlers::ollama::ollama_pull_model),
             )
             .route(
+                "/api/clear-extracted-data",
+                web::post().to(handlers::clear_data::clear_extracted_data),
+            )
+            .route(
                 "/api/credentials",
                 web::post().to(handlers::credentials::create_credential),
             )
