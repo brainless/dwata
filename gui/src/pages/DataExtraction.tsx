@@ -1,4 +1,4 @@
-import { createSignal, onCleanup } from "solid-js";
+import { createSignal, onCleanup, onMount } from "solid-js";
 import { getApiUrl } from "../config/api";
 
 interface AccountProgress {
@@ -128,6 +128,22 @@ export default function DataExtraction() {
       abortController = null;
     }
   };
+
+  onMount(async () => {
+    try {
+      const response = await fetch(getApiUrl("/api/kg-extraction/progress"));
+      if (response.ok) {
+        const data: ProgressResponse = await response.json();
+        setProgress(data);
+        if (data.active) {
+          setIsExtracting(true);
+          startLongPolling();
+        }
+      }
+    } catch {
+      // Ignore mount-time errors silently
+    }
+  });
 
   onCleanup(() => {
     stopPolling();
