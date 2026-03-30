@@ -11,6 +11,7 @@ mod helpers;
 mod integrations;
 mod jobs;
 mod search;
+mod state;
 
 const GUI_EMBED_ENABLED: bool = false;
 
@@ -279,6 +280,9 @@ async fn main() -> std::io::Result<()> {
         keyring_service.clone(),
     ));
 
+    // Initialize KG extraction state manager (in-memory only)
+    let kg_extraction_state = Arc::new(state::kg_extraction::KgExtractionState::new());
+
     let email_downloads_auto_start = config
         .email_downloads
         .as_ref()
@@ -340,6 +344,7 @@ async fn main() -> std::io::Result<()> {
     println!("Starting server on {}:{}", host, port);
 
     let email_sync_manager_for_server = email_sync_manager.clone();
+    let kg_extraction_state_for_server = kg_extraction_state.clone();
     let server = HttpServer::new(move || {
         // Configure CORS
         let cors = if let Some(cors_config) = &config.cors {
@@ -372,6 +377,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(keyring_service.clone()))
             .app_data(web::Data::new(config.clone()))
             .app_data(web::Data::new(search_index.clone()))
+            .app_data(web::Data::new(kg_extraction_state_for_server.clone()))
             .service(hello)
             .service(health)
             .service(get_settings)
@@ -392,6 +398,14 @@ async fn main() -> std::io::Result<()> {
             .route(
                 "/api/clear-extracted-data",
                 web::post().to(handlers::clear_data::clear_extracted_data),
+            )
+            .route(
+                "/api/kg-extraction/run",
+                web::post().to(handlers::kg_extraction::run_kg_extraction),
+            )
+            .route(
+                "/api/kg-extraction/progress",
+                web::get().to(handlers::kg_extraction::get_kg_extraction_progress),
             )
             .route(
                 "/api/credentials",

@@ -6,6 +6,7 @@ pub mod financial_bills;
 pub mod financial_transactions;
 pub mod folders;
 pub mod kg_entities;
+pub mod kg_extraction;
 pub mod labels;
 pub mod linkedin_connections;
 pub mod locations;

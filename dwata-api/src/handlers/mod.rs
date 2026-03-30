@@ -5,6 +5,7 @@ pub mod emails;
 pub mod events;
 pub mod financial;
 pub mod folders;
+pub mod kg_extraction;
 pub mod labels;
 pub mod locations;
 pub mod oauth;

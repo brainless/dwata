@@ -1,10 +1,137 @@
-import { createSignal } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
 import { getApiUrl } from "../config/api";
+
+interface AccountProgress {
+  credential_id: number;
+  identifier: string;
+  status: string;
+  total_emails: number;
+  emails_processed: number;
+  emails_failed: number;
+  current_email_id: number | null;
+  started_at: number | null;
+  completed_at: number | null;
+  error_message: string | null;
+}
+
+interface ProgressResponse {
+  active: boolean;
+  accounts: AccountProgress[];
+  updated: boolean;
+}
 
 export default function DataExtraction() {
   const [isDeleting, setIsDeleting] = createSignal(false);
   const [deleteError, setDeleteError] = createSignal("");
   const [deleteSuccess, setDeleteSuccess] = createSignal("");
+  
+  // Extraction state
+  const [isExtracting, setIsExtracting] = createSignal(false);
+  const [extractionError, setExtractionError] = createSignal("");
+  const [progress, setProgress] = createSignal<ProgressResponse | null>(null);
+  const [isPolling, setIsPolling] = createSignal(false);
+  let abortController: AbortController | null = null;
+
+  const startExtraction = async () => {
+    setIsExtracting(true);
+    setExtractionError("");
+    setProgress(null);
+
+    try {
+      const response = await fetch(getApiUrl("/api/kg-extraction/run"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start extraction: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log("Extraction started:", data);
+      
+      // Start long polling
+      startLongPolling();
+    } catch (error) {
+      setExtractionError(error instanceof Error ? error.message : "An error occurred");
+      setIsExtracting(false);
+      setIsPolling(false);
+    }
+  };
+
+  const fetchProgressLongPoll = async () => {
+    // Create new abort controller for this request
+    abortController = new AbortController();
+    
+    try {
+      const response = await fetch(
+        getApiUrl("/api/kg-extraction/progress?long_poll=true"),
+        { signal: abortController.signal }
+      );
+      
+      if (!response.ok) {
+        console.error("Failed to fetch progress:", response.statusText);
+        return false;
+      }
+      
+      const data: ProgressResponse = await response.json();
+      setProgress(data);
+      
+      // Check if all accounts are done
+      const allDone = data.accounts.length === 0 || data.accounts.every(
+        (a) => a.status === "completed" || a.status === "failed" || a.status === "idle"
+      );
+      
+      // Stop if extraction is not active and all accounts are done
+      if (!data.active && allDone) {
+        setIsExtracting(false);
+        setIsPolling(false);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        // Request was aborted (cleanup), stop polling
+        return false;
+      }
+      console.error("Error fetching progress:", error);
+      // Continue polling on other errors
+      return true;
+    } finally {
+      abortController = null;
+    }
+  };
+
+  const startLongPolling = async () => {
+    setIsPolling(true);
+    
+    // Keep polling loop running while extracting
+    while (isExtracting()) {
+      const shouldContinue = await fetchProgressLongPoll();
+      if (!shouldContinue) {
+        break;
+      }
+      // Small delay before next long poll to prevent tight loops
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    setIsPolling(false);
+  };
+
+  const stopPolling = () => {
+    if (abortController) {
+      abortController.abort();
+      abortController = null;
+    }
+  };
+
+  onCleanup(() => {
+    stopPolling();
+  });
 
   const handleDeleteConfirm = async () => {
     setIsDeleting(true);
@@ -46,14 +173,97 @@ export default function DataExtraction() {
       <h1 class="text-3xl font-bold mb-6">Data Extraction</h1>
       
       <div class="flex gap-4 mb-8">
-        <button class="btn btn-primary" disabled>
-          Start Extraction
+        <button 
+          class="btn btn-primary" 
+          onClick={startExtraction}
+          disabled={isExtracting()}
+        >
+          {isExtracting() ? (
+            <>
+              <span class="loading loading-spinner loading-sm mr-2"></span>
+              {isPolling() ? "Processing..." : "Starting..."}
+            </>
+          ) : (
+            "Start Extraction"
+          )}
         </button>
         
         <label for="delete-modal-toggle" class="btn btn-error">
           Delete Extracted Data
         </label>
       </div>
+
+      {/* Extraction Progress Display */}
+      {(isExtracting() || progress()) && (
+        <div class="mb-8">
+          <h2 class="text-xl font-semibold mb-4">
+            Extraction Progress
+            {isPolling() && (
+              <span class="ml-2 text-sm font-normal text-gray-500">
+                (Live - Long Polling)
+              </span>
+            )}
+          </h2>
+          
+          {extractionError() && (
+            <div class="alert alert-error mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{extractionError()}</span>
+            </div>
+          )}
+          
+          {progress()?.accounts.length === 0 ? (
+            <div class="flex items-center text-gray-500">
+              <span class="loading loading-spinner loading-sm mr-2"></span>
+              Initializing...
+            </div>
+          ) : (
+            <div class="space-y-4">
+              {progress()?.accounts.map((account) => (
+                <div class="card bg-base-200 p-4">
+                  <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-semibold">{account.identifier}</h3>
+                    <span class={`badge ${
+                      account.status === "running" ? "badge-primary" :
+                      account.status === "completed" ? "badge-success" :
+                      account.status === "failed" ? "badge-error" :
+                      "badge-ghost"
+                    }`}>
+                      {account.status}
+                    </span>
+                  </div>
+                  
+                  <div class="text-sm text-gray-600 mb-2">
+                    {account.emails_processed} / {account.total_emails} emails processed
+                    {account.emails_failed > 0 && (
+                      <span class="text-error ml-2">({account.emails_failed} failed)</span>
+                    )}
+                  </div>
+                  
+                  {account.total_emails > 0 && (
+                    <div class="w-full bg-gray-300 rounded-full h-2">
+                      <div 
+                        class={`h-2 rounded-full transition-all duration-300 ${
+                          account.status === "completed" ? "bg-success" :
+                          account.status === "failed" ? "bg-error" :
+                          "bg-primary"
+                        }`}
+                        style={`width: ${Math.min(100, (account.emails_processed / account.total_emails) * 100)}%`}
+                      ></div>
+                    </div>
+                  )}
+                  
+                  {account.error_message && (
+                    <div class="text-error text-sm mt-2">{account.error_message}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal using Daisy UI modal with checkbox toggle */}
       <input type="checkbox" id="delete-modal-toggle" class="modal-toggle" />
