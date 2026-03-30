@@ -25,7 +25,7 @@ clap = { version = "4.0", features = ["derive"] }
 # llm-sdk = { git = "https://github.com/brainless/llm-sdk", branch = "main" }
 
 [workspace.package]
-version = "0.5.3"
+version = "0.5.4"
 edition = "2021"
 authors = ["dwata"]
 license = "GPL-3.0-or-later"
