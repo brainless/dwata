@@ -6,10 +6,10 @@ use nocodo_llm_sdk::Tool;
 
 use crate::entity_search::EntitySearchProvider;
 use crate::entity_types::{ConfirmEntitiesParams, ExtractedEntitiesParams};
+use crate::kg_email_extractor::types::LabelDocumentParams;
 use crate::kg_pass_context::{KgExtractionPass, KgPassType};
 use crate::kg_persistence::KgPersistenceProvider;
 use crate::storage::{AgentStorage, Message};
-use crate::template_document_labeler::types::LabelDocumentParams;
 
 const MAX_TOOL_WAIT_ITERATIONS: usize = 3;
 

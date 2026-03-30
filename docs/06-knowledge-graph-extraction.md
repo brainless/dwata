@@ -53,7 +53,7 @@ The LLM reuses existing entities (via negative ID) or creates new ones (positive
 
 ## Components
 
-### Document Labeler (`dwata-agents/src/template_document_labeler/`)
+### Document Labeler (`dwata-agents/src/kg_email_extractor/document_labeler.rs`)
 
 `TemplateDocumentLabelerAgent` classifies an email to determine which passes to gate in:
 

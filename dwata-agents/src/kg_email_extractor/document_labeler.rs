@@ -1,5 +1,5 @@
+use crate::kg_email_extractor::types::LabelDocumentParams;
 use crate::storage::{AgentStorage, Message};
-use crate::template_document_labeler::types::LabelDocumentParams;
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::types::{CompletionRequest, ContentBlock, Message as LlmMessage};
 use nocodo_llm_sdk::Tool;
@@ -28,7 +28,7 @@ impl TemplateDocumentLabelerAgent {
     }
 
     pub async fn execute(&self, session_id: i64) -> anyhow::Result<LabelDocumentParams> {
-        let system_prompt = super::prompts::build_system_prompt(&self.template);
+        let system_prompt = super::document_labeler_prompt::build_system_prompt(&self.template);
 
         let label_tool = Tool::from_type::<LabelDocumentParams>()
             .name("label_document")

@@ -7,7 +7,6 @@ pub mod kg_pass_context;
 pub mod kg_persistence;
 pub mod statement_extractor;
 pub mod storage;
-pub mod template_document_labeler;
 pub mod text_extraction;
 
 pub use entity_search::{
@@ -19,12 +18,13 @@ pub use entity_types::{
     ExtractedLocation, ExtractedOrder, ExtractedOrganisation, ExtractedPerson,
     ExtractedSubscription, ExtractedTransaction, ParsedValue,
 };
-pub use kg_email_extractor::KgEmailExtractionAgent;
+pub use kg_email_extractor::{
+    DocumentType, KgEmailExtractionAgent, LabelDocumentParams, TemplateDocumentLabelerAgent,
+};
 pub use kg_pass_context::{KgExtractionPass, KgPassType};
 pub use kg_persistence::KgPersistenceProvider;
 pub use statement_extractor::{ColumnarSheet, StatementField, StatementTemplate};
 pub use storage::{AgentStorage, Message, Session, ToolCall};
-pub use template_document_labeler::{LabelDocumentParams, TemplateDocumentLabelerAgent};
 pub use text_extraction::{
     extract_values_using_template, parse_amount, parse_date, simple_email_content,
     SimpleEmailContent,

@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use dwata_agents::simple_email_content;
-use dwata_agents::storage::{AgentStorage, InMemoryAgentStorage, Session};
-use dwata_agents::KgEmailExtractionAgent;
-use dwata_agents::TemplateDocumentLabelerAgent;
+use dwata_agents::{
+    simple_email_content,
+    storage::{AgentStorage, InMemoryAgentStorage, Session},
+    KgEmailExtractionAgent, TemplateDocumentLabelerAgent,
+};
 use dwata_api::database::emails as emails_db;
 use dwata_api::database::kg_entities::KgPersistenceLayer;
 use dwata_api::helpers::database::initialize_database;
