@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use dwata_agents::email_entity_extractor::types::{
+use dwata_agents::entity_search::NamedEntityKind;
+use dwata_agents::entity_types::{
     ExtractedBill, ExtractedEvent, ExtractedLocation, ExtractedOrder, ExtractedOrganisation,
     ExtractedPerson, ExtractedSubscription, ExtractedTransaction,
 };
-use dwata_agents::entity_search::NamedEntityKind;
 use dwata_agents::kg_persistence::KgPersistenceProvider;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -517,7 +517,7 @@ impl KgPersistenceLayer {
 
     pub fn persist_extraction_result(
         &self,
-        params: &dwata_agents::email_entity_extractor::types::ExtractedEntitiesParams,
+        params: &dwata_agents::entity_types::ExtractedEntitiesParams,
         source_email_id: Option<i64>,
     ) -> anyhow::Result<HashMap<i64, i64>> {
         let mut id_map: HashMap<i64, i64> = HashMap::new();
@@ -675,7 +675,7 @@ impl InsertableEntity for ExtractedEvent {
 impl KgPersistenceProvider for KgPersistenceLayer {
     async fn persist_pass_result(
         &self,
-        params: &dwata_agents::email_entity_extractor::types::ExtractedEntitiesParams,
+        params: &dwata_agents::entity_types::ExtractedEntitiesParams,
         source_email_id: Option<i64>,
     ) -> anyhow::Result<()> {
         self.persist_extraction_result(params, source_email_id)?;

@@ -73,7 +73,7 @@ pub struct ExtractedBill {
         description = "Numeric amount string only — strip currency symbols (e.g. '299.00')"
     )]
     pub total_amount: Option<String>,
-    #[schemars(description = "ISO currency code or symbol (e.g. INR, USD, $)")]
+    #[schemars(description = "ISO currency code or symbol (e.g. INR, USD, $")]
     pub currency: Option<String>,
     #[schemars(description = "Raw date string exactly as it appears in the email")]
     pub issued_date: Option<String>,
@@ -98,7 +98,7 @@ pub struct ExtractedTransaction {
     pub id: i64,
     #[schemars(description = "Numeric amount as a number — strip currency symbols (e.g. 1299.50)")]
     pub amount: f64,
-    #[schemars(description = "ISO currency code or symbol (e.g. INR, USD, $)")]
+    #[schemars(description = "ISO currency code or symbol (e.g. INR, USD, $")]
     pub currency: String,
     #[schemars(description = "Raw date string exactly as it appears in the email")]
     pub transaction_date: Option<String>,

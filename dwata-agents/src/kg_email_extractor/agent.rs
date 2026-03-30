@@ -4,8 +4,8 @@ use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::types::{CompletionRequest, ContentBlock, Message as LlmMessage};
 use nocodo_llm_sdk::Tool;
 
-use crate::email_entity_extractor::types::{ConfirmEntitiesParams, ExtractedEntitiesParams};
 use crate::entity_search::EntitySearchProvider;
+use crate::entity_types::{ConfirmEntitiesParams, ExtractedEntitiesParams};
 use crate::kg_pass_context::{KgExtractionPass, KgPassType};
 use crate::kg_persistence::KgPersistenceProvider;
 use crate::storage::{AgentStorage, Message};

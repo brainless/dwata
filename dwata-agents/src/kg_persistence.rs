@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::email_entity_extractor::types::ExtractedEntitiesParams;
+use crate::entity_types::ExtractedEntitiesParams;
 
 /// Trait that allows the KG extraction agent to persist entities between passes
 /// without depending on `dwata-api`. The concrete implementation lives in
