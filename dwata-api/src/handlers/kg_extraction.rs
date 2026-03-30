@@ -521,7 +521,8 @@ async fn process_single_email(
         email_content,
     )
     .with_search_provider(search_provider)
-    .with_source_email_id(email.id);
+    .with_source_email_id(email.id)
+    .with_sender(email.from_name.clone(), Some(email.from_address.clone()));
 
     if let Some(label) = label {
         agent = agent.with_label(label);

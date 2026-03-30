@@ -48,6 +48,9 @@ pub struct SearchEntitiesParams {
     pub keywords: String,
     pub entity_types: Vec<NamedEntityKind>,
     pub limit: Option<u8>,
+    /// If set, also look up organisations/persons by exact email address or domain.
+    /// Used by the sender-email pre-population step.
+    pub sender_email: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

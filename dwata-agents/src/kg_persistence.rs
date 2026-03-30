@@ -8,11 +8,14 @@ use crate::entity_types::ExtractedEntitiesParams;
 #[async_trait]
 pub trait KgPersistenceProvider: Send + Sync {
     /// Persist all entities in `params` that belong to the current pass.
-    /// Returns the LLM-ID → DB-ID mapping so subsequent passes can reference
-    /// already-persisted entities via negative IDs in the pre-population list.
+    ///
+    /// `sender_email` is the From address of the source email. Implementations
+    /// may use it to backfill the email field on organisations/persons that the
+    /// LLM identified as the sender but left without an email address.
     async fn persist_pass_result(
         &self,
         params: &ExtractedEntitiesParams,
         source_email_id: Option<i64>,
+        sender_email: Option<&str>,
     ) -> anyhow::Result<()>;
 }

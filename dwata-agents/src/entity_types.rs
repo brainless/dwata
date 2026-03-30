@@ -1,6 +1,21 @@
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use shared_types::OrganisationRole;
+
+/// Deserialise a field that the schema declares as a string but small models
+/// sometimes emit as a bare JSON number (e.g. `5.41` instead of `"5.41"`).
+fn deserialize_number_or_string<'de, D>(d: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(match v {
+        serde_json::Value::Null => None,
+        serde_json::Value::String(s) => Some(s),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    })
+}
 
 // ---------------------------------------------------------------------------
 // Per-entity extraction structs (exposed to LLM via tool schema)
@@ -72,6 +87,7 @@ pub struct ExtractedBill {
     #[schemars(
         description = "Numeric amount string only — strip currency symbols (e.g. '299.00')"
     )]
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
     pub total_amount: Option<String>,
     #[schemars(description = "ISO currency code or symbol (e.g. INR, USD, $")]
     pub currency: Option<String>,

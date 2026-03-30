@@ -310,6 +310,107 @@ impl DbEntitySearchProvider {
     pub fn new(pool: Pool<SqliteConnectionManager>, index: EntitySearchIndex) -> Self {
         Self { pool, index }
     }
+
+    /// Direct SQL lookup by sender email address.
+    ///
+    /// Queries `organisations.email` for an exact match and `persons.email` for
+    /// an exact match, then also tries a domain-prefix match on organisations
+    /// (e.g. sender "billing@linode.com" → domain "linode" → LIKE '%linode%').
+    /// More reliable than BM25 for finding the same org/person across emails.
+    fn lookup_by_sender_email(
+        &self,
+        sender_email: &str,
+        entity_types: &[NamedEntityKind],
+    ) -> anyhow::Result<Vec<EntitySearchResult>> {
+        let conn = self.pool.get()?;
+        let mut results: Vec<EntitySearchResult> = Vec::new();
+
+        let want_orgs = entity_types.contains(&NamedEntityKind::Organisation);
+        let want_persons = entity_types.contains(&NamedEntityKind::Person);
+
+        // Extract base domain word for a fuzzy org name fallback
+        // e.g. "billing@linode.com" → "linode"
+        let domain_base = sender_email
+            .split('@')
+            .nth(1)
+            .and_then(|d| d.split('.').next())
+            .filter(|d| d.len() >= 3)
+            .map(|d| format!("%{}%", d));
+
+        if want_orgs {
+            // Exact email match
+            let mut stmt = conn.prepare(
+                "SELECT id, name, search_summary FROM organisations WHERE email = ? LIMIT 5",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![sender_email], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })?;
+            for row in rows.flatten() {
+                results.push(EntitySearchResult {
+                    id: row.0,
+                    entity_type: NamedEntityKind::Organisation,
+                    score: 1.0,
+                    name: row.1,
+                    search_summary: row.2,
+                });
+            }
+
+            // Domain-prefix match on org name (fallback when email wasn't stored)
+            if let Some(ref pattern) = domain_base {
+                let seen_ids: std::collections::HashSet<i64> =
+                    results.iter().map(|r| r.id).collect();
+                let mut stmt = conn.prepare(
+                    "SELECT id, name, search_summary FROM organisations \
+                     WHERE name LIKE ? LIMIT 5",
+                )?;
+                let rows = stmt.query_map(rusqlite::params![pattern], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                })?;
+                for row in rows.flatten() {
+                    if !seen_ids.contains(&row.0) {
+                        results.push(EntitySearchResult {
+                            id: row.0,
+                            entity_type: NamedEntityKind::Organisation,
+                            score: 0.8,
+                            name: row.1,
+                            search_summary: row.2,
+                        });
+                    }
+                }
+            }
+        }
+
+        if want_persons {
+            let mut stmt = conn
+                .prepare("SELECT id, name, search_summary FROM persons WHERE email = ? LIMIT 5")?;
+            let rows = stmt.query_map(rusqlite::params![sender_email], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })?;
+            for row in rows.flatten() {
+                results.push(EntitySearchResult {
+                    id: row.0,
+                    entity_type: NamedEntityKind::Person,
+                    score: 1.0,
+                    name: row.1,
+                    search_summary: row.2,
+                });
+            }
+        }
+
+        Ok(results)
+    }
 }
 
 #[async_trait]
@@ -318,7 +419,14 @@ impl EntitySearchProvider for DbEntitySearchProvider {
         &self,
         params: &SearchEntitiesParams,
     ) -> anyhow::Result<Vec<EntitySearchResult>> {
-        let results = self.index.search(params)?;
+        let mut results = self.index.search(params)?;
+
+        if let Some(ref sender_email) = params.sender_email {
+            let sender_results = self.lookup_by_sender_email(sender_email, &params.entity_types)?;
+            let seen: std::collections::HashSet<i64> = results.iter().map(|r| r.id).collect();
+            results.extend(sender_results.into_iter().filter(|r| !seen.contains(&r.id)));
+        }
+
         Ok(results)
     }
 }

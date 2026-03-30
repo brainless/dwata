@@ -31,6 +31,8 @@ pub struct KgEmailExtractionAgent {
     email_content: String,
     label: Option<LabelDocumentParams>,
     source_email_id: Option<i64>,
+    sender_name: Option<String>,
+    sender_email: Option<String>,
 }
 
 impl KgEmailExtractionAgent {
@@ -50,6 +52,8 @@ impl KgEmailExtractionAgent {
             email_content,
             label: None,
             source_email_id: None,
+            sender_name: None,
+            sender_email: None,
         }
     }
 
@@ -68,13 +72,36 @@ impl KgEmailExtractionAgent {
         self
     }
 
+    pub fn with_sender(mut self, name: Option<String>, email: Option<String>) -> Self {
+        self.sender_name = name;
+        self.sender_email = email;
+        self
+    }
+
+    /// Build the full content string sent to the LLM: prepends a `From:` line
+    /// when sender info is available so the model sees who sent the email.
+    fn build_content(&self) -> String {
+        let from_line = match (&self.sender_name, &self.sender_email) {
+            (Some(name), Some(email)) => format!("From: {} <{}>\n", name, email),
+            (None, Some(email)) => format!("From: {}\n", email),
+            (Some(name), None) => format!("From: {}\n", name),
+            (None, None) => String::new(),
+        };
+        format!("{}{}", from_line, self.email_content)
+    }
+
     pub async fn execute(&self, session_id: i64) -> anyhow::Result<()> {
         let passes = self.active_passes();
+        let content = self.build_content();
 
         for (i, pass_type) in passes.iter().enumerate() {
             tracing::info!("Starting KG pass: {:?}", pass_type);
 
-            let pass = KgExtractionPass::new(*pass_type, self.email_content.clone())
+            let mut pass = KgExtractionPass::new(*pass_type, content.clone());
+            if let Some(ref email) = self.sender_email {
+                pass = pass.with_sender_email(email.clone());
+            }
+            let pass = pass
                 .populate_existing_entities(self.search_provider.as_ref())
                 .await;
 
@@ -99,7 +126,11 @@ impl KgEmailExtractionAgent {
             );
 
             self.persistence
-                .persist_pass_result(&entities, self.source_email_id)
+                .persist_pass_result(
+                    &entities,
+                    self.source_email_id,
+                    self.sender_email.as_deref(),
+                )
                 .await?;
 
             // Notify the LLM that the pass is done and the next one is starting,

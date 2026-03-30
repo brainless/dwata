@@ -122,11 +122,34 @@ impl KgPersistenceLayer {
         &self,
         org: &ExtractedOrganisation,
         id_map: &mut HashMap<i64, i64>,
+        sender_email: Option<&str>,
     ) -> anyhow::Result<i64> {
         let conn = self.pool.get()?;
         let now = chrono::Utc::now().timestamp();
 
         let location_db_id = self.resolve_fk(id_map, org.location_id);
+
+        // Backfill: if the LLM left email blank but we know the sender's email and
+        // the sender's domain matches this org's name, use the sender email.
+        let effective_email = org.email.clone().or_else(|| {
+            let sender = sender_email?;
+            let domain_base = sender.split('@').nth(1)?.split('.').next()?;
+            if domain_base.len() >= 3
+                && org
+                    .name
+                    .to_lowercase()
+                    .contains(&domain_base.to_lowercase())
+            {
+                tracing::debug!(
+                    "Backfilling email for org '{}' from sender address '{}'",
+                    org.name,
+                    sender
+                );
+                Some(sender.to_string())
+            } else {
+                None
+            }
+        });
 
         // Deduplicate by name: if an org with this name already exists, reuse it.
         let existing_id: Option<i64> = conn
@@ -150,7 +173,7 @@ impl KgPersistenceLayer {
                  WHERE id = ?",
                 params![
                     org.industry.as_ref(),
-                    org.email.as_ref(),
+                    effective_email.as_ref(),
                     location_db_id,
                     org.website.as_ref(),
                     org.search_summary.as_ref(),
@@ -169,7 +192,7 @@ impl KgPersistenceLayer {
                     &org.name,
                     Option::<&str>::None,
                     org.industry.as_ref(),
-                    org.email.as_ref(),
+                    effective_email.as_ref(),
                     location_db_id,
                     org.website.as_ref(),
                     org.search_summary.as_ref(),
@@ -207,7 +230,18 @@ impl KgPersistenceLayer {
         let conn = self.pool.get()?;
         let now = chrono::Utc::now().timestamp();
 
-        let org_db_id = self.resolve_fk(id_map, person.organisation_id);
+        let org_db_id = self.resolve_fk(id_map, person.organisation_id).or_else(|| {
+            // Backfill: if the LLM left organisation_id blank but the person's email
+            // domain matches a known organisation, link them automatically.
+            let email = person.email.as_deref()?;
+            let domain = email.split('@').nth(1)?;
+            conn.query_row(
+                "SELECT id FROM organisations WHERE email LIKE ? LIMIT 1",
+                params![format!("%@{}", domain)],
+                |row| row.get::<_, i64>(0),
+            )
+            .ok()
+        });
 
         // Deduplicate by email address when available (unique index enforces this).
         let existing_id: Option<i64> = person.email.as_deref().and_then(|email| {
@@ -519,6 +553,7 @@ impl KgPersistenceLayer {
         &self,
         params: &dwata_agents::entity_types::ExtractedEntitiesParams,
         source_email_id: Option<i64>,
+        sender_email: Option<&str>,
     ) -> anyhow::Result<HashMap<i64, i64>> {
         let mut id_map: HashMap<i64, i64> = HashMap::new();
 
@@ -530,7 +565,7 @@ impl KgPersistenceLayer {
 
         if let Some(ref orgs) = params.organisations {
             for org in orgs {
-                self.insert_organisation(org, &mut id_map)?;
+                self.insert_organisation(org, &mut id_map, sender_email)?;
             }
         }
 
@@ -601,7 +636,7 @@ impl InsertableEntity for ExtractedOrganisation {
         _: Option<i64>,
         id_map: &mut HashMap<i64, i64>,
     ) -> anyhow::Result<i64> {
-        layer.insert_organisation(self, id_map)
+        layer.insert_organisation(self, id_map, None)
     }
 }
 
@@ -677,8 +712,9 @@ impl KgPersistenceProvider for KgPersistenceLayer {
         &self,
         params: &dwata_agents::entity_types::ExtractedEntitiesParams,
         source_email_id: Option<i64>,
+        sender_email: Option<&str>,
     ) -> anyhow::Result<()> {
-        self.persist_extraction_result(params, source_email_id)?;
+        self.persist_extraction_result(params, source_email_id, sender_email)?;
         Ok(())
     }
 }
