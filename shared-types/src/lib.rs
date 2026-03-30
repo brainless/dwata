@@ -43,15 +43,10 @@ pub use financial::{
     FinancialSummary, ListFinancialBillsResponse,
 };
 pub use financial_template::{
-    DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,
-    DetectFinancialTemplatesRequest, DetectFinancialTemplatesResponse, DetectedFinancialTemplate,
-    DetectedFinancialTemplateVariable, FinancialExtractionTemplate, FinancialTemplateApplicability,
-    FinancialTemplateDetectionJobState, FinancialTemplateDetectionJobStatus,
-    FinancialTemplateFieldMapping, FinancialTemplateStatus, FinancialTemplateType,
-    FinancialTemplateVariable, FinancialTemplateWithVariables, ListFinancialTemplatesResponse,
-    TemplateDetectionDebugState, TemplateDetectionGeneratedTemplateDebug,
-    TemplateDetectionSenderDebug, TemplateDetectionSenderLlmDraftPreview,
-    TemplateDetectionSenderLlmInputsResponse, TemplateDetectionSenderRank,
+    DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse, FinancialExtractionTemplate,
+    FinancialTemplateApplicability, FinancialTemplateFieldMapping, FinancialTemplateStatus,
+    FinancialTemplateType, FinancialTemplateVariable, FinancialTemplateWithVariables,
+    ListFinancialTemplatesResponse,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};

@@ -3,107 +3,18 @@ use dateparser::parse as parse_datetime;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone)]
-pub struct TemplateEmailContent {
-    pub subject: String,
-    pub body: String,
-}
-
-pub use crate::llm_template_variable_extractor::types::TemplateVariable;
-
-pub fn extract_values_from_email_with_values(
-    variables: &[TemplateVariable],
-    email: &TemplateEmailContent,
-) -> HashMap<String, String> {
-    let email_text = format!(
-        "Subject: {}\n---\n{}",
-        email.subject.trim(),
-        email.body.trim()
-    );
-
-    let mut result = HashMap::new();
-    for var in variables {
-        // For currency, the LLM value may already be normalized (e.g. "INR") while the email
-        // uses a different form (e.g. "Rs."). Normalize the LLM value directly instead of
-        // searching for it in the email text.
-        if var.variable_name == "currency" {
-            let normalized = extract_currency_code(&var.value).unwrap_or_else(|| var.value.clone());
-            result.insert(var.variable_name.clone(), normalized);
-            continue;
-        }
-        if let Some(found) = find_value_by_search(&var.value, &email_text) {
-            let processed = process_field_value(&var.variable_name, &found);
-            result.insert(var.variable_name.clone(), processed);
-        }
-    }
-    result
-}
-
-fn process_field_value(field_name: &str, value: &str) -> String {
-    match field_name {
-        "amount" | "total_amount" | "total-amount" => parse_amount(value)
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| value.to_string()),
-        "currency" => extract_currency_code(value).unwrap_or_else(|| value.to_string()),
-        _ => value.to_string(),
-    }
-}
-
-fn extract_currency_code(value: &str) -> Option<String> {
-    let cleaned = value.trim();
-    if cleaned.eq_ignore_ascii_case("Rs.") || cleaned.eq_ignore_ascii_case("Rs") {
-        Some("INR".to_string())
-    } else if cleaned.len() == 3 && cleaned.chars().all(|c| c.is_ascii_alphabetic()) {
-        Some(cleaned.to_uppercase())
-    } else if let Some(code) = cleaned.get(0..3) {
-        Some(code.to_uppercase())
-    } else {
-        None
-    }
-}
-
-fn find_value_by_search(value: &str, email_text: &str) -> Option<String> {
-    if value.is_empty() {
-        return None;
-    }
-
-    if let Some(pos) = email_text.find(value) {
-        let before = &email_text[..pos];
-        let after = &email_text[pos + value.len()..];
-
-        let valid_before = !before.is_empty() && !before.ends_with('\n');
-        let valid_after = !after.is_empty() && !after.starts_with('\n');
-
-        if valid_before || valid_after {
-            Some(value.to_string())
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
-
+/// Parses a raw amount string into a float value.
+/// Captures the first numeric token: optional leading minus, digits with optional
+/// comma-grouping, optional single decimal part. Handles "Rs.299.00", "INR 1,299.50", etc.
 pub fn parse_amount(raw: &str) -> Option<f64> {
-    // Capture the first numeric token: optional leading minus, digits with optional
-    // comma-grouping, optional single decimal part. Handles "Rs.299.00", "INR 1,299.50", etc.
     let re = Regex::new(r"-?\d[\d,]*(?:\.\d+)?").unwrap();
     let m = re.find(raw)?;
     let cleaned = m.as_str().replace(',', "");
     cleaned.parse::<f64>().ok()
 }
 
-fn is_currency_like(raw: &str) -> bool {
-    let s = raw.trim();
-    if s.is_empty() || s.len() > 8 {
-        return false;
-    }
-    let upper = s.to_ascii_uppercase();
-    let is_iso_code = upper.len() == 3 && upper.chars().all(|c| c.is_ascii_alphabetic());
-    let is_symbol = matches!(s, "$" | "€" | "£" | "¥" | "₹" | "₩" | "₽" | "₺" | "₫");
-    is_iso_code || is_symbol
-}
-
+/// Parses a date string into a NaiveDate.
+/// Tries multiple formats and date parsers.
 pub fn parse_date(raw: &str) -> Option<NaiveDate> {
     let mut normalized = raw.trim().trim_end_matches(['.', ',', ';', ':']).trim();
     if normalized.is_empty() || normalized.len() > 60 {
@@ -290,4 +201,99 @@ fn find_value_between_anchors(
     } else {
         Some((value, value_start + consumed_after_start))
     }
+}
+
+fn process_field_value(field_name: &str, value: &str) -> String {
+    match field_name {
+        "amount" | "total_amount" | "total-amount" => parse_amount(value)
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| value.to_string()),
+        "currency" => extract_currency_code(value).unwrap_or_else(|| value.to_string()),
+        _ => value.to_string(),
+    }
+}
+
+fn extract_currency_code(value: &str) -> Option<String> {
+    let cleaned = value.trim();
+    if cleaned.eq_ignore_ascii_case("Rs.") || cleaned.eq_ignore_ascii_case("Rs") {
+        Some("INR".to_string())
+    } else if cleaned.len() == 3 && cleaned.chars().all(|c| c.is_ascii_alphabetic()) {
+        Some(cleaned.to_uppercase())
+    } else if let Some(code) = cleaned.get(0..3) {
+        Some(code.to_uppercase())
+    } else {
+        None
+    }
+}
+
+/// Create a simplified email content structure from raw email parts.
+/// Strips HTML and returns clean text suitable for processing.
+pub fn simple_email_content(
+    subject: Option<&str>,
+    body_text: Option<&str>,
+    body_html: Option<&str>,
+) -> SimpleEmailContent {
+    let subject = subject.unwrap_or("").to_string();
+
+    let body = if let Some(text) = body_text {
+        text.to_string()
+    } else if let Some(html) = body_html {
+        // Simple HTML to text conversion
+        html_to_text(html)
+    } else {
+        String::new()
+    };
+
+    SimpleEmailContent { subject, body }
+}
+
+/// Simple email content structure
+#[derive(Debug, Clone)]
+pub struct SimpleEmailContent {
+    pub subject: String,
+    pub body: String,
+}
+
+/// Convert HTML to plain text (basic implementation)
+fn html_to_text(html: &str) -> String {
+    // Remove script and style tags with their content
+    let re_script = Regex::new(r"<script[^>]*>[\s\S]*?</script>").unwrap();
+    let re_style = Regex::new(r"<style[^>]*>[\s\S]*?</style>").unwrap();
+    let text = re_script.replace_all(html, "");
+    let text = re_style.replace_all(&text, "");
+
+    // Replace common block elements with newlines
+    let re_br = Regex::new(r"<br\s*/?>").unwrap();
+    let text = re_br.replace_all(&text, "\n");
+
+    let re_p = Regex::new(r"<p[^>]*>").unwrap();
+    let text = re_p.replace_all(&text, "\n\n");
+
+    let re_div = Regex::new(r"<div[^>]*>").unwrap();
+    let text = re_div.replace_all(&text, "\n");
+
+    // Remove all remaining HTML tags
+    let re_tags = Regex::new(r"<[^>]+>").unwrap();
+    let text = re_tags.replace_all(&text, "");
+
+    // Decode common HTML entities
+    let text = text.replace("&nbsp;", " ");
+    let text = text.replace("&lt;", "<");
+    let text = text.replace("&gt;", ">");
+    let text = text.replace("&amp;", "&");
+    let text = text.replace("&quot;", "\"");
+    let text = text.replace("&#39;", "'");
+
+    // Normalize whitespace
+    let text = text
+        .split('\n')
+        .map(|line| line.trim())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Remove excessive blank lines
+    let re_empty = Regex::new(r"\n{3,}").unwrap();
+    let text = re_empty.replace_all(&text, "\n\n");
+
+    text.trim().to_string()
 }

@@ -340,8 +340,6 @@ async fn main() -> std::io::Result<()> {
     println!("Starting server on {}:{}", host, port);
 
     let email_sync_manager_for_server = email_sync_manager.clone();
-    let template_detection_job_state =
-        helpers::template_detection_job::TemplateDetectionJobState::new();
     let server = HttpServer::new(move || {
         // Configure CORS
         let cors = if let Some(cors_config) = &config.cors {
@@ -374,7 +372,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(keyring_service.clone()))
             .app_data(web::Data::new(config.clone()))
             .app_data(web::Data::new(search_index.clone()))
-            .app_data(web::Data::new(template_detection_job_state.clone()))
             .service(hello)
             .service(health)
             .service(get_settings)
@@ -543,18 +540,6 @@ async fn main() -> std::io::Result<()> {
             .route(
                 "/api/financial/templates",
                 web::delete().to(handlers::financial::delete_templates),
-            )
-            .route(
-                "/api/financial/templates/detect",
-                web::post().to(handlers::financial::detect_templates),
-            )
-            .route(
-                "/api/financial/templates/detect",
-                web::get().to(handlers::financial::get_detect_templates_status),
-            )
-            .route(
-                "/api/financial/templates/detect/sender-llm-inputs",
-                web::get().to(handlers::financial::get_detect_sender_llm_inputs),
             )
             .route(
                 "/api/financial/extract",

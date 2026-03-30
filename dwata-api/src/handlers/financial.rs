@@ -3,16 +3,14 @@ use crate::database::{
     financial_bills as bills_db, financial_templates as templates_db,
     financial_transactions as transactions_db, Database,
 };
-use crate::helpers::template_detection_job::TemplateDetectionJobState;
 use crate::search::tantivy::TantivySearchIndex;
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
 use shared_types::{
     BillStatus, DeleteFinancialTemplatesRequest, DeleteFinancialTemplatesResponse,
-    DetectFinancialTemplatesRequest, FinancialExtractionTemplate, FinancialPagination,
-    FinancialSummary, FinancialTemplateDetectionJobStatus, FinancialTemplateFieldMapping,
-    FinancialTemplateWithVariables, ListFinancialBillsResponse, ListFinancialTemplatesResponse,
-    TemplateDetectionSenderLlmInputsResponse,
+    FinancialExtractionTemplate, FinancialPagination, FinancialSummary,
+    FinancialTemplateFieldMapping, FinancialTemplateWithVariables, ListFinancialBillsResponse,
+    ListFinancialTemplatesResponse,
 };
 use std::sync::Arc;
 #[derive(Deserialize)]
@@ -73,29 +71,6 @@ pub struct TemplatesQuery {
 
 fn default_templates_limit() -> usize {
     200
-}
-
-#[derive(Deserialize)]
-pub struct DetectStatusQuery {
-    #[serde(default)]
-    pub since_version: Option<u64>,
-    #[serde(default = "default_detect_status_timeout_ms")]
-    pub timeout_ms: u64,
-}
-
-#[derive(Deserialize)]
-pub struct DetectSenderLlmInputsQuery {
-    pub sender_email: String,
-    #[serde(default)]
-    pub credential_id: Option<i64>,
-    #[serde(default)]
-    pub max_candidate_emails: Option<usize>,
-    #[serde(default)]
-    pub max_templates_per_sender: Option<usize>,
-}
-
-fn default_detect_status_timeout_ms() -> u64 {
-    25_000
 }
 
 pub async fn list_transactions(
@@ -266,121 +241,6 @@ pub async fn get_summary(
             .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(summary))
-}
-
-pub async fn detect_templates(
-    detection_job: web::Data<TemplateDetectionJobState>,
-    db: web::Data<Arc<Database>>,
-    search_index: web::Data<Arc<TantivySearchIndex>>,
-    config: web::Data<Arc<ApiConfig>>,
-    request: web::Json<DetectFinancialTemplatesRequest>,
-) -> ActixResult<HttpResponse> {
-    let snapshot = detection_job.snapshot();
-    if snapshot.status == FinancialTemplateDetectionJobStatus::Running {
-        return Ok(HttpResponse::Ok().json(snapshot));
-    }
-
-    let request_payload = request.into_inner();
-    let now = chrono::Utc::now().timestamp_millis();
-    let run_state = detection_job.with_mut(|state| {
-        state.run_id += 1;
-        state.status = FinancialTemplateDetectionJobStatus::Running;
-        state.started_at = Some(now);
-        state.finished_at = None;
-        state.total_senders = 0;
-        state.processed_senders = 0;
-        state.current_sender = None;
-        state.candidate_sender_count = 0;
-        state.candidate_email_count = 0;
-        state.new_templates_count = 0;
-        state.error = None;
-        state.debug = None;
-    });
-
-    let job_state = detection_job.get_ref().clone();
-    let db_clone = db.clone();
-    let search_index_clone = search_index.clone();
-    let config_clone = config.clone();
-    tokio::spawn(async move {
-        let result = crate::helpers::template_detection::detect_and_store_templates_with_progress(
-            db_clone,
-            search_index_clone,
-            config_clone,
-            request_payload,
-            |progress| {
-                job_state.with_mut(|state| {
-                    state.total_senders = progress.total_senders;
-                    state.processed_senders = progress.processed_senders;
-                    state.current_sender = progress.current_sender;
-                    state.candidate_sender_count = progress.candidate_sender_count;
-                    state.candidate_email_count = progress.candidate_email_count;
-                    state.debug = progress.debug;
-                });
-            },
-        )
-        .await;
-
-        match result {
-            Ok(response) => {
-                let finished_at = chrono::Utc::now().timestamp_millis();
-                job_state.with_mut(|state| {
-                    state.status = FinancialTemplateDetectionJobStatus::Completed;
-                    state.finished_at = Some(finished_at);
-                    state.current_sender = None;
-                    state.total_senders = response.candidate_sender_count;
-                    state.processed_senders = response.candidate_sender_count;
-                    state.candidate_sender_count = response.candidate_sender_count;
-                    state.candidate_email_count = response.candidate_email_count;
-                    state.new_templates_count = response.templates.len();
-                });
-            }
-            Err(err) => {
-                let finished_at = chrono::Utc::now().timestamp_millis();
-                job_state.with_mut(|state| {
-                    state.status = FinancialTemplateDetectionJobStatus::Failed;
-                    state.finished_at = Some(finished_at);
-                    state.current_sender = None;
-                    state.error = Some(err.to_string());
-                });
-            }
-        }
-    });
-
-    Ok(HttpResponse::Ok().json(run_state))
-}
-
-pub async fn get_detect_templates_status(
-    detection_job: web::Data<TemplateDetectionJobState>,
-    query: web::Query<DetectStatusQuery>,
-) -> ActixResult<HttpResponse> {
-    let (state, version) = detection_job
-        .wait_for_change(query.since_version, query.timeout_ms)
-        .await;
-    Ok(HttpResponse::Ok()
-        .insert_header(("x-detect-state-version", version.to_string()))
-        .json(state))
-}
-
-pub async fn get_detect_sender_llm_inputs(
-    db: web::Data<Arc<Database>>,
-    search_index: web::Data<Arc<TantivySearchIndex>>,
-    query: web::Query<DetectSenderLlmInputsQuery>,
-) -> ActixResult<HttpResponse> {
-    let response: TemplateDetectionSenderLlmInputsResponse =
-        crate::helpers::template_detection::preview_sender_llm_inputs(
-            db,
-            search_index,
-            DetectFinancialTemplatesRequest {
-                credential_id: query.credential_id,
-                max_candidate_emails: query.max_candidate_emails,
-                max_templates_per_sender: query.max_templates_per_sender,
-            },
-            query.sender_email.clone(),
-        )
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(response))
 }
 
 pub async fn extract_financial(

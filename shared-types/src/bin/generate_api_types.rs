@@ -116,34 +116,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FinancialTemplateApplicability::export_to_string()?,
     ));
     types.push(clean_type(
-        DetectFinancialTemplatesRequest::export_to_string()?,
-    ));
-    types.push(clean_type(
-        DetectedFinancialTemplateVariable::export_to_string()?,
-    ));
-    types.push(clean_type(DetectedFinancialTemplate::export_to_string()?));
-    types.push(clean_type(
-        DetectFinancialTemplatesResponse::export_to_string()?,
-    ));
-    types.push(clean_type(TemplateDetectionSenderRank::export_to_string()?));
-    types.push(clean_type(
-        TemplateDetectionGeneratedTemplateDebug::export_to_string()?,
-    ));
-    types.push(clean_type(TemplateDetectionSenderDebug::export_to_string()?));
-    types.push(clean_type(TemplateDetectionDebugState::export_to_string()?));
-    types.push(clean_type(
-        FinancialTemplateDetectionJobStatus::export_to_string()?,
-    ));
-    types.push(clean_type(
-        FinancialTemplateDetectionJobState::export_to_string()?,
-    ));
-    types.push(clean_type(
-        TemplateDetectionSenderLlmDraftPreview::export_to_string()?,
-    ));
-    types.push(clean_type(
-        TemplateDetectionSenderLlmInputsResponse::export_to_string()?,
-    ));
-    types.push(clean_type(
         FinancialTemplateFieldMapping::export_to_string()?
     ));
     types.push(clean_type(
