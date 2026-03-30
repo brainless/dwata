@@ -12,6 +12,9 @@ use crate::kg_persistence::KgPersistenceProvider;
 use crate::storage::{AgentStorage, Message};
 
 const MAX_TOOL_WAIT_ITERATIONS: usize = 3;
+const MAX_PARSE_RETRIES_PER_PASS: usize = 3;
+const MAX_EMPTY_CONFIRM_RETRIES_PER_PASS: usize = 1;
+const MAX_CONFIRM_BEFORE_SUBMIT_RETRIES_PER_PASS: usize = 3;
 
 /// Runs four sequential KG extraction passes against a single email:
 ///
@@ -33,6 +36,7 @@ pub struct KgEmailExtractionAgent {
     source_email_id: Option<i64>,
     sender_name: Option<String>,
     sender_email: Option<String>,
+    single_tool_submission: bool,
 }
 
 impl KgEmailExtractionAgent {
@@ -54,6 +58,7 @@ impl KgEmailExtractionAgent {
             source_email_id: None,
             sender_name: None,
             sender_email: None,
+            single_tool_submission: false,
         }
     }
 
@@ -78,6 +83,13 @@ impl KgEmailExtractionAgent {
         self
     }
 
+    /// When enabled, the agent uses only `submit_entities` and persists
+    /// immediately after a valid submit without requiring `confirm_entities`.
+    pub fn with_single_tool_submission(mut self, enabled: bool) -> Self {
+        self.single_tool_submission = enabled;
+        self
+    }
+
     /// Build the full content string sent to the LLM: prepends a `From:` line
     /// when sender info is available so the model sees who sent the email.
     fn build_content(&self) -> String {
@@ -93,6 +105,12 @@ impl KgEmailExtractionAgent {
     pub async fn execute(&self, session_id: i64) -> anyhow::Result<()> {
         let passes = self.active_passes();
         let content = self.build_content();
+        tracing::info!(
+            model = %self.model,
+            passes = passes.len(),
+            content_len = content.len(),
+            "KG extraction starting"
+        );
 
         for (i, pass_type) in passes.iter().enumerate() {
             tracing::info!("Starting KG pass: {:?}", pass_type);
@@ -106,7 +124,20 @@ impl KgEmailExtractionAgent {
                 .await;
 
             let system_prompt = pass.build_system_prompt();
-            let start_msg = super::prompts::start_pass_message(pass_type.name());
+            tracing::debug!(
+                pass = %pass_type.name(),
+                prompt_len = system_prompt.len(),
+                "KG pass prompt built"
+            );
+            let expect_non_empty = self.expect_non_empty(pass_type);
+            let mut start_msg = super::prompts::start_pass_message(pass_type.name());
+            if expect_non_empty {
+                start_msg.push_str(
+                    " The document label says financial data exists for this email. \
+                     Do not return an empty payload unless the source clearly has no bill or transaction fields.",
+                );
+            }
+            let pass_history_start_index = self.storage.get_messages(session_id).await?.len();
 
             self.storage
                 .create_message(Message {
@@ -117,7 +148,16 @@ impl KgEmailExtractionAgent {
                 })
                 .await?;
 
-            let entities = self.run_pass_loop(session_id, &system_prompt).await?;
+            let entities = self
+                .run_pass_loop(
+                    session_id,
+                    pass_type.name(),
+                    &system_prompt,
+                    expect_non_empty,
+                    pass_history_start_index,
+                    self.single_tool_submission,
+                )
+                .await?;
 
             tracing::info!(
                 "Persisting entities from pass {:?} (source_email_id={:?})",
@@ -178,49 +218,76 @@ impl KgEmailExtractionAgent {
         passes
     }
 
+    fn expect_non_empty(&self, pass_type: &KgPassType) -> bool {
+        match pass_type {
+            KgPassType::FinancialExtraction => self
+                .label
+                .as_ref()
+                .map(|l| l.has_bill || l.has_transaction)
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+
     /// Drive one pass: loop until the LLM calls `submit_entities` (with optional
     /// `confirm_entities` confirmation). Returns the final extracted payload.
     async fn run_pass_loop(
         &self,
         session_id: i64,
+        pass_name: &str,
         system_prompt: &str,
+        expect_non_empty: bool,
+        history_start_index: usize,
+        single_tool_submission: bool,
     ) -> anyhow::Result<ExtractedEntitiesParams> {
         let submit_tool = Tool::from_type::<ExtractedEntitiesParams>()
             .name("submit_entities")
             .description("Submit all entities extracted from the email for this pass.")
             .build();
 
-        let confirm_tool = Tool::from_type::<ConfirmEntitiesParams>()
-            .name("confirm_entities")
-            .description(
-                "Confirm that the parsed entity values shown to you are correct, \
-                 or reject them so you can revise and resubmit.",
-            )
-            .build();
-
-        let tools = vec![submit_tool, confirm_tool];
+        let tools = if single_tool_submission {
+            vec![submit_tool]
+        } else {
+            let confirm_tool = Tool::from_type::<ConfirmEntitiesParams>()
+                .name("confirm_entities")
+                .description(
+                    "Confirm that the parsed entity values shown to you are correct, \
+                     or reject them so you can revise and resubmit.",
+                )
+                .build();
+            vec![submit_tool, confirm_tool]
+        };
         let mut last_entities: Option<ExtractedEntitiesParams> = None;
         let mut nudge_count = 0;
+        let mut parse_retry_count = 0;
+        let mut empty_confirm_retry_count = 0;
+        let mut confirm_before_submit_retry_count = 0;
+        let initial_messages = self.storage.get_messages(session_id).await?;
+        let mut llm_messages: Vec<LlmMessage> = initial_messages
+            .iter()
+            .skip(history_start_index)
+            .map(|msg| match msg.role.as_str() {
+                "assistant" => LlmMessage::assistant(&msg.content),
+                "system" => LlmMessage::system(&msg.content),
+                "tool" => LlmMessage::tool("stored_tool_message", &msg.content),
+                _ => LlmMessage::user(&msg.content),
+            })
+            .collect();
 
         loop {
-            let messages = self.storage.get_messages(session_id).await?;
-            let llm_messages: Vec<LlmMessage> = messages
-                .iter()
-                .map(|msg| {
-                    if msg.role == "user" {
-                        LlmMessage::user(&msg.content)
-                    } else {
-                        LlmMessage::assistant(&msg.content)
-                    }
-                })
-                .collect();
-
             let request = CompletionRequest {
-                messages: llm_messages,
+                messages: llm_messages.clone(),
                 max_tokens: 2048,
                 model: self.model.clone(),
                 system: Some(system_prompt.to_string()),
-                temperature: Some(0.1),
+                temperature: if self.model.contains("nano")
+                    || self.model.contains("mini")
+                    || self.model.contains("qwen")
+                {
+                    None
+                } else {
+                    Some(0.1)
+                },
                 top_p: None,
                 stop_sequences: None,
                 tools: Some(tools.clone()),
@@ -229,6 +296,14 @@ impl KgEmailExtractionAgent {
             };
 
             let response = self.llm_client.complete(request).await?;
+            tracing::debug!(
+                pass = %pass_name,
+                model = %self.model,
+                prompt_len = system_prompt.len(),
+                content_blocks = response.content.len(),
+                tool_calls = response.tool_calls.as_ref().map(|t| t.len()).unwrap_or(0),
+                "KG pass response received"
+            );
 
             self.storage
                 .create_message(Message {
@@ -246,33 +321,208 @@ impl KgEmailExtractionAgent {
                         .join("\n"),
                 })
                 .await?;
+            let assistant_text = response
+                .content
+                .iter()
+                .filter_map(|block| match block {
+                    ContentBlock::Text { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            llm_messages.push(LlmMessage::assistant(assistant_text));
 
             if let Some(tool_calls) = response.tool_calls {
+                let mut handled_tool = false;
                 for tool_call in &tool_calls {
                     tracing::info!(tool = tool_call.name(), "KG pass: model called tool");
 
                     if tool_call.name() == "submit_entities" {
-                        let entities: ExtractedEntitiesParams = tool_call.parse_arguments()?;
-                        last_entities = Some(entities);
+                        let entities: ExtractedEntitiesParams = match tool_call.parse_arguments() {
+                            Ok(v) => v,
+                            Err(e) => {
+                                parse_retry_count += 1;
+                                tracing::warn!(
+                                    pass = %pass_name,
+                                    retry = parse_retry_count,
+                                    max_retries = MAX_PARSE_RETRIES_PER_PASS,
+                                    raw_arguments = %tool_call.raw_arguments(),
+                                    "submit_entities parse failed: {}",
+                                    e
+                                );
+                                if parse_retry_count >= MAX_PARSE_RETRIES_PER_PASS {
+                                    return Err(anyhow::anyhow!(
+                                        "submit_entities parse failed after {} retries: {}",
+                                        MAX_PARSE_RETRIES_PER_PASS,
+                                        e
+                                    ));
+                                }
 
-                        // Ask the model to confirm before we persist.
+                                self.storage
+                                    .create_message(Message {
+                                        id: None,
+                                        session_id,
+                                        role: "user".to_string(),
+                                        content: format!(
+                                            "The `submit_entities` payload could not be parsed: {}. \
+                                             Resubmit with the exact tool schema. Every entity requires `id`.",
+                                            e
+                                        ),
+                                    })
+                                    .await?;
+                                llm_messages.push(LlmMessage::user(format!(
+                                    "The `submit_entities` payload could not be parsed: {}. \
+                                     Resubmit with the exact tool schema. Every entity requires `id`.",
+                                    e
+                                )));
+                                handled_tool = true;
+                                break;
+                            }
+                        };
+                        last_entities = Some(entities);
+                        handled_tool = true;
+
+                        if single_tool_submission {
+                            return Ok(last_entities.expect("entities just assigned"));
+                        }
+
+                        let tool_result = "Entities received. Call `confirm_entities` with \
+                                           confirmed=true to persist, or confirmed=false to revise."
+                            .to_string();
                         self.storage
                             .create_message(Message {
                                 id: None,
                                 session_id,
-                                role: "user".to_string(),
-                                content: "Entities received. Call `confirm_entities` with \
-                                          confirmed=true to persist, or confirmed=false to revise."
-                                    .to_string(),
+                                role: "tool".to_string(),
+                                content: tool_result.clone(),
                             })
                             .await?;
+                        llm_messages.push(LlmMessage::tool(tool_call.id(), tool_result));
                         break;
-                    } else if tool_call.name() == "confirm_entities" {
-                        let confirm: ConfirmEntitiesParams = tool_call.parse_arguments()?;
+                    } else if !single_tool_submission && tool_call.name() == "confirm_entities" {
+                        let confirm: ConfirmEntitiesParams = match tool_call.parse_arguments() {
+                            Ok(v) => v,
+                            Err(e) => {
+                                parse_retry_count += 1;
+                                tracing::warn!(
+                                    pass = %pass_name,
+                                    retry = parse_retry_count,
+                                    max_retries = MAX_PARSE_RETRIES_PER_PASS,
+                                    raw_arguments = %tool_call.raw_arguments(),
+                                    "confirm_entities parse failed: {}",
+                                    e
+                                );
+                                if parse_retry_count >= MAX_PARSE_RETRIES_PER_PASS {
+                                    return Err(anyhow::anyhow!(
+                                        "confirm_entities parse failed after {} retries: {}",
+                                        MAX_PARSE_RETRIES_PER_PASS,
+                                        e
+                                    ));
+                                }
+                                self.storage
+                                    .create_message(Message {
+                                        id: None,
+                                        session_id,
+                                        role: "user".to_string(),
+                                        content: format!(
+                                            "The `confirm_entities` payload could not be parsed: {}. \
+                                             Call `confirm_entities` again with valid JSON.",
+                                            e
+                                        ),
+                                    })
+                                    .await?;
+                                llm_messages.push(LlmMessage::user(format!(
+                                    "The `confirm_entities` payload could not be parsed: {}. \
+                                     Call `confirm_entities` again with valid JSON.",
+                                    e
+                                )));
+                                handled_tool = true;
+                                break;
+                            }
+                        };
+                        handled_tool = true;
+
+                        if last_entities.is_none() {
+                            confirm_before_submit_retry_count += 1;
+                            tracing::warn!(
+                                pass = %pass_name,
+                                retry = confirm_before_submit_retry_count,
+                                max_retries = MAX_CONFIRM_BEFORE_SUBMIT_RETRIES_PER_PASS,
+                                "Model called confirm_entities before submit_entities"
+                            );
+                            if confirm_before_submit_retry_count
+                                >= MAX_CONFIRM_BEFORE_SUBMIT_RETRIES_PER_PASS
+                            {
+                                return Ok(ExtractedEntitiesParams {
+                                    locations: None,
+                                    organisations: None,
+                                    persons: None,
+                                    bills: None,
+                                    transactions: None,
+                                    subscriptions: None,
+                                    orders: None,
+                                    events: None,
+                                });
+                            }
+                            self.storage
+                                .create_message(Message {
+                                    id: None,
+                                    session_id,
+                                    role: "tool".to_string(),
+                                    content: "You must call `submit_entities` before `confirm_entities`. \
+                                              Submit entities now (or an explicit empty payload) and then confirm."
+                                        .to_string(),
+                                })
+                                .await?;
+                            llm_messages.push(LlmMessage::tool(
+                                tool_call.id(),
+                                "You must call `submit_entities` before `confirm_entities`. \
+                                 Submit entities now (or an explicit empty payload) and then confirm."
+                                    .to_string(),
+                            ));
+                            break;
+                        }
+
                         if confirm.confirmed {
-                            return last_entities.ok_or_else(|| {
+                            let entities = last_entities.clone().ok_or_else(|| {
                                 anyhow::anyhow!("Model confirmed but no entities were submitted")
-                            });
+                            })?;
+
+                            if expect_non_empty && entities_is_empty(&entities) {
+                                empty_confirm_retry_count += 1;
+                                tracing::warn!(
+                                    pass = %pass_name,
+                                    retry = empty_confirm_retry_count,
+                                    max_retries = MAX_EMPTY_CONFIRM_RETRIES_PER_PASS,
+                                    "Model confirmed empty entities despite expected extraction"
+                                );
+                                if empty_confirm_retry_count > MAX_EMPTY_CONFIRM_RETRIES_PER_PASS {
+                                    return Ok(entities);
+                                }
+                                self.storage
+                                    .create_message(Message {
+                                        id: None,
+                                        session_id,
+                                        role: "tool".to_string(),
+                                        content: "The email was labeled as containing bill/transaction data, \
+                                                  but your submitted payload is empty. \
+                                                  Re-check the email and call `submit_entities` again. \
+                                                  Include at least the obvious financial entities when present."
+                                            .to_string(),
+                                    })
+                                    .await?;
+                                llm_messages.push(LlmMessage::tool(
+                                    tool_call.id(),
+                                    "The email was labeled as containing bill/transaction data, \
+                                     but your submitted payload is empty. \
+                                     Re-check the email and call `submit_entities` again. \
+                                     Include at least the obvious financial entities when present."
+                                        .to_string(),
+                                ));
+                                break;
+                            }
+
+                            return Ok(entities);
                         } else {
                             let note = confirm
                                 .note
@@ -282,19 +532,42 @@ impl KgEmailExtractionAgent {
                                 .create_message(Message {
                                     id: None,
                                     session_id,
-                                    role: "user".to_string(),
+                                    role: "tool".to_string(),
                                     content: format!(
                                         "Understood. Call `submit_entities` again with corrections. (Note: {})",
                                         note
                                     ),
                                 })
                                 .await?;
+                            llm_messages.push(LlmMessage::tool(
+                                tool_call.id(),
+                                format!(
+                                    "Understood. Call `submit_entities` again with corrections. (Note: {})",
+                                    note
+                                ),
+                            ));
                             break;
                         }
                     }
                 }
+                if !handled_tool {
+                    self.storage
+                        .create_message(Message {
+                            id: None,
+                            session_id,
+                            role: "user".to_string(),
+                            content: super::prompts::nudge_message().to_string(),
+                        })
+                        .await?;
+                    llm_messages.push(LlmMessage::user(super::prompts::nudge_message()));
+                }
             } else {
                 nudge_count += 1;
+                tracing::warn!(
+                    nudge = nudge_count,
+                    max_nudges = MAX_TOOL_WAIT_ITERATIONS,
+                    "KG pass response had no tool calls"
+                );
                 if nudge_count >= MAX_TOOL_WAIT_ITERATIONS {
                     // If we have a partial result from a previous submit, use it.
                     if let Some(entities) = last_entities {
@@ -329,7 +602,51 @@ impl KgEmailExtractionAgent {
                         content: super::prompts::nudge_message().to_string(),
                     })
                     .await?;
+                llm_messages.push(LlmMessage::user(super::prompts::nudge_message()));
             }
         }
     }
+}
+
+fn entities_is_empty(entities: &ExtractedEntitiesParams) -> bool {
+    entities
+        .locations
+        .as_ref()
+        .map(|v| v.is_empty())
+        .unwrap_or(true)
+        && entities
+            .organisations
+            .as_ref()
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+        && entities
+            .persons
+            .as_ref()
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+        && entities
+            .bills
+            .as_ref()
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+        && entities
+            .transactions
+            .as_ref()
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+        && entities
+            .subscriptions
+            .as_ref()
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+        && entities
+            .orders
+            .as_ref()
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+        && entities
+            .events
+            .as_ref()
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
 }

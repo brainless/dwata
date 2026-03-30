@@ -1,9 +1,61 @@
-use crate::kg_email_extractor::types::LabelDocumentParams;
+use crate::kg_email_extractor::types::{DocumentType, LabelDocumentParams};
 use crate::storage::{AgentStorage, Message};
 use nocodo_llm_sdk::client::LlmClient;
 use nocodo_llm_sdk::types::{CompletionRequest, ContentBlock, Message as LlmMessage};
 use nocodo_llm_sdk::Tool;
 use std::sync::Arc;
+
+const RESPONSE_PREVIEW_CHARS: usize = 1200;
+
+fn preview_text(value: &str, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
+fn fallback_label_from_template(template: &str) -> LabelDocumentParams {
+    let text = template.to_ascii_lowercase();
+
+    let has_receipt = text.contains("receipt");
+    let has_payment = text.contains("payment")
+        || text.contains("paid")
+        || text.contains("debited")
+        || text.contains("charged");
+    let has_bill = text.contains("amount due")
+        || text.contains("due date")
+        || text.contains("pay by")
+        || text.contains("billing period")
+        || text.contains("invoice");
+    let has_order = text.contains("order")
+        || text.contains("shipment")
+        || text.contains("tracking")
+        || text.contains("delivered");
+    let has_event = text.contains("meeting")
+        || text.contains("appointment")
+        || text.contains("invite")
+        || text.contains("calendar")
+        || text.contains("event");
+
+    let doc_type = if has_receipt {
+        DocumentType::Receipt
+    } else if has_bill {
+        DocumentType::Bill
+    } else if has_payment {
+        DocumentType::PaymentConfirmation
+    } else if has_order {
+        DocumentType::Unknown
+    } else if has_event {
+        DocumentType::Unknown
+    } else {
+        DocumentType::Unknown
+    };
+
+    LabelDocumentParams {
+        doc_type,
+        has_bill,
+        has_transaction: has_payment || has_receipt,
+        has_event,
+        has_order,
+    }
+}
 
 pub struct TemplateDocumentLabelerAgent {
     llm_client: Arc<dyn LlmClient>,
@@ -29,6 +81,12 @@ impl TemplateDocumentLabelerAgent {
 
     pub async fn execute(&self, session_id: i64) -> anyhow::Result<LabelDocumentParams> {
         let system_prompt = super::document_labeler_prompt::build_system_prompt(&self.template);
+        tracing::info!(
+            model = %self.model,
+            prompt_len = system_prompt.len(),
+            template_len = self.template.len(),
+            "Document labeler starting"
+        );
 
         let label_tool = Tool::from_type::<LabelDocumentParams>()
             .name("label_document")
@@ -82,26 +140,42 @@ impl TemplateDocumentLabelerAgent {
             };
 
             let response = self.llm_client.complete(request).await?;
+            let assistant_text = response
+                .content
+                .iter()
+                .filter_map(|block| match block {
+                    ContentBlock::Text { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            tracing::debug!(
+                model = %self.model,
+                iteration = iteration + 1,
+                content_blocks = response.content.len(),
+                tool_calls = response.tool_calls.as_ref().map(|t| t.len()).unwrap_or(0),
+                assistant_text_preview = %preview_text(&assistant_text, RESPONSE_PREVIEW_CHARS),
+                "Document labeler response received"
+            );
 
             self.storage
                 .create_message(Message {
                     id: None,
                     session_id,
                     role: "assistant".to_string(),
-                    content: response
-                        .content
-                        .iter()
-                        .filter_map(|block| match block {
-                            ContentBlock::Text { text } => Some(text.clone()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n"),
+                    content: assistant_text.clone(),
                 })
                 .await?;
 
             if let Some(tool_calls) = response.tool_calls {
                 for tool_call in tool_calls {
+                    tracing::debug!(
+                        iteration = iteration + 1,
+                        tool_id = %tool_call.id(),
+                        tool_name = %tool_call.name(),
+                        raw_arguments = %tool_call.raw_arguments(),
+                        "Document labeler tool call"
+                    );
                     if tool_call.name() == "label_document" {
                         let params: LabelDocumentParams = tool_call.parse_arguments()?;
 
@@ -120,6 +194,16 @@ impl TemplateDocumentLabelerAgent {
                         return Ok(params);
                     }
                 }
+                tracing::warn!(
+                    iteration = iteration + 1,
+                    "Document labeler returned tool calls but none matched label_document"
+                );
+            } else {
+                tracing::warn!(
+                    iteration = iteration + 1,
+                    assistant_text_preview = %preview_text(&assistant_text, RESPONSE_PREVIEW_CHARS),
+                    "Document labeler returned no tool calls"
+                );
             }
 
             self.storage
@@ -133,8 +217,16 @@ impl TemplateDocumentLabelerAgent {
                 .await?;
         }
 
-        Err(anyhow::anyhow!(
-            "Document labeler did not call label_document after 2 iterations"
-        ))
+        let fallback = fallback_label_from_template(&self.template);
+        tracing::warn!(
+            model = %self.model,
+            fallback_doc_type = ?fallback.doc_type,
+            fallback_has_bill = fallback.has_bill,
+            fallback_has_transaction = fallback.has_transaction,
+            fallback_has_event = fallback.has_event,
+            fallback_has_order = fallback.has_order,
+            "Document labeler did not call label_document after 2 iterations; using heuristic fallback"
+        );
+        Ok(fallback)
     }
 }

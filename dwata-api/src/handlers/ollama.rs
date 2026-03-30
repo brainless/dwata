@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse, Result};
-use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
+use nocodo_llm_sdk::models::ollama::QWEN_3_5_2B_ID;
 use nocodo_llm_sdk::ollama::types as sdk_types;
 use nocodo_llm_sdk::ollama::OllamaClient;
 use shared_types::{
@@ -7,7 +7,7 @@ use shared_types::{
     OllamaPullModelRequest, OllamaPullModelResponse, OllamaStatusResponse,
 };
 
-const ALLOWED_PULL_MODELS: &[&str] = &[MINISTRAL_3_3B_ID];
+const ALLOWED_PULL_MODELS: &[&str] = &[QWEN_3_5_2B_ID];
 
 fn map_model_details(details: sdk_types::OllamaModelDetails) -> OllamaModelDetails {
     OllamaModelDetails {

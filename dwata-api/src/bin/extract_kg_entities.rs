@@ -12,8 +12,8 @@ use dwata_api::helpers::database::initialize_database;
 use dwata_api::search::entity_index::{
     open_or_create_index, reindex_all_entities, DbEntitySearchProvider,
 };
-use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
-use nocodo_llm_sdk::ollama::OllamaClient;
+use nocodo_llm_sdk::llama_cpp::LlamaCppClient;
+use nocodo_llm_sdk::models::llama_cpp::QWEN_3_5_0_8B;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
@@ -29,6 +29,10 @@ struct Args {
     /// Skip document labeler and run all four passes unconditionally
     #[arg(long, default_value_t = false)]
     all_passes: bool,
+
+    /// Base URL for llama.cpp OpenAI-compatible server
+    #[arg(long, default_value = "http://localhost:8080")]
+    llama_base_url: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -438,6 +442,7 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
+    let selected_model = QWEN_3_5_0_8B;
 
     let db = initialize_database().context("Failed to initialize database")?;
 
@@ -455,7 +460,11 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to reindex entities")?;
 
-    let llm_client = Arc::new(OllamaClient::new().context("Failed to initialize Ollama client")?);
+    let llm_client = Arc::new(
+        LlamaCppClient::new()
+            .context("Failed to initialize llama.cpp client")?
+            .with_base_url(args.llama_base_url.clone()),
+    );
     let storage = Arc::new(InMemoryAgentStorage::new());
 
     let email = emails_db::get_email(db.async_connection.clone(), args.email_id)
@@ -470,6 +479,8 @@ async fn main() -> Result<()> {
 
     println!("Email ID:  {}", email.id);
     println!("Subject:   {}", simple.subject);
+    println!("Model:     {}", selected_model);
+    println!("Provider:  llama.cpp ({})", args.llama_base_url);
     println!();
 
     // --- Step 1: Document labeling (skip if --all-passes) ---
@@ -493,7 +504,7 @@ async fn main() -> Result<()> {
         let labeler = TemplateDocumentLabelerAgent::new(
             llm_client.clone(),
             storage.clone(),
-            MINISTRAL_3_3B_ID.to_string(),
+            selected_model.to_string(),
             simple.body.clone(),
         );
 
@@ -545,9 +556,10 @@ async fn main() -> Result<()> {
         llm_client,
         storage,
         persistence,
-        MINISTRAL_3_3B_ID.to_string(),
+        selected_model.to_string(),
         email_content,
     )
+    .with_single_tool_submission(true)
     .with_search_provider(search_provider)
     .with_source_email_id(email.id)
     .with_sender(email.from_name.clone(), Some(email.from_address.clone()));

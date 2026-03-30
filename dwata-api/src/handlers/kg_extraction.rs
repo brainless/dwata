@@ -15,7 +15,7 @@ use dwata_agents::{
     storage::{AgentStorage, InMemoryAgentStorage, Session},
     KgEmailExtractionAgent, TemplateDocumentLabelerAgent,
 };
-use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
+use nocodo_llm_sdk::models::ollama::QWEN_3_5_2B_ID;
 use nocodo_llm_sdk::ollama::OllamaClient;
 use serde::Deserialize;
 
@@ -474,7 +474,7 @@ async fn process_single_email(
         let labeler = TemplateDocumentLabelerAgent::new(
             llm_client.clone(),
             storage.clone(),
-            MINISTRAL_3_3B_ID.to_string(),
+            QWEN_3_5_2B_ID.to_string(),
             simple.body.clone(),
         );
 
@@ -517,7 +517,7 @@ async fn process_single_email(
         llm_client,
         storage,
         persistence,
-        MINISTRAL_3_3B_ID.to_string(),
+        QWEN_3_5_2B_ID.to_string(),
         email_content,
     )
     .with_search_provider(search_provider)

@@ -1,4 +1,4 @@
-use nocodo_llm_sdk::models::ollama::MINISTRAL_3_3B_ID;
+use nocodo_llm_sdk::models::ollama::QWEN_3_5_2B_ID;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -115,7 +115,7 @@ impl Default for SelectedLlmConfig {
     fn default() -> Self {
         Self {
             provider: "ollama".to_string(),
-            model: MINISTRAL_3_3B_ID.to_string(),
+            model: QWEN_3_5_2B_ID.to_string(),
         }
     }
 }
