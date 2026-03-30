@@ -7,23 +7,20 @@ import {
   HiOutlineArrowPath,
   HiOutlineArrowUpTray,
 } from "solid-icons/hi";
-import { A } from "@solidjs/router";
 import { createSignal, createEffect, For, Show } from "solid-js";
 import type {
   FinancialTransaction,
   TransactionCategory,
   TransactionStatus,
-  FinancialSummary,
   CategoryBreakdown,
 } from "../api-types/types";
 import { getApiUrl } from "../config/api";
 import FinancialPageLayout from "../components/FinancialPageLayout";
 
-export default function FinancialHealth() {
+export default function FinancialTransactions() {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
 
-  const [summary, setSummary] = createSignal<FinancialSummary | null>(null);
   const [transactions, setTransactions] = createSignal<FinancialTransaction[]>(
     [],
   );
@@ -54,10 +51,6 @@ export default function FinancialHealth() {
     setError(null);
 
     try {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
       // Build transactions query params
       const transactionParams = new URLSearchParams();
       transactionParams.set("page", page.toString());
@@ -68,35 +61,24 @@ export default function FinancialHealth() {
         transactionParams.set("end_date", endDate());
       }
 
-      const [summaryResponse, transactionsResponse] = await Promise.all([
-        fetch(
-          getApiUrl(
-            `/api/financial/summary?start_date=${start.toISOString().split("T")[0]}&end_date=${end.toISOString().split("T")[0]}`,
-          ),
-        ),
-        fetch(getApiUrl(`/api/financial/transactions?${transactionParams}`)),
-      ]);
+      const response = await fetch(
+        getApiUrl(`/api/financial/transactions?${transactionParams}`),
+      );
 
-      if (!summaryResponse.ok) {
-        throw new Error(`Failed to fetch summary: ${summaryResponse.status}`);
-      }
-
-      if (!transactionsResponse.ok) {
+      if (!response.ok) {
         throw new Error(
-          `Failed to fetch transactions: ${transactionsResponse.status}`,
+          `Failed to fetch transactions: ${response.status}`,
         );
       }
 
-      const summaryData: FinancialSummary = await summaryResponse.json();
-      const transactionsData = await transactionsResponse.json();
+      const data = await response.json();
 
-      setSummary(summaryData);
-      setTransactions(transactionsData.transactions || []);
+      setTransactions(data.transactions || []);
 
-      if (transactionsData.pagination) {
-        setCurrentPage(transactionsData.pagination.page);
-        setTotalPages(transactionsData.pagination.total_pages);
-        setTotalCount(transactionsData.pagination.total_count);
+      if (data.pagination) {
+        setCurrentPage(data.pagination.page);
+        setTotalPages(data.pagination.total_pages);
+        setTotalCount(data.pagination.total_count);
       }
     } catch (err) {
       setError(
@@ -245,7 +227,7 @@ export default function FinancialHealth() {
 
   return (
     <FinancialPageLayout
-      title="Financial Overview"
+      title="Financial Transactions"
       subtitle="Track income, expenses, and bills from your documents"
       footer={footerActions}
     >
@@ -270,78 +252,8 @@ export default function FinancialHealth() {
         </Show>
 
         {/* Content */}
-        <Show when={!loading() && !error() && summary()}>
+        <Show when={!loading() && !error()}>
           <div>
-            {/* Reference-only overview section; keep for future iterations. */}
-            {/*
-            <div class="stats stats-vertical lg:stats-horizontal shadow mb-8 w-full">
-              <div class="stat">
-                <div class="stat-figure text-success">
-                  <HiOutlineArrowTrendingUp class="w-8 h-8" />
-                </div>
-                <div class="stat-title">Total Income</div>
-                <div class="stat-value text-success">
-                  {formatCurrency(
-                    summary()!.total_income,
-                    summary()!.currency,
-                  )}
-                </div>
-                <div class="stat-desc">
-                  {summary()!.period_start} to {summary()!.period_end}
-                </div>
-              </div>
-
-              <div class="stat">
-                <div class="stat-figure text-error">
-                  <HiOutlineArrowTrendingDown class="w-8 h-8" />
-                </div>
-                <div class="stat-title">Total Expenses</div>
-                <div class="stat-value text-error">
-                  {formatCurrency(
-                    summary()!.total_expenses,
-                    summary()!.currency,
-                  )}
-                </div>
-                <div class="stat-desc">
-                  {Math.round(
-                    (summary()!.total_expenses / summary()!.total_income) * 100,
-                  )}
-                  % of income
-                </div>
-              </div>
-
-              <div class="stat">
-                <div class="stat-figure text-primary">
-                  <HiOutlineCurrencyDollar class="w-8 h-8" />
-                </div>
-                <div class="stat-title">Net Balance</div>
-                <div class="stat-value text-primary">
-                  {formatCurrency(
-                    summary()!.net_balance,
-                    summary()!.currency,
-                  )}
-                </div>
-                <div class="stat-desc">
-                  {summary()!.net_balance > 0 ? "Positive" : "Negative"} cash flow
-                </div>
-              </div>
-
-              <div class="stat">
-                <div class="stat-figure text-warning">
-                  <HiOutlineExclamationTriangle class="w-8 h-8" />
-                </div>
-                <div class="stat-title">Pending/Overdue</div>
-                <div class="stat-value text-warning">
-                  {summary()!.pending_bills + summary()!.overdue_payments}
-                </div>
-                <div class="stat-desc">
-                  {summary()!.overdue_payments} overdue,{" "}
-                  {summary()!.pending_bills} pending
-                </div>
-              </div>
-            </div>
-            */}
-
           <div class="grid grid-cols-1 gap-6 mb-8">
             {/* Recent Transactions */}
             <div>

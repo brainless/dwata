@@ -38,8 +38,7 @@ pub use email::{
 };
 pub use event::{Event, EventsResponse};
 pub use financial::{
-    CategoryBreakdown, FinancialExtractionSummary, FinancialHealth, FinancialPagination,
-    FinancialSummary, ListFinancialBillsResponse,
+    CategoryBreakdown, FinancialExtractionSummary, FinancialPagination, ListFinancialBillsResponse,
 };
 pub use folder::{EmailFolder, ListFoldersRequest, ListFoldersResponse};
 pub use label::{EmailLabel, ListLabelsRequest, ListLabelsResponse};

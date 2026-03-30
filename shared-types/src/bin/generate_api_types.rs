@@ -102,9 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(OrderItem::export_to_string()?));
     types.push(clean_type(OrderStatus::export_to_string()?));
     types.push(clean_type(OrdersResponse::export_to_string()?));
-    types.push(clean_type(FinancialSummary::export_to_string()?));
     types.push(clean_type(FinancialExtractionSummary::export_to_string()?));
-    types.push(clean_type(FinancialHealth::export_to_string()?));
     types.push(clean_type(CategoryBreakdown::export_to_string()?));
     types.push(clean_type(FinancialPagination::export_to_string()?));
     types.push(clean_type(ListFinancialBillsResponse::export_to_string()?));

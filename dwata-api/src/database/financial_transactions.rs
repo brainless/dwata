@@ -1,7 +1,5 @@
 use anyhow::{anyhow, Result};
-use shared_types::{
-    DataSourceType, FinancialSummary, Transaction, TransactionCategory, TransactionStatus,
-};
+use shared_types::{DataSourceType, Transaction, TransactionStatus};
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 
 fn data_source_type_to_str(data_source_type: &DataSourceType) -> &'static str {
@@ -30,34 +28,46 @@ fn data_source_type_from_str(value: &str) -> DataSourceType {
     }
 }
 
+fn transaction_status_to_str(status: &TransactionStatus) -> &'static str {
+    match status {
+        TransactionStatus::Paid => "paid",
+        TransactionStatus::Cancelled => "cancelled",
+        TransactionStatus::Refunded => "refunded",
+    }
+}
+
+fn transaction_status_from_str(value: &str) -> TransactionStatus {
+    match value {
+        "paid" => TransactionStatus::Paid,
+        "cancelled" => TransactionStatus::Cancelled,
+        "refunded" => TransactionStatus::Refunded,
+        _ => TransactionStatus::Paid,
+    }
+}
+
 pub async fn insert_financial_transaction(
     pool: &SqlitePool,
     transaction: &Transaction,
 ) -> Result<i64> {
     let now = chrono::Utc::now().timestamp();
 
-    let status = match transaction.status {
-        TransactionStatus::Paid => "paid",
-        TransactionStatus::Cancelled => "cancelled",
-        TransactionStatus::Refunded => "refunded",
-    };
-
     let data_source_type = data_source_type_to_str(&transaction.data_source_type);
-    let source_file_ref = transaction.source_file.as_ref();
-    let transaction_reference_ref = transaction.transaction_reference.as_ref();
+    let status = transaction_status_to_str(&transaction.status);
     let transaction_date_ref = transaction.transaction_date;
+    let transaction_reference_ref = transaction.transaction_reference.as_ref();
+    let source_file_ref = transaction.source_file.as_ref();
 
     let inserted_id = sqlx::query_scalar::<_, i64>(
-        "INSERT OR IGNORE INTO financial_transactions
+        "INSERT OR IGNORE INTO transactions
          (data_source_type, data_source_id, amount, currency,
           transaction_date_raw, transaction_date, payer_organisation_id, payee_organisation_id,
-          status, source_file, bill_id, requires_review, extracted_at, created_at, updated_at, transaction_reference)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          status, source_file, bill_id, transaction_reference, extracted_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id",
     )
     .bind(data_source_type)
     .bind(&transaction.data_source_id)
-    .bind(transaction.amount)
+    .bind(transaction.amount.to_string())
     .bind(&transaction.currency)
     .bind(&transaction.transaction_date_raw)
     .bind(transaction_date_ref)
@@ -66,11 +76,10 @@ pub async fn insert_financial_transaction(
     .bind(status)
     .bind(source_file_ref)
     .bind(transaction.bill_id)
-    .bind(false)
+    .bind(transaction_reference_ref)
     .bind(transaction.extracted_at)
     .bind(now)
     .bind(now)
-    .bind(transaction_reference_ref)
     .fetch_optional(pool)
     .await?;
 
@@ -80,7 +89,7 @@ pub async fn insert_financial_transaction(
 
     let id = if let Some(transaction_reference) = transaction_reference_ref {
         sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM financial_transactions
+            "SELECT id FROM transactions
              WHERE data_source_type = ? AND data_source_id = ? AND transaction_reference = ?
              LIMIT 1",
         )
@@ -91,13 +100,13 @@ pub async fn insert_financial_transaction(
         .await?
     } else {
         sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM financial_transactions
+            "SELECT id FROM transactions
              WHERE data_source_type = ? AND data_source_id = ? AND amount = ? AND transaction_date = ?
              LIMIT 1",
         )
         .bind(data_source_type)
         .bind(&transaction.data_source_id)
-        .bind(transaction.amount)
+        .bind(transaction.amount.to_string())
         .bind(transaction_date_ref)
         .fetch_one(pool)
         .await?
@@ -120,7 +129,7 @@ pub async fn list_financial_transactions_filtered(
 ) -> Result<(Vec<Transaction>, usize)> {
     let mut count_qb = QueryBuilder::<Sqlite>::new(
         "SELECT COUNT(*) as cnt
-         FROM financial_transactions ft",
+         FROM transactions ft",
     );
     let mut has_where = false;
     let mut push_filter = |qb: &mut QueryBuilder<Sqlite>, clause: &str| {
@@ -168,7 +177,7 @@ pub async fn list_financial_transactions_filtered(
         "SELECT ft.id, ft.data_source_type, ft.data_source_id, ft.amount, ft.currency,
                 ft.transaction_date_raw, ft.transaction_date, ft.payer_organisation_id, ft.payee_organisation_id,
                 ft.status, ft.source_file, ft.bill_id, ft.extracted_at, ft.transaction_reference
-         FROM financial_transactions ft",
+         FROM transactions ft",
     );
     let mut has_where = false;
     let mut push_filter = |qb: &mut QueryBuilder<Sqlite>, clause: &str| {
@@ -219,33 +228,34 @@ pub async fn list_financial_transactions_filtered(
     let transactions = rows
         .into_iter()
         .map(|row| -> Result<Transaction> {
-            let data_source_type_str: String = row.try_get(1)?;
-            let status_str: String = row.try_get(9)?;
-            let status = match status_str.as_str() {
-                "paid" => TransactionStatus::Paid,
-                "cancelled" => TransactionStatus::Cancelled,
-                "refunded" => TransactionStatus::Refunded,
-                other => {
-                    return Err(anyhow!(
-                        "Unsupported transaction status in financial_transactions: {other}"
-                    ))
-                }
-            };
+            let data_source_type_str: Option<String> = row.try_get(1)?;
+            let status_str: Option<String> = row.try_get(9)?;
+            let amount_str: Option<String> = row.try_get(3)?;
+            let amount = amount_str
+                .as_deref()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(0.0);
 
             Ok(Transaction {
                 id: row.try_get(0)?,
-                data_source_type: data_source_type_from_str(&data_source_type_str),
-                data_source_id: row.try_get(2)?,
-                amount: row.try_get(3)?,
-                currency: row.try_get(4)?,
+                data_source_type: data_source_type_str
+                    .as_deref()
+                    .map(data_source_type_from_str)
+                    .unwrap_or(DataSourceType::Unknown),
+                data_source_id: row.try_get(2).unwrap_or_default(),
+                amount,
+                currency: row.try_get(4).unwrap_or_default(),
                 transaction_date_raw: row.try_get(5)?,
                 transaction_date: row.try_get(6)?,
                 payer_organisation_id: row.try_get(7)?,
                 payee_organisation_id: row.try_get(8)?,
-                status,
+                status: status_str
+                    .as_deref()
+                    .map(transaction_status_from_str)
+                    .unwrap_or(TransactionStatus::Paid),
                 source_file: row.try_get(10)?,
                 bill_id: row.try_get(11)?,
-                extracted_at: row.try_get(12)?,
+                extracted_at: row.try_get(12).unwrap_or(0),
                 transaction_reference: row.try_get(13)?,
             })
         })
@@ -259,7 +269,7 @@ pub async fn get_financial_transaction(pool: &SqlitePool, id: i64) -> Result<Opt
         "SELECT ft.id, ft.data_source_type, ft.data_source_id, ft.amount, ft.currency,
                 ft.transaction_date_raw, ft.transaction_date, ft.payer_organisation_id, ft.payee_organisation_id,
                 ft.status, ft.source_file, ft.bill_id, ft.extracted_at, ft.transaction_reference
-         FROM financial_transactions ft
+         FROM transactions ft
          WHERE ft.id = ?",
     )
     .bind(id)
@@ -268,33 +278,34 @@ pub async fn get_financial_transaction(pool: &SqlitePool, id: i64) -> Result<Opt
 
     match row {
         Some(row) => {
-            let data_source_type_str: String = row.try_get(1)?;
-            let status_str: String = row.try_get(9)?;
-            let status = match status_str.as_str() {
-                "paid" => TransactionStatus::Paid,
-                "cancelled" => TransactionStatus::Cancelled,
-                "refunded" => TransactionStatus::Refunded,
-                other => {
-                    return Err(anyhow!(
-                        "Unsupported transaction status in financial_transactions: {other}"
-                    ))
-                }
-            };
+            let data_source_type_str: Option<String> = row.try_get(1)?;
+            let status_str: Option<String> = row.try_get(9)?;
+            let amount_str: Option<String> = row.try_get(3)?;
+            let amount = amount_str
+                .as_deref()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(0.0);
 
             Ok(Some(Transaction {
                 id: row.try_get(0)?,
-                data_source_type: data_source_type_from_str(&data_source_type_str),
-                data_source_id: row.try_get(2)?,
-                amount: row.try_get(3)?,
-                currency: row.try_get(4)?,
+                data_source_type: data_source_type_str
+                    .as_deref()
+                    .map(data_source_type_from_str)
+                    .unwrap_or(DataSourceType::Unknown),
+                data_source_id: row.try_get(2).unwrap_or_default(),
+                amount,
+                currency: row.try_get(4).unwrap_or_default(),
                 transaction_date_raw: row.try_get(5)?,
                 transaction_date: row.try_get(6)?,
                 payer_organisation_id: row.try_get(7)?,
                 payee_organisation_id: row.try_get(8)?,
-                status,
+                status: status_str
+                    .as_deref()
+                    .map(transaction_status_from_str)
+                    .unwrap_or(TransactionStatus::Paid),
                 source_file: row.try_get(10)?,
                 bill_id: row.try_get(11)?,
-                extracted_at: row.try_get(12)?,
+                extracted_at: row.try_get(12).unwrap_or(0),
                 transaction_reference: row.try_get(13)?,
             }))
         }
@@ -311,73 +322,4 @@ pub async fn list_financial_transactions(
     )
     .await?;
     Ok(transactions)
-}
-
-pub async fn get_financial_summary(
-    pool: &SqlitePool,
-    start_date: &str,
-    end_date: &str,
-) -> Result<FinancialSummary> {
-    let start_ts: Option<i64> =
-        sqlx::query_scalar("SELECT COALESCE(CAST(strftime('%s', ?) AS INTEGER) * 1000, NULL)")
-            .bind(start_date)
-            .fetch_optional(pool)
-            .await?;
-
-    let end_ts: Option<i64> =
-        sqlx::query_scalar("SELECT COALESCE(CAST(strftime('%s', ?) AS INTEGER) * 1000, NULL)")
-            .bind(end_date)
-            .fetch_optional(pool)
-            .await?;
-
-    let total_income: f64 = if let (Some(start), Some(end)) = (start_ts, end_ts) {
-        sqlx::query_scalar(
-            "SELECT COALESCE(SUM(ft.amount), 0.0)
-             FROM financial_transactions ft
-             JOIN financial_bills fb ON fb.id = ft.bill_id
-             WHERE fb.category = 'income'
-               AND ft.transaction_date >= ?
-               AND ft.transaction_date <= ?",
-        )
-        .bind(start)
-        .bind(end)
-        .fetch_one(pool)
-        .await?
-    } else {
-        0.0
-    };
-
-    let total_expenses: f64 = if let (Some(start), Some(end)) = (start_ts, end_ts) {
-        sqlx::query_scalar(
-            "SELECT COALESCE(SUM(ABS(ft.amount)), 0.0)
-             FROM financial_transactions ft
-             JOIN financial_bills fb ON fb.id = ft.bill_id
-             WHERE fb.category = 'expense'
-               AND ft.transaction_date >= ?
-               AND ft.transaction_date <= ?",
-        )
-        .bind(start)
-        .bind(end)
-        .fetch_one(pool)
-        .await?
-    } else {
-        0.0
-    };
-
-    let (pending_bills, overdue_payments) =
-        crate::database::financial_bills::count_unpaid_and_overdue_bills_for_period(
-            pool, start_date, end_date,
-        )
-        .await?;
-
-    Ok(FinancialSummary {
-        total_income,
-        total_expenses,
-        net_balance: total_income - total_expenses,
-        pending_bills,
-        overdue_payments,
-        currency: "USD".to_string(),
-        period_start: start_date.to_string(),
-        period_end: end_date.to_string(),
-    })
 }

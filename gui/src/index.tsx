@@ -6,7 +6,7 @@ import App from "./App";
 import Calendar from "./pages/Calendar";
 import Emails from "./pages/Emails";
 import FinancialBills from "./pages/FinancialBills";
-import FinancialHealth from "./pages/FinancialHealth";
+import FinancialTransactions from "./pages/FinancialTransactions";
 import Locations from "./pages/Locations";
 import Orders from "./pages/Orders";
 import Organisations from "./pages/Organisations";
@@ -34,7 +34,7 @@ render(
       <Route path="/emails/account/:accountId/folder/:folderId" component={Emails} />
       <Route path="/emails/account/:accountId/label/:labelId" component={Emails} />
       <Route path="/calendar" component={Calendar} />
-      <Route path="/financial/transactions" component={FinancialHealth} />
+      <Route path="/financial/transactions" component={FinancialTransactions} />
       <Route path="/financial/bills" component={FinancialBills} />
       <Route path="/kg/subscriptions" component={Subscriptions} />
       <Route path="/kg/orders" component={Orders} />

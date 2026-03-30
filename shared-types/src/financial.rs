@@ -1,23 +1,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::{
-    bill::Bill,
-    transaction::{Transaction, TransactionCategory},
-};
-
-/// Financial summary/overview
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct FinancialSummary {
-    pub total_income: f64,
-    pub total_expenses: f64,
-    pub net_balance: f64,
-    pub pending_bills: i32,
-    pub overdue_payments: i32,
-    pub currency: String,
-    pub period_start: String,
-    pub period_end: String,
-}
+use crate::bill::Bill;
+use crate::transaction::TransactionCategory;
 
 /// Financial extraction source summary
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -25,15 +10,6 @@ pub struct FinancialExtractionSummary {
     pub source_count: i64,
     pub transaction_count: i64,
     pub last_extracted_at: Option<i64>,
-}
-
-/// Financial health metrics
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct FinancialHealth {
-    pub summary: FinancialSummary,
-    pub recent_transactions: Vec<Transaction>,
-    pub upcoming_bills: Vec<Bill>,
-    pub category_breakdown: Vec<CategoryBreakdown>,
 }
 
 /// Breakdown by category

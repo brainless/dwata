@@ -1,11 +1,9 @@
-use crate::config::ApiConfig;
 use crate::database::{
     financial_bills as bills_db, financial_transactions as transactions_db, Database,
 };
-use crate::search::tantivy::TantivySearchIndex;
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::Deserialize;
-use shared_types::{BillStatus, FinancialPagination, FinancialSummary, ListFinancialBillsResponse};
+use shared_types::{BillStatus, FinancialPagination, ListFinancialBillsResponse};
 use std::sync::Arc;
 
 #[derive(Deserialize)]
@@ -50,12 +48,6 @@ pub struct BillFilters {
     pub page: usize,
     #[serde(default = "default_limit")]
     pub limit: usize,
-}
-
-#[derive(Deserialize)]
-pub struct SummaryQuery {
-    start_date: String,
-    end_date: String,
 }
 
 pub async fn list_transactions(
@@ -158,18 +150,6 @@ pub async fn list_bills(
             total_pages,
         },
     }))
-}
-
-pub async fn get_summary(
-    db: web::Data<Arc<Database>>,
-    query: web::Query<SummaryQuery>,
-) -> ActixResult<HttpResponse> {
-    let summary: FinancialSummary =
-        transactions_db::get_financial_summary(&db.sqlx_pool, &query.start_date, &query.end_date)
-            .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(summary))
 }
 
 pub async fn get_bill(
