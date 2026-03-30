@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../../gui/dist",
     "devUrl": "http://localhost:9210",
-    "beforeDevCommand": "npm --prefix ../gui run dev",
+    "beforeDevCommand": "cargo build -p dwata-api --bin dwata-api && npm --prefix ../gui run dev",
     "beforeBuildCommand": "npm --prefix ../gui run build",
     "removeUnusedCommands": true
   },

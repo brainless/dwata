@@ -81,7 +81,7 @@ fn api_start_error(state: tauri::State<ApiStartError>) -> Option<String> {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .setup(|app| {
             let error_state = match start_api(app.handle()) {
                 Ok(child) => {
@@ -102,6 +102,12 @@ fn main() {
                 stop_api(&window.app_handle());
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            stop_api(app_handle);
+        }
+    });
 }
