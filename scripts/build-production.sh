@@ -76,8 +76,28 @@ mkdir -p "$SIDECAR_DIR"
 cp "$ROOT/target/release/dwata-api" "$SIDECAR_BIN"
 chmod +x "$SIDECAR_BIN"
 
+# Sanity-check: the sidecar must exist and be executable before we bundle.
+if [[ ! -x "$SIDECAR_BIN" ]]; then
+  echo "ERROR: sidecar binary missing or not executable: $SIDECAR_BIN"
+  exit 1
+fi
+echo "Sidecar binary: $SIDECAR_BIN ($(du -sh "$SIDECAR_BIN" | cut -f1))"
+
 echo "==> Building Tauri app (macOS)"
 (cd "$ROOT/tauri" && npm ci && npm run build)
+
+# Sanity-check: the bundled .app must contain dwata-api alongside the main executable.
+BUNDLE_APP=$(find "$ROOT/tauri/src-tauri/target/release/bundle" -name "*.app" | head -n1)
+if [[ -z "$BUNDLE_APP" ]]; then
+  echo "ERROR: no .app found in release bundle directory"
+  exit 1
+fi
+BUNDLED_API="$BUNDLE_APP/Contents/MacOS/dwata-api"
+if [[ ! -x "$BUNDLED_API" ]]; then
+  echo "ERROR: dwata-api not found inside bundle at: $BUNDLED_API"
+  exit 1
+fi
+echo "Bundle check passed: $BUNDLED_API present"
 
 echo "==> Done"
 echo "Tauri bundle output: $ROOT/tauri/src-tauri/target/release/bundle"
