@@ -15,8 +15,8 @@ use dwata_agents::{
     storage::{AgentStorage, InMemoryAgentStorage, Session},
     KgEmailExtractionAgent, TemplateDocumentLabelerAgent,
 };
-use nocodo_llm_sdk::models::ollama::QWEN_3_5_2B_ID;
-use nocodo_llm_sdk::ollama::OllamaClient;
+use nocodo_llm_sdk::llama_cpp::LlamaCppClient;
+use nocodo_llm_sdk::models::llama_cpp::QWEN_3_5_0_8B;
 use serde::Deserialize;
 
 const DEFAULT_BATCH_SIZE: usize = 100;
@@ -216,9 +216,9 @@ pub async fn run_kg_extraction(
         })?;
 
     // Initialize LLM client
-    let llm_client = Arc::new(OllamaClient::new().map_err(|e| {
+    let llm_client = Arc::new(LlamaCppClient::new().map_err(|e| {
         actix_web::error::ErrorInternalServerError(format!(
-            "Failed to initialize Ollama client: {}",
+            "Failed to initialize llama.cpp client: {}",
             e
         ))
     })?);
@@ -435,7 +435,7 @@ pub async fn run_kg_extraction(
 async fn process_single_email(
     async_conn: crate::database::AsyncDbConnection,
     email_id: i64,
-    llm_client: Arc<OllamaClient>,
+    llm_client: Arc<LlamaCppClient>,
     storage: Arc<dyn AgentStorage>,
     persistence: Arc<KgPersistenceLayer>,
     search_provider: Arc<DbEntitySearchProvider>,
@@ -474,7 +474,7 @@ async fn process_single_email(
         let labeler = TemplateDocumentLabelerAgent::new(
             llm_client.clone(),
             storage.clone(),
-            QWEN_3_5_2B_ID.to_string(),
+            QWEN_3_5_0_8B.to_string(),
             simple.body.clone(),
         );
 
@@ -517,7 +517,7 @@ async fn process_single_email(
         llm_client,
         storage,
         persistence,
-        QWEN_3_5_2B_ID.to_string(),
+        QWEN_3_5_0_8B.to_string(),
         email_content,
     )
     .with_search_provider(search_provider)
