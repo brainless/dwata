@@ -127,7 +127,10 @@ impl TemplateDocumentLabelerAgent {
                 max_tokens: 512,
                 model: self.model.clone(),
                 system: Some(system_prompt.clone()),
-                temperature: if self.model.contains("nano") || self.model.contains("mini") {
+                temperature: if self.model.contains("nano")
+                    || self.model.contains("mini")
+                    || self.model.contains("qwen")
+                {
                     None
                 } else {
                     Some(0.1)
