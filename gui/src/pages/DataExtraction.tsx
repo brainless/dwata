@@ -1,5 +1,6 @@
-import { createSignal, onCleanup, onMount } from "solid-js";
+import { createSignal, onCleanup, onMount, Show, For } from "solid-js";
 import { getApiUrl } from "../config/api";
+import type { ExtractionStepState, ExtractionStep, PassStepState, ExtractionSummary, LabelDocumentParams } from "../api-types/types";
 
 interface AccountProgress {
   credential_id: number;
@@ -9,6 +10,7 @@ interface AccountProgress {
   emails_processed: number;
   emails_failed: number;
   current_email_id: number | null;
+  current_session_id: number | null;
   started_at: number | null;
   completed_at: number | null;
   error_message: string | null;
@@ -30,6 +32,11 @@ export default function DataExtraction() {
   const [extractionError, setExtractionError] = createSignal("");
   const [progress, setProgress] = createSignal<ProgressResponse | null>(null);
   const [isPolling, setIsPolling] = createSignal(false);
+  
+  // Step-wise extraction state
+  const [stepState, setStepState] = createSignal<ExtractionStepState | null>(null);
+  const [isLoadingStepState, setIsLoadingStepState] = createSignal(false);
+  
   let abortController: AbortController | null = null;
 
   const startExtraction = async () => {
@@ -80,6 +87,9 @@ export default function DataExtraction() {
       const data: ProgressResponse = await response.json();
       setProgress(data);
       
+      // Update step state for running sessions
+      updateStepStateFromProgress();
+      
       // Check if all accounts are done
       const allDone = data.accounts.length === 0 || data.accounts.every(
         (a) => a.status === "completed" || a.status === "failed" || a.status === "idle"
@@ -127,6 +137,44 @@ export default function DataExtraction() {
       abortController.abort();
       abortController = null;
     }
+  };
+
+  // Fetch detailed step state for a session
+  const fetchStepState = async (sessionId: number) => {
+    try {
+      setIsLoadingStepState(true);
+      const response = await fetch(getApiUrl(`/api/kg-extraction/step-state?session_id=${sessionId}`));
+      
+      if (!response.ok) {
+        console.error("Failed to fetch step state:", response.statusText);
+        return;
+      }
+      
+      const data = await response.json();
+      if (data.extraction_state) {
+        setStepState(data.extraction_state);
+      }
+    } catch (error) {
+      console.error("Error fetching step state:", error);
+    } finally {
+      setIsLoadingStepState(false);
+    }
+  };
+
+  // Check if any account has a current session and fetch its state
+  const updateStepStateFromProgress = () => {
+    const currentProgress = progress();
+    if (!currentProgress?.accounts) return;
+    
+    for (const account of currentProgress.accounts) {
+      if (account.current_session_id && account.status === "running") {
+        fetchStepState(account.current_session_id);
+        return; // Only show one at a time
+      }
+    }
+    
+    // No running session found, clear step state
+    setStepState(null);
   };
 
   onMount(async () => {
@@ -182,6 +230,164 @@ export default function DataExtraction() {
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  // Helper components for step-wise data display
+  const DocumentLabelBadge = (props: { label: LabelDocumentParams }) => {
+    const gates = [];
+    if (props.label.has_bill) gates.push("Bill");
+    if (props.label.has_transaction) gates.push("Transaction");
+    if (props.label.has_event) gates.push("Event");
+    if (props.label.has_order) gates.push("Order");
+    
+    return (
+      <div class="flex flex-wrap gap-2">
+        <span class="badge badge-primary">{props.label.doc_type}</span>
+        {gates.map(gate => (
+          <span class="badge badge-secondary badge-sm">{gate}</span>
+        ))}
+      </div>
+    );
+  };
+
+  const StepTimelineItem = (props: { step: ExtractionStep; index: number }) => {
+    const step = props.step;
+    const time = new Date(Number(step.timestamp) * 1000).toLocaleTimeString();
+    
+    return (
+      <div class="relative pl-8 pb-4 last:pb-0">
+        <div class="absolute left-0 top-0 w-4 h-4 rounded-full bg-primary mt-1"></div>
+        <div class="text-sm text-gray-500">{time}</div>
+        <div class="font-medium">
+          {step.step_type === "document_labeled" && "Document Labeled"}
+          {step.step_type === "pass_started" && `Pass Started: ${step.pass_name}`}
+          {step.step_type === "search_performed" && `Search Performed (${step.result_count} results)`}
+          {step.step_type === "sender_search_performed" && `Sender Search (${step.result_count} results)`}
+          {step.step_type === "entities_extracted" && `Entities Extracted (${step.total_entities} total)`}
+          {step.step_type === "pass_completed" && "Pass Completed"}
+          {step.step_type === "pass_failed" && "Pass Failed"}
+          {step.step_type === "tool_call_made" && `Tool Call: ${step.tool_name}`}
+          {step.step_type === "retry_occurred" && `Retry: ${step.reason}`}
+        </div>
+        
+        {step.step_type === "document_labeled" && (
+          <DocumentLabelBadge label={step.label} />
+        )}
+        
+        {step.step_type === "entities_extracted" && (
+          <div class="text-sm mt-1">
+            <div class="flex flex-wrap gap-1">
+              {Object.entries(step.entity_counts).map(([type, count]) => (
+                <span class="badge badge-outline badge-sm">{type}: {count}</span>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {step.step_type === "pass_failed" && (
+          <div class="text-error text-sm">{step.error_message}</div>
+        )}
+      </div>
+    );
+  };
+
+  const PassStateCard = (props: { passKey: string; passState: PassStepState }) => {
+    const state = props.passState;
+    const statusColors = {
+      pending: "badge-ghost",
+      running: "badge-primary",
+      completed: "badge-success",
+      failed: "badge-error"
+    };
+    
+    return (
+      <div class="card bg-base-100 shadow-sm border border-base-300">
+        <div class="card-body p-4">
+          <div class="flex justify-between items-start">
+            <h4 class="font-semibold capitalize">{state.pass_name.replace(/_/g, " ")}</h4>
+            <span class={`badge ${statusColors[state.status]}`}>{state.status}</span>
+          </div>
+          
+          {state.search_results.length > 0 && (
+            <div class="text-sm text-gray-600 mt-2">
+              {state.search_results.length} pre-populated entities
+            </div>
+          )}
+          
+          {state.error_message && (
+            <div class="text-error text-sm mt-2">{state.error_message}</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const ExtractionDetailPanel = () => {
+    const state = stepState();
+    if (!state) return null;
+    
+    const summary = state.summary;
+    
+    return (
+      <div class="mt-6">
+        <h3 class="text-lg font-semibold mb-4">Current Email Extraction</h3>
+        
+        {/* Extraction Summary */}
+        <div class="card bg-base-200 mb-4">
+          <div class="card-body p-4">
+            <div class="flex justify-between items-center mb-2">
+              <div>
+                <span class="font-medium">Email ID:</span> {Number(summary.email_id)}
+              </div>
+              <span class={`badge ${summary.status === "running" ? "badge-primary" : summary.status === "completed" ? "badge-success" : "badge-error"}`}>
+                {summary.status}
+              </span>
+            </div>
+            
+            {summary.sender_email && (
+              <div class="text-sm text-gray-600 mb-2">From: {summary.sender_email}</div>
+            )}
+            
+            <div class="grid grid-cols-3 gap-4 mt-4">
+              <div class="stat bg-base-100 rounded-lg p-3">
+                <div class="stat-value text-lg">{summary.completed_passes}/{summary.total_passes}</div>
+                <div class="stat-title text-xs">Passes</div>
+              </div>
+              <div class="stat bg-base-100 rounded-lg p-3">
+                <div class="stat-value text-lg">{summary.total_entities_extracted}</div>
+                <div class="stat-title text-xs">Entities</div>
+              </div>
+              <div class="stat bg-base-100 rounded-lg p-3">
+                <div class="stat-value text-lg">{summary.total_search_results}</div>
+                <div class="stat-title text-xs">Searches</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Pass States */}
+        <div class="mb-4">
+          <h4 class="font-medium mb-2">Extraction Passes</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <For each={Object.entries(state.pass_states)}>
+              {([key, passState]) => <PassStateCard passKey={key} passState={passState} />}
+            </For>
+          </div>
+        </div>
+        
+        {/* Steps Timeline */}
+        <div class="card bg-base-200">
+          <div class="card-body p-4">
+            <h4 class="font-medium mb-4">Extraction Steps</h4>
+            <div class="border-l-2 border-primary ml-2">
+              <For each={state.steps}>
+                {(step, index) => <StepTimelineItem step={step} index={index()} />}
+              </For>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -280,6 +486,11 @@ export default function DataExtraction() {
           )}
         </div>
       )}
+
+      {/* Step-wise Extraction Details */}
+      <Show when={stepState()}>
+        <ExtractionDetailPanel />
+      </Show>
 
       {/* Modal using Daisy UI modal with checkbox toggle */}
       <input type="checkbox" id="delete-modal-toggle" class="modal-toggle" />

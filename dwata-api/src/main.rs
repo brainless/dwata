@@ -408,6 +408,10 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::kg_extraction::get_kg_extraction_progress),
             )
             .route(
+                "/api/kg-extraction/step-state",
+                web::get().to(handlers::kg_extraction::get_extraction_step_state),
+            )
+            .route(
                 "/api/credentials",
                 web::post().to(handlers::credentials::create_credential),
             )

@@ -186,6 +186,7 @@ impl CliExtractionReporter {
                 }
             }
             ExtractionStep::EntitiesExtracted {
+                entities,
                 entity_counts,
                 total_entities,
                 ..
@@ -197,6 +198,224 @@ impl CliExtractionReporter {
                         println!("  {}: {}", entity_type, count);
                     }
                     println!("  Total: {} entities", total_entities);
+                    println!();
+
+                    // Print detailed entity tables
+                    if let Some(locs) = &entities.locations {
+                        if !locs.is_empty() {
+                            println!("  Locations ({}):", locs.len());
+                            let rows: Vec<Vec<String>> = locs
+                                .iter()
+                                .map(|l| {
+                                    vec![
+                                        l.id.to_string(),
+                                        l.name.clone().unwrap_or_default(),
+                                        l.city.clone().unwrap_or_default(),
+                                        l.region.clone().unwrap_or_default(),
+                                        l.country_code.clone().unwrap_or_default(),
+                                        l.postal_code.clone().unwrap_or_default(),
+                                        truncate(l.search_summary.as_deref().unwrap_or(""), 40),
+                                    ]
+                                })
+                                .collect();
+                            print_table(
+                                &[
+                                    "ID", "Name", "City", "Region", "Country", "Postal", "Summary",
+                                ],
+                                &rows,
+                            );
+                        }
+                    }
+
+                    if let Some(orgs) = &entities.organisations {
+                        if !orgs.is_empty() {
+                            println!("  Organisations ({}):", orgs.len());
+                            let rows: Vec<Vec<String>> = orgs
+                                .iter()
+                                .map(|o| {
+                                    vec![
+                                        o.id.to_string(),
+                                        o.name.clone(),
+                                        o.industry.clone().unwrap_or_default(),
+                                        o.website.clone().unwrap_or_default(),
+                                        o.email.clone().unwrap_or_default(),
+                                        truncate(o.search_summary.as_deref().unwrap_or(""), 40),
+                                    ]
+                                })
+                                .collect();
+                            print_table(
+                                &["ID", "Name", "Industry", "Website", "Email", "Summary"],
+                                &rows,
+                            );
+                        }
+                    }
+
+                    if let Some(persons) = &entities.persons {
+                        if !persons.is_empty() {
+                            println!("  Persons ({}):", persons.len());
+                            let rows: Vec<Vec<String>> = persons
+                                .iter()
+                                .map(|p| {
+                                    vec![
+                                        p.id.to_string(),
+                                        p.name.clone(),
+                                        p.email.clone().unwrap_or_default(),
+                                        p.phone.clone().unwrap_or_default(),
+                                        p.organisation_id
+                                            .map(|id| id.to_string())
+                                            .unwrap_or_default(),
+                                        truncate(p.search_summary.as_deref().unwrap_or(""), 40),
+                                    ]
+                                })
+                                .collect();
+                            print_table(
+                                &["ID", "Name", "Email", "Phone", "Org ID", "Summary"],
+                                &rows,
+                            );
+                        }
+                    }
+
+                    if let Some(bills) = &entities.bills {
+                        if !bills.is_empty() {
+                            println!("  Bills ({}):", bills.len());
+                            let rows: Vec<Vec<String>> = bills
+                                .iter()
+                                .map(|b| {
+                                    vec![
+                                        b.id.to_string(),
+                                        b.total_amount.clone().unwrap_or_default(),
+                                        b.currency.clone().unwrap_or_default(),
+                                        b.issued_date.clone().unwrap_or_default(),
+                                        b.due_date.clone().unwrap_or_default(),
+                                        b.document_reference.clone().unwrap_or_default(),
+                                        b.issuer_organisation_id
+                                            .map(|id| id.to_string())
+                                            .unwrap_or_default(),
+                                    ]
+                                })
+                                .collect();
+                            print_table(
+                                &[
+                                    "ID",
+                                    "Amount",
+                                    "Currency",
+                                    "Issued",
+                                    "Due",
+                                    "Ref",
+                                    "Issuer Org",
+                                ],
+                                &rows,
+                            );
+                        }
+                    }
+
+                    if let Some(transactions) = &entities.transactions {
+                        if !transactions.is_empty() {
+                            println!("  Transactions ({}):", transactions.len());
+                            let rows: Vec<Vec<String>> = transactions
+                                .iter()
+                                .map(|t| {
+                                    vec![
+                                        t.id.to_string(),
+                                        t.amount.to_string(),
+                                        t.currency.clone(),
+                                        t.transaction_date.clone().unwrap_or_default(),
+                                        t.transaction_reference.clone().unwrap_or_default(),
+                                        t.payer_organisation_id
+                                            .map(|id| id.to_string())
+                                            .unwrap_or_default(),
+                                        t.payee_organisation_id
+                                            .map(|id| id.to_string())
+                                            .unwrap_or_default(),
+                                    ]
+                                })
+                                .collect();
+                            print_table(
+                                &["ID", "Amount", "Currency", "Date", "Ref", "Payer", "Payee"],
+                                &rows,
+                            );
+                        }
+                    }
+
+                    if let Some(subs) = &entities.subscriptions {
+                        if !subs.is_empty() {
+                            println!("  Subscriptions ({}):", subs.len());
+                            let rows: Vec<Vec<String>> = subs
+                                .iter()
+                                .map(|s| {
+                                    vec![
+                                        s.id.to_string(),
+                                        s.service_name.clone(),
+                                        s.plan_name.clone().unwrap_or_default(),
+                                        s.amount.map(|a| a.to_string()).unwrap_or_default(),
+                                        s.currency.clone().unwrap_or_default(),
+                                        s.billing_cycle.clone().unwrap_or_default(),
+                                        s.organisation_id
+                                            .map(|id| id.to_string())
+                                            .unwrap_or_default(),
+                                    ]
+                                })
+                                .collect();
+                            print_table(
+                                &[
+                                    "ID", "Service", "Plan", "Amount", "Currency", "Cycle", "Org",
+                                ],
+                                &rows,
+                            );
+                        }
+                    }
+
+                    if let Some(orders) = &entities.orders {
+                        if !orders.is_empty() {
+                            println!("  Orders ({}):", orders.len());
+                            let rows: Vec<Vec<String>> = orders
+                                .iter()
+                                .map(|o| {
+                                    vec![
+                                        o.id.to_string(),
+                                        o.order_reference.clone().unwrap_or_default(),
+                                        o.total_amount.map(|a| a.to_string()).unwrap_or_default(),
+                                        o.currency.clone().unwrap_or_default(),
+                                        o.status.clone().unwrap_or_default(),
+                                        o.order_date.clone().unwrap_or_default(),
+                                        o.organisation_id
+                                            .map(|id| id.to_string())
+                                            .unwrap_or_default(),
+                                    ]
+                                })
+                                .collect();
+                            print_table(
+                                &["ID", "Ref", "Amount", "Currency", "Status", "Date", "Org"],
+                                &rows,
+                            );
+                        }
+                    }
+
+                    if let Some(events) = &entities.events {
+                        if !events.is_empty() {
+                            println!("  Events ({}):", events.len());
+                            let rows: Vec<Vec<String>> = events
+                                .iter()
+                                .map(|e| {
+                                    vec![
+                                        e.id.to_string(),
+                                        e.name.clone(),
+                                        e.event_date.clone().unwrap_or_default(),
+                                        e.location_id.map(|id| id.to_string()).unwrap_or_default(),
+                                        e.description.clone().unwrap_or_default(),
+                                        e.attendees
+                                            .as_ref()
+                                            .map(|a| a.join(", "))
+                                            .unwrap_or_default(),
+                                    ]
+                                })
+                                .collect();
+                            print_table(
+                                &["ID", "Name", "Date", "Location", "Description", "Attendees"],
+                                &rows,
+                            );
+                        }
+                    }
                 }
             }
             ExtractionStep::PassCompleted { .. } => {
@@ -284,8 +503,16 @@ impl CliExtractionStateProvider {
 #[async_trait::async_trait]
 impl ExtractionStateProvider for CliExtractionStateProvider {
     async fn record_step(&self, session_id: i64, step: ExtractionStep) {
-        if self.verbose {
-            self.reporter.print_step(&step);
+        // Always print entity extractions, but only print other steps in verbose mode
+        match &step {
+            ExtractionStep::EntitiesExtracted { .. } => {
+                self.reporter.print_step(&step);
+            }
+            _ => {
+                if self.verbose {
+                    self.reporter.print_step(&step);
+                }
+            }
         }
         self.inner.record_step(session_id, step).await;
     }

@@ -223,16 +223,17 @@ pub async fn get_kg_extraction_progress(
 
 /// Get detailed step state for a specific extraction session
 pub async fn get_extraction_step_state(
+    state: web::Data<Arc<KgExtractionState>>,
     query: web::Query<StepStateQueryParams>,
 ) -> Result<HttpResponse> {
-    // Since we can't easily access the state provider from here,
-    // we'll need to store a reference to it somewhere accessible.
-    // For now, return a placeholder response.
-    // TODO: Store the extraction state provider in the app state
+    let session_id = query.session_id;
+
+    // Get the extraction state from the provider
+    let extraction_state = state.get_session_state(session_id).await;
 
     Ok(HttpResponse::Ok().json(StepStateResponse {
-        session_id: query.session_id,
-        extraction_state: None,
+        session_id,
+        extraction_state,
     }))
 }
 
@@ -316,6 +317,9 @@ pub async fn run_kg_extraction(
     let search_provider = Arc::new(DbEntitySearchProvider::new(pool.clone(), entity_index));
     let extraction_state_provider =
         Arc::new(ApiExtractionStateProvider::new(state.get_ref().clone()));
+
+    // Store the extraction state provider in the global state so it can be accessed by endpoints
+    state.set_extraction_state_provider(extraction_state_provider.clone());
 
     let mut accounts_processed = Vec::new();
     let mut total_emails_processed = 0_usize;
@@ -458,8 +462,9 @@ pub async fn run_kg_extraction(
             )
             .await
             {
-                Ok(_) => {
+                Ok(session_id) => {
                     state.update_account_progress(credential_id, email_id, true);
+                    state.set_current_session(credential_id, session_id);
                     emails_processed += 1;
                 }
                 Err(e) => {
@@ -520,6 +525,7 @@ pub async fn run_kg_extraction(
 }
 
 /// Process a single email through the KG extraction pipeline
+/// Returns the session ID for tracking extraction state
 async fn process_single_email(
     async_conn: crate::database::AsyncDbConnection,
     email_id: i64,
@@ -529,7 +535,7 @@ async fn process_single_email(
     search_provider: Arc<DbEntitySearchProvider>,
     extraction_state_provider: Arc<ApiExtractionStateProvider>,
     all_passes: bool,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<i64> {
     // Load email
     let email = emails_db::get_email(async_conn, email_id)
         .await
@@ -612,6 +618,15 @@ async fn process_single_email(
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create KG session: {}", e))?;
 
+    // Initialize extraction state for this session
+    extraction_state_provider
+        .initialize_state(
+            kg_session_id,
+            Some(email.id),
+            Some(email.from_address.clone()),
+        )
+        .await;
+
     let email_content = format!("Subject: {}\n\n{}", simple.subject, simple.body);
 
     let mut agent = KgEmailExtractionAgent::new(
@@ -621,7 +636,7 @@ async fn process_single_email(
         QWEN_3_5_0_8B.to_string(),
         email_content,
     )
-    .with_extraction_state(extraction_state_provider)
+    .with_extraction_state(extraction_state_provider.clone())
     .with_search_provider(search_provider)
     .with_source_email_id(email.id)
     .with_sender(email.from_name.clone(), Some(email.from_address.clone()));
@@ -635,9 +650,14 @@ async fn process_single_email(
         .await
         .map_err(|e| anyhow::anyhow!("KG extraction failed: {}", e))?;
 
+    // Mark extraction as complete
+    extraction_state_provider
+        .complete_extraction(kg_session_id)
+        .await;
+
     tracing::debug!("KG extraction complete for email {}", email.id);
 
-    Ok(())
+    Ok(kg_session_id)
 }
 
 fn current_timestamp() -> i64 {

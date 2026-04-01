@@ -3,6 +3,8 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use dwata_agents::{ExtractionStateProvider, ExtractionStepState, InMemoryExtractionState};
+
 /// Tracks extraction progress for a single account
 #[derive(Debug, Clone)]
 pub struct AccountProgress {
@@ -13,6 +15,7 @@ pub struct AccountProgress {
     pub emails_processed: usize,
     pub emails_failed: usize,
     pub current_email_id: Option<i64>,
+    pub current_session_id: Option<i64>,
     pub started_at: Option<i64>,
     pub completed_at: Option<i64>,
     pub error_message: Option<String>,
@@ -45,11 +48,36 @@ struct PollingState {
 }
 
 /// Thread-safe extraction state manager with long polling support
-#[derive(Debug, Clone)]
 pub struct KgExtractionState {
     accounts: Arc<RwLock<HashMap<i64, AccountProgress>>>,
     global_active: Arc<RwLock<bool>>,
     polling_state: Arc<RwLock<PollingState>>,
+    extraction_state_provider: Arc<RwLock<Option<Arc<dyn ExtractionStateProvider>>>>,
+}
+
+impl std::fmt::Debug for KgExtractionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KgExtractionState")
+            .field("accounts", &"<RwLock<HashMap>>")
+            .field("global_active", &"<RwLock<bool>>")
+            .field("polling_state", &"<RwLock<PollingState>>")
+            .field(
+                "extraction_state_provider",
+                &"<RwLock<Option<Arc<dyn ExtractionStateProvider>>>>",
+            )
+            .finish()
+    }
+}
+
+impl Clone for KgExtractionState {
+    fn clone(&self) -> Self {
+        Self {
+            accounts: Arc::clone(&self.accounts),
+            global_active: Arc::clone(&self.global_active),
+            polling_state: Arc::clone(&self.polling_state),
+            extraction_state_provider: Arc::clone(&self.extraction_state_provider),
+        }
+    }
 }
 
 impl KgExtractionState {
@@ -61,6 +89,7 @@ impl KgExtractionState {
                 last_update_timestamp: 0,
                 last_progress_hash: 0,
             })),
+            extraction_state_provider: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -152,6 +181,7 @@ impl KgExtractionState {
             emails_processed: 0,
             emails_failed: 0,
             current_email_id: None,
+            current_session_id: None,
             started_at: Some(now),
             completed_at: None,
             error_message: None,
@@ -178,6 +208,17 @@ impl KgExtractionState {
                 } else {
                     progress.emails_failed += 1;
                 }
+            }
+        }
+
+        self.update_polling_state();
+    }
+
+    /// Set the current session ID for an account
+    pub fn set_current_session(&self, credential_id: i64, session_id: i64) {
+        if let Ok(mut accounts) = self.accounts.write() {
+            if let Some(progress) = accounts.get_mut(&credential_id) {
+                progress.current_session_id = Some(session_id);
             }
         }
 
@@ -272,6 +313,39 @@ impl KgExtractionState {
     /// This updates the polling state to trigger long-polling responses
     pub fn notify_update(&self) {
         self.update_polling_state();
+    }
+
+    /// Set the extraction state provider
+    pub fn set_extraction_state_provider(&self, provider: Arc<dyn ExtractionStateProvider>) {
+        if let Ok(mut guard) = self.extraction_state_provider.write() {
+            *guard = Some(provider);
+        }
+    }
+
+    /// Get the extraction state provider
+    pub fn get_extraction_state_provider(&self) -> Option<Arc<dyn ExtractionStateProvider>> {
+        if let Ok(guard) = self.extraction_state_provider.read() {
+            guard.clone()
+        } else {
+            None
+        }
+    }
+
+    /// Get extraction state for a specific session
+    pub async fn get_session_state(&self, session_id: i64) -> Option<ExtractionStepState> {
+        if let Some(provider) = self.get_extraction_state_provider() {
+            provider.get_state(session_id).await
+        } else {
+            None
+        }
+    }
+
+    /// Get all extraction states
+    pub fn get_all_session_states(&self) -> Vec<ExtractionStepState> {
+        // We need to access the InMemoryExtractionState directly
+        // Since we can't easily downcast from dyn ExtractionStateProvider,
+        // we'll return empty for now - this is for UI display purposes
+        Vec::new()
     }
 }
 
