@@ -6,6 +6,7 @@ import {
   HiOutlineCheckCircle,
   HiOutlineXCircle,
 } from "solid-icons/hi";
+import { open } from "@tauri-apps/plugin-shell";
 import type {
   CreateImapCredentialRequest,
   ImapAccountSettings,
@@ -42,6 +43,7 @@ export default function SettingsAccounts() {
   const [gmailMessageType, setGmailMessageType] = createSignal<
     "success" | "error"
   >("success");
+  const [gmailAuthUrl, setGmailAuthUrl] = createSignal<string | null>(null);
 
   // Credentials list state
   const [credentials, setCredentials] = createSignal<CredentialMetadata[]>([]);
@@ -102,9 +104,11 @@ export default function SettingsAccounts() {
   const handleGmailSignIn = async () => {
     setIsGmailLoading(true);
     setGmailMessage("");
+    setGmailAuthUrl(null);
 
     try {
       // Call initiate endpoint to get authorization URL
+      console.log("Initiating Gmail OAuth, fetching:", getApiUrl("/api/credentials/gmail/initiate"));
       const response = await fetch(
         getApiUrl("/api/credentials/gmail/initiate"),
         {
@@ -116,51 +120,48 @@ export default function SettingsAccounts() {
         const data = await response.json();
         const { authorization_url } = data;
 
-        // Open authorization URL in new window
-        const authWindow = window.open(
-          authorization_url,
-          "_blank",
-          "width=600,height=700,menubar=no,toolbar=no,location=no,status=no",
-        );
-
-        if (authWindow) {
+        // Use Tauri shell API to open browser
+        try {
+          await open(authorization_url);
           setGmailMessageType("success");
           setGmailMessage(
-            "Please complete the sign-in in the popup window. It will close automatically when done.",
+            "Please complete the sign-in in your browser. When done, click the button below to refresh.",
           );
 
           // Poll for new credentials after OAuth flow completes
+          // Give user 5 minutes to complete OAuth
+          let attempts = 0;
+          const maxAttempts = 300; // 5 minutes at 1 second intervals
           const pollInterval = setInterval(async () => {
-            if (authWindow.closed) {
+            attempts++;
+            await fetchCredentials();
+            
+            // Stop after max attempts
+            if (attempts >= maxAttempts) {
               clearInterval(pollInterval);
-              setGmailMessage("");
-              await fetchCredentials();
-            }
-          }, 1000);
-
-          // Stop polling after 5 minutes
-          setTimeout(() => {
-            clearInterval(pollInterval);
-            if (!authWindow.closed) {
               setGmailMessageType("error");
               setGmailMessage("Sign-in timed out. Please try again.");
             }
-          }, 300000);
-        } else {
+          }, 1000);
+
+          // Also add a manual refresh button by updating message
+          setGmailMessage("Please complete the sign-in in your browser. Your account will appear below when done.");
+        } catch (openError) {
+          console.error("Failed to open browser:", openError);
+          setGmailAuthUrl(authorization_url);
           setGmailMessageType("error");
-          setGmailMessage(
-            "Failed to open sign-in window. Please allow popups for this site.",
-          );
+          setGmailMessage("Could not open browser automatically. Please use the link below:");
         }
       } else {
-        const error = await response.json();
+        const errorText = await response.text();
+        console.error("OAuth initiate failed:", response.status, errorText);
         setGmailMessageType("error");
-        setGmailMessage(error.error || "Failed to initiate Gmail sign-in.");
+        setGmailMessage(`Server error: ${response.status} - ${errorText || "Failed to initiate Gmail sign-in"}`);
       }
     } catch (error) {
       console.error("Failed to initiate Gmail OAuth:", error);
       setGmailMessageType("error");
-      setGmailMessage("Failed to connect to server. Please try again.");
+      setGmailMessage(`Connection error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsGmailLoading(false);
     }
@@ -489,6 +490,33 @@ export default function SettingsAccounts() {
                 class={`alert ${gmailMessageType() === "success" ? "alert-info" : "alert-error"} max-w-md`}
               >
                 <span class="text-sm">{gmailMessage()}</span>
+              </div>
+            )}
+
+            {/* Manual OAuth Link */}
+            {gmailAuthUrl() && (
+              <div class="alert alert-warning max-w-md">
+                <div class="flex flex-col gap-2 w-full">
+                  <span class="text-sm font-semibold">Click this link to sign in:</span>
+                  <a 
+                    href={gmailAuthUrl()!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="link link-primary text-sm break-all"
+                  >
+                    {gmailAuthUrl()}
+                  </a>
+                  <button
+                    class="btn btn-sm btn-outline mt-2"
+                    onClick={() => {
+                      navigator.clipboard.writeText(gmailAuthUrl()!);
+                      setGmailMessage("Link copied to clipboard!");
+                      setGmailMessageType("success");
+                    }}
+                  >
+                    Copy Link
+                  </button>
+                </div>
               </div>
             )}
 

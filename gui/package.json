@@ -26,6 +26,7 @@
   "dependencies": {
     "@solidjs/router": "^0.15.1",
     "@tailwindcss/vite": "^4.1.18",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "daisyui": "^5.5.14",
     "solid-icons": "^1.1.0",
     "solid-js": "^1.9.11"

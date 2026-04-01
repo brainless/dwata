@@ -54,7 +54,7 @@ paru -S dwata-api
 ## Post-Installation
 
 After installation, dwata will:
-- Store configuration in `~/.config/dwata/api.toml`
+- Store configuration in `~/.config/dwata/config.toml`
 - Store database in `~/.local/share/dwata/db.sqlite`
 - Use your system keyring for credential storage (requires `gnome-keyring` or similar)
 

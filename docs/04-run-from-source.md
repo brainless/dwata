@@ -37,9 +37,9 @@ cargo run --bin dwata-api -- --no-open
 ```
 
 Config file path:
-- macOS: `~/Library/Application Support/dwata/api.toml`
-- Linux: `~/.config/dwata/api.toml`
-- Windows: `%APPDATA%\dwata\api.toml`
+- macOS: `~/Library/Application Support/dwata/config.toml`
+- Linux: `~/.config/dwata/config.toml`
+- Windows: `%APPDATA%\dwata\config.toml`
 
 Set values to match current GUI defaults in this branch:
 

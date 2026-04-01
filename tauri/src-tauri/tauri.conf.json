@@ -5,7 +5,7 @@
   "identifier": "com.dwata.app",
   "build": {
     "frontendDist": "../../gui/dist",
-    "devUrl": "http://localhost:9210",
+    "devUrl": "http://localhost:39283",
     "beforeDevCommand": "cargo build -p dwata-api --bin dwata-api && npm --prefix ../gui run dev",
     "beforeBuildCommand": "npm --prefix ../gui run build",
     "removeUnusedCommands": true
@@ -24,6 +24,11 @@
         "resizable": true
       }
     ]
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
   },
   "bundle": {
     "active": true,

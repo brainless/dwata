@@ -161,8 +161,8 @@ impl GoogleOAuthConfig {
 impl ApiConfig {
     pub fn load() -> Result<(Self, PathBuf), String> {
         let config_path = Self::find_config_file().ok_or_else(|| {
-            "Config file not found. Place project.toml in the project root or next to the binary. \
-                Copy project.example.toml as a starting point."
+            "Config file not found. Place config.toml in the project root or next to the binary. \
+                Copy config.example.toml as a starting point."
                 .to_string()
         })?;
 
@@ -189,21 +189,21 @@ impl ApiConfig {
 
     fn find_config_file() -> Option<PathBuf> {
         let mut candidates = vec![
-            PathBuf::from("project.toml"),
-            PathBuf::from("../project.toml"),
+            PathBuf::from("config.toml"),
+            PathBuf::from("../config.toml"),
         ];
         if let Some(config_dir) = dirs::config_dir() {
-            candidates.push(config_dir.join("dwata").join("project.toml"));
+            candidates.push(config_dir.join("dwata").join("config.toml"));
         }
         if let Some(dir) = Self::exe_dir() {
-            candidates.push(dir.join("../../project.toml"));
-            candidates.push(dir.join("../project.toml"));
-            candidates.push(dir.join("project.toml"));
+            candidates.push(dir.join("../../config.toml"));
+            candidates.push(dir.join("../config.toml"));
+            candidates.push(dir.join("config.toml"));
         }
         candidates.into_iter().find(|p| p.exists())
     }
 }
 
 pub fn get_config_path() -> PathBuf {
-    ApiConfig::find_config_file().unwrap_or_else(|| PathBuf::from("project.toml"))
+    ApiConfig::find_config_file().unwrap_or_else(|| PathBuf::from("config.toml"))
 }

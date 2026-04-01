@@ -17,11 +17,16 @@ echo "==> Installing GUI dependencies"
 echo "==> Building dwata-api (release)"
 CONFIG_PATH="${DWATA_OAUTH_CONFIG_PATH:-}"
 if [ -z "$CONFIG_PATH" ]; then
-  case "$(uname -s)" in
-    Darwin) CONFIG_PATH="$HOME/Library/Application Support/dwata/api.toml" ;;
-    Linux) CONFIG_PATH="$HOME/.config/dwata/api.toml" ;;
-    MINGW*|MSYS*|CYGWIN*) CONFIG_PATH="${APPDATA:-}/dwata/api.toml" ;;
-  esac
+  # Check for local config.toml in project root first
+  if [ -f "$ROOT/config.toml" ]; then
+    CONFIG_PATH="$ROOT/config.toml"
+  else
+    case "$(uname -s)" in
+      Darwin) CONFIG_PATH="$HOME/Library/Application Support/dwata/config.toml" ;;
+      Linux) CONFIG_PATH="$HOME/.config/dwata/config.toml" ;;
+      MINGW*|MSYS*|CYGWIN*) CONFIG_PATH="${APPDATA:-}/dwata/config.toml" ;;
+    esac
+  fi
 fi
 
 if [ -n "${CONFIG_PATH}" ] && [ -f "${CONFIG_PATH}" ] && command -v python3 >/dev/null 2>&1; then

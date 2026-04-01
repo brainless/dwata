@@ -159,17 +159,17 @@ From `dwata-api/src/config.rs`:
 ```rust
 pub fn get_config_path() -> PathBuf {
     if let Some(config_dir) = dirs::config_dir() {
-        config_dir.join("dwata").join("api.toml")
+        config_dir.join("dwata").join("config.toml")
     } else {
-        PathBuf::from("api.toml")
+        PathBuf::from("config.toml")
     }
 }
 ```
 
 Platform-specific config paths:
-- **macOS**: `~/Library/Application Support/dwata/api.toml`
-- **Linux**: `~/.config/dwata/api.toml`
-- **Windows**: `%APPDATA%\dwata\api.toml`
+- **macOS**: `~/Library/Application Support/dwata/config.toml`
+- **Linux**: `~/.config/dwata/config.toml`
+- **Windows**: `%APPDATA%\dwata\config.toml`
 
 The configuration is loaded in `src/main.rs`:
 
@@ -208,7 +208,7 @@ auto_start = false
 
 **Desktop OAuth note:** Google Desktop OAuth is sensitive to the exact host in the redirect URI. Use `server.host = "localhost"` (not `127.0.0.1`) to avoid token exchange failures. We support bring-your-own Google OAuth apps; if you set `client_id`/`client_secret` in the config, those are always used.
 
-**Release defaults:** Release builds can embed a default Google OAuth `client_id`/`client_secret` at compile time. `scripts/build-production.sh` will read them from your local `api.toml` (or from `DWATA_DEFAULT_GOOGLE_CLIENT_ID` / `DWATA_DEFAULT_GOOGLE_CLIENT_SECRET`) and compile them in. The runtime config still overrides these defaults when set.
+**Release defaults:** Release builds can embed a default Google OAuth `client_id`/`client_secret` at compile time. `scripts/build-production.sh` will read them from your local `config.toml` (or from `DWATA_DEFAULT_GOOGLE_CLIENT_ID` / `DWATA_DEFAULT_GOOGLE_CLIENT_SECRET`) and compile them in. The runtime config still overrides these defaults when set.
 
 ## Database Storage
 
@@ -401,7 +401,7 @@ cargo run -- --log-file-path /path/to/log/file.log
 
 The server will:
 1. Initialize the database at the OS-specific path
-2. Load configuration from `~/Library/Application Support/dwata/api.toml` (on macOS)
+2. Load configuration from `~/Library/Application Support/dwata/config.toml` (on macOS)
 3. Start the HTTP server on `127.0.0.1:8080` (or as configured)
 
 ## GitHub Actions Secrets

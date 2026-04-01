@@ -82,6 +82,7 @@ fn api_start_error(state: tauri::State<ApiStartError>) -> Option<String> {
 
 fn main() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let error_state = match start_api(app.handle()) {
                 Ok(child) => {
