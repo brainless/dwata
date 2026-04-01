@@ -993,21 +993,22 @@ pub async fn get_emails_by_ids(conn: AsyncDbConnection, ids: &[i64]) -> Result<V
         let mut stmt = conn.prepare(&query)?;
         let emails = stmt
             .query_map(rusqlite::params_from_iter(ids), |row| {
+                let to_json: String = row.get(8)?;
+                let cc_json: String = row.get(9)?;
+                let bcc_json: String = row.get(10)?;
+
                 Ok(Email {
                     id: row.get(0)?,
                     credential_id: row.get(1)?,
-                    uid: row.get(2)?,
+                    uid: row.get::<_, i32>(2)? as u32,
                     folder_id: row.get(3)?,
                     message_id: row.get(4)?,
                     subject: row.get(5)?,
                     from_address: row.get(6)?,
                     from_name: row.get(7)?,
-                    to_addresses: serde_json::from_str(&row.get::<_, String>(9)?)
-                        .unwrap_or_default(),
-                    cc_addresses: serde_json::from_str(&row.get::<_, String>(10)?)
-                        .unwrap_or_default(),
-                    bcc_addresses: serde_json::from_str(&row.get::<_, String>(11)?)
-                        .unwrap_or_default(),
+                    to_addresses: serde_json::from_str(&to_json).unwrap_or_default(),
+                    cc_addresses: serde_json::from_str(&cc_json).unwrap_or_default(),
+                    bcc_addresses: serde_json::from_str(&bcc_json).unwrap_or_default(),
                     reply_to: row.get(11)?,
                     date_sent: row.get(12)?,
                     date_received: row.get(13)?,
