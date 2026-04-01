@@ -34,7 +34,6 @@ pub struct Email {
     pub is_read: bool,
     pub is_flagged: bool,
     pub is_draft: bool,
-    pub is_answered: bool,
 
     // Metadata
     pub has_attachments: bool,

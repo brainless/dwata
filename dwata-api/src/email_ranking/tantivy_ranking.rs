@@ -46,6 +46,7 @@ pub async fn build_ranking_context(
 }
 
 /// Query database to count user's replies to each sender
+/// Uses the reliable method: counts sent emails per recipient
 async fn query_user_reply_counts(
     conn: AsyncDbConnection,
     credential_id: Option<i64>,
@@ -61,18 +62,25 @@ async fn query_user_reply_counts(
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         }
 
-        // Query to find emails where user replied (is_answered = true)
-        // and count by the original sender (the person user replied to)
+        // Query to count sent emails per recipient
+        // Uses the reliable method: checks Sent folder for in_reply_to relationships
         if let Some(cred) = credential_id {
             let mut stmt = conn.prepare(
-                "SELECT e.from_address, COUNT(*) as reply_count 
-                 FROM emails e 
-                 WHERE e.is_answered = 1 
-                   AND e.credential_id = ? 
-                 GROUP BY e.from_address",
+                "SELECT 
+                    e2.from_address as recipient,
+                    COUNT(DISTINCT e1.id) as reply_count
+                 FROM emails e1
+                 JOIN email_folders ef ON e1.folder_id = ef.id
+                 JOIN emails e2 ON e1.in_reply_to = e2.message_id
+                 WHERE ef.folder_type = 'Sent'
+                   AND e1.credential_id = ?
+                   AND e2.credential_id = ?
+                   AND e1.in_reply_to IS NOT NULL
+                   AND e2.message_id IS NOT NULL
+                 GROUP BY e2.from_address",
             )?;
 
-            let rows = stmt.query_map([cred], map_row)?;
+            let rows = stmt.query_map([cred, cred], map_row)?;
             let mut counts = reply_counts_clone.blocking_lock();
             for row in rows {
                 let (sender, count) = row?;
@@ -80,10 +88,16 @@ async fn query_user_reply_counts(
             }
         } else {
             let mut stmt = conn.prepare(
-                "SELECT e.from_address, COUNT(*) as reply_count 
-                 FROM emails e 
-                 WHERE e.is_answered = 1 
-                 GROUP BY e.from_address",
+                "SELECT 
+                    e2.from_address as recipient,
+                    COUNT(DISTINCT e1.id) as reply_count
+                 FROM emails e1
+                 JOIN email_folders ef ON e1.folder_id = ef.id
+                 JOIN emails e2 ON e1.in_reply_to = e2.message_id
+                 WHERE ef.folder_type = 'Sent'
+                   AND e1.in_reply_to IS NOT NULL
+                   AND e2.message_id IS NOT NULL
+                 GROUP BY e2.from_address",
             )?;
 
             let rows = stmt.query_map([], map_row)?;
@@ -107,6 +121,7 @@ async fn query_user_reply_counts(
 }
 
 /// Query database for thread information
+/// Uses reliable method: checks for sent emails with in_reply_to in the thread
 async fn query_thread_info(
     conn: AsyncDbConnection,
     credential_id: Option<i64>,
@@ -131,21 +146,28 @@ async fn query_thread_info(
             ))
         }
 
-        // Query to get thread statistics
-        // Count emails per thread and check if user replied (is_answered)
+        // Query to get thread statistics using reliable reply detection
+        // Counts emails per thread and checks if any sent emails reply to this thread
         if let Some(cred) = credential_id {
             let mut stmt = conn.prepare(
                 "SELECT 
                     e.thread_id,
-                    COUNT(*) as email_count,
-                    SUM(CASE WHEN e.is_answered = 1 THEN 1 ELSE 0 END) as user_replies
+                    COUNT(DISTINCT e.id) as email_count,
+                    COUNT(DISTINCT sent.id) as user_replies
                  FROM emails e 
+                 LEFT JOIN emails sent ON (
+                     sent.in_reply_to = e.message_id
+                     AND sent.folder_id IN (
+                         SELECT id FROM email_folders 
+                         WHERE credential_id = ? AND folder_type = 'Sent'
+                     )
+                 )
                  WHERE e.credential_id = ? 
                    AND e.thread_id IS NOT NULL
                  GROUP BY e.thread_id",
             )?;
 
-            let rows = stmt.query_map([cred], map_thread_row)?;
+            let rows = stmt.query_map([cred, cred], map_thread_row)?;
             let mut info = thread_info_clone.blocking_lock();
             for row in rows {
                 let (thread_id, thread_data) = row?;
@@ -155,9 +177,15 @@ async fn query_thread_info(
             let mut stmt = conn.prepare(
                 "SELECT 
                     e.thread_id,
-                    COUNT(*) as email_count,
-                    SUM(CASE WHEN e.is_answered = 1 THEN 1 ELSE 0 END) as user_replies
+                    COUNT(DISTINCT e.id) as email_count,
+                    COUNT(DISTINCT sent.id) as user_replies
                  FROM emails e 
+                 LEFT JOIN emails sent ON (
+                     sent.in_reply_to = e.message_id
+                     AND sent.folder_id IN (
+                         SELECT id FROM email_folders WHERE folder_type = 'Sent'
+                     )
+                 )
                  WHERE e.thread_id IS NOT NULL
                  GROUP BY e.thread_id",
             )?;

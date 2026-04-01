@@ -131,19 +131,21 @@ pub async fn upsert_folder_from_imap(
     is_subscribed: bool,
     uidvalidity: Option<u32>,
     total_messages: u32,
+    folder_type: Option<&str>,
 ) -> Result<i64> {
     let conn = conn.lock().await;
     let now = chrono::Utc::now().timestamp_millis();
 
     let folder_id: i64 = conn.query_row(
-        "INSERT INTO email_folders (credential_id, name, imap_path, is_selectable, is_subscribed, uidvalidity, total_messages, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO email_folders (credential_id, name, imap_path, is_selectable, is_subscribed, uidvalidity, total_messages, folder_type, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(credential_id, imap_path) DO UPDATE SET
              name = excluded.name,
              is_selectable = excluded.is_selectable,
              is_subscribed = excluded.is_subscribed,
              uidvalidity = excluded.uidvalidity,
              total_messages = excluded.total_messages,
+             folder_type = excluded.folder_type,
              updated_at = excluded.updated_at
          RETURNING id",
         params![
@@ -154,6 +156,7 @@ pub async fn upsert_folder_from_imap(
             is_subscribed,
             uidvalidity.map(|v| v as i32),
             total_messages as i32,
+            folder_type,
             now,
             now,
         ],

@@ -76,10 +76,38 @@ impl RealImapClient {
             let name = mailbox.name().to_string();
             let delim = mailbox.delimiter();
 
-            // Assume folders are selectable and subscribed by default
-            // TODO: Properly parse NameAttribute when API is stabilized
-            let is_selectable = true;
-            let is_subscribed = false;
+            // Parse IMAP attributes to detect special-use folders
+            let attributes: Vec<String> = mailbox
+                .attributes()
+                .iter()
+                .filter_map(|attr| {
+                    // Convert NameAttribute to string representation
+                    let attr_str = format!("{:?}", attr);
+                    if attr_str.starts_with("\\") {
+                        Some(attr_str)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Determine special-use attribute
+            let special_use = attributes
+                .iter()
+                .find(|attr| {
+                    matches!(
+                        attr.as_str(),
+                        "\\Sent" | "\\Inbox" | "\\Drafts" | "\\Trash" | "\\Junk" | "\\Archive"
+                    )
+                })
+                .cloned();
+
+            // Detect folder type from special-use or folder name
+            let folder_type = Self::detect_folder_type(&name, &special_use);
+
+            // Check if folder is selectable (has \Noselect attribute if not selectable)
+            let is_selectable = !attributes.contains(&"\\Noselect".to_string());
+            let is_subscribed = false; // Will be updated by LSUB later if needed
 
             folders.push(FolderMetadata {
                 name: name.clone(),
@@ -87,10 +115,83 @@ impl RealImapClient {
                 delimiter: delim.map(|d| d.to_string()),
                 is_selectable,
                 is_subscribed,
+                special_use,
+                folder_type,
             });
         }
 
+        // Sort folders by priority (Sent first, then Inbox, etc.)
+        folders.sort_by_key(|f| f.folder_type.priority_sync_order());
+
         Ok(folders)
+    }
+
+    /// Detect folder type from name patterns and IMAP special-use attributes
+    fn detect_folder_type(name: &str, special_use: &Option<String>) -> FolderType {
+        // First check special-use attributes
+        if let Some(ref attr) = special_use {
+            match attr.as_str() {
+                "\\Inbox" => return FolderType::Inbox,
+                "\\Sent" => return FolderType::Sent,
+                "\\Drafts" => return FolderType::Drafts,
+                "\\Trash" => return FolderType::Trash,
+                "\\Junk" | "\\Spam" => return FolderType::Spam,
+                "\\Archive" => return FolderType::Archive,
+                _ => {}
+            }
+        }
+
+        // Fall back to name-based detection (case-insensitive)
+        let name_lower = name.to_lowercase();
+
+        // Gmail paths
+        if name_lower.contains("[gmail]/sent") || name_lower.contains("[googlemail]/sent") {
+            return FolderType::Sent;
+        }
+        if name_lower == "[gmail]/inbox" || name_lower == "[googlemail]/inbox" {
+            return FolderType::Inbox;
+        }
+        if name_lower.contains("[gmail]/draft") || name_lower.contains("[googlemail]/draft") {
+            return FolderType::Drafts;
+        }
+        if name_lower.contains("[gmail]/trash") || name_lower.contains("[googlemail]/trash") {
+            return FolderType::Trash;
+        }
+        if name_lower.contains("[gmail]/spam")
+            || name_lower.contains("[googlemail]/spam")
+            || name_lower.contains("[gmail]/junk")
+            || name_lower.contains("[googlemail]/junk")
+        {
+            return FolderType::Spam;
+        }
+        if name_lower.contains("[gmail]/archive") || name_lower.contains("[googlemail]/archive") {
+            return FolderType::Archive;
+        }
+        if name_lower.contains("[gmail]/all mail") || name_lower.contains("[googlemail]/all mail") {
+            return FolderType::Archive;
+        }
+
+        // Common folder names
+        if name_lower == "inbox" {
+            return FolderType::Inbox;
+        }
+        if name_lower == "sent" || name_lower == "sent items" || name_lower == "sent messages" {
+            return FolderType::Sent;
+        }
+        if name_lower == "drafts" || name_lower == "draft" {
+            return FolderType::Drafts;
+        }
+        if name_lower == "trash" || name_lower == "deleted" || name_lower == "deleted items" {
+            return FolderType::Trash;
+        }
+        if name_lower == "spam" || name_lower == "junk" {
+            return FolderType::Spam;
+        }
+        if name_lower == "archive" || name_lower == "archived" {
+            return FolderType::Archive;
+        }
+
+        FolderType::Other
     }
 
     pub fn mailbox_status(&mut self, mailbox: &str) -> Result<u32> {
@@ -206,11 +307,13 @@ impl RealImapClient {
 
         let message_id = parsed.message_id().map(|s| s.to_string());
 
+        // Extract In-Reply-To header for reply correlation
+        let in_reply_to = parsed.in_reply_to().as_text().map(|s| s.to_string());
+
         let flags = message.flags();
         let is_read = flags.contains(&imap::types::Flag::Seen);
         let is_flagged = flags.contains(&imap::types::Flag::Flagged);
         let is_draft = flags.contains(&imap::types::Flag::Draft);
-        let is_answered = flags.contains(&imap::types::Flag::Answered);
 
         let date_received = message
             .internal_date()
@@ -226,6 +329,7 @@ impl RealImapClient {
         Ok(ParsedEmail {
             uid,
             message_id,
+            in_reply_to,
             subject,
             from_address: from.as_ref().and_then(|(addr, _)| addr.clone()),
             from_name: from.and_then(|(_, name)| name),
@@ -240,7 +344,6 @@ impl RealImapClient {
             is_read,
             is_flagged,
             is_draft,
-            is_answered,
             has_attachments,
             attachment_count: attachment_count as i32,
             size_bytes: size_bytes.map(|s| s as i32),
@@ -252,6 +355,8 @@ impl RealImapClient {
 pub struct ParsedEmail {
     pub uid: u32,
     pub message_id: Option<String>,
+    /// References the Message-ID of the email this is a reply to
+    pub in_reply_to: Option<String>,
     pub subject: Option<String>,
     pub from_address: Option<String>,
     pub from_name: Option<String>,
@@ -266,7 +371,6 @@ pub struct ParsedEmail {
     pub is_read: bool,
     pub is_flagged: bool,
     pub is_draft: bool,
-    pub is_answered: bool,
     pub has_attachments: bool,
     pub attachment_count: i32,
     pub size_bytes: Option<i32>,
@@ -280,6 +384,35 @@ pub struct FolderMetadata {
     pub delimiter: Option<String>,
     pub is_selectable: bool,
     pub is_subscribed: bool,
+    /// IMAP SPECIAL-USE attribute, e.g., "\\Sent", "\\Inbox", "\\Drafts"
+    pub special_use: Option<String>,
+    /// Detected folder type based on name or special-use attributes
+    pub folder_type: FolderType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FolderType {
+    Inbox,
+    Sent,
+    Drafts,
+    Trash,
+    Spam,
+    Archive,
+    Other,
+}
+
+impl FolderType {
+    pub fn priority_sync_order(&self) -> i32 {
+        match self {
+            FolderType::Sent => 0, // Sync Sent first
+            FolderType::Inbox => 1,
+            FolderType::Drafts => 2,
+            FolderType::Archive => 3,
+            FolderType::Spam => 4,
+            FolderType::Trash => 5,
+            FolderType::Other => 6,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

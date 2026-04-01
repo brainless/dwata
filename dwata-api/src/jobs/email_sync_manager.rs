@@ -271,6 +271,7 @@ impl EmailSyncManager {
         for folder in &folders {
             match imap_client.mailbox_status(&folder.imap_path) {
                 Ok(status) => {
+                    let folder_type_str = format!("{:?}", folder.folder_type);
                     if let Err(e) = folders::upsert_folder_from_imap(
                         db_conn.clone(),
                         credential_id,
@@ -280,6 +281,7 @@ impl EmailSyncManager {
                         folder.is_subscribed,
                         None,
                         status,
+                        Some(&folder_type_str),
                     )
                     .await
                     {
@@ -493,6 +495,7 @@ impl EmailSyncManager {
                                     parsed.uid,
                                     db_folder.id,
                                     parsed.message_id.as_deref(),
+                                    parsed.in_reply_to.as_deref(),
                                     parsed.subject.as_deref(),
                                     &parsed.from_address.unwrap_or_default(),
                                     parsed.from_name.as_deref(),
@@ -507,7 +510,6 @@ impl EmailSyncManager {
                                     parsed.is_read,
                                     parsed.is_flagged,
                                     parsed.is_draft,
-                                    parsed.is_answered,
                                     parsed.has_attachments,
                                     parsed.attachment_count,
                                     parsed.size_bytes,

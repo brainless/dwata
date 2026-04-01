@@ -5,7 +5,7 @@ use rusqlite::params_from_iter;
 use rusqlite::types::Value;
 use rusqlite::OptionalExtension;
 use shared_types::email::{Email, EmailAddress};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tokio::task;
 
 #[derive(Debug, Clone)]
@@ -48,7 +48,6 @@ pub async fn insert_email(
     is_read: bool,
     is_flagged: bool,
     is_draft: bool,
-    is_answered: bool,
     has_attachments: bool,
     attachment_count: i32,
     size_bytes: Option<i32>,
@@ -64,9 +63,9 @@ pub async fn insert_email(
         "INSERT INTO emails
          (credential_id, uid, folder_id, message_id, subject, from_address, from_name,
            to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-           body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+           body_text, body_html, is_read, is_flagged, is_draft,
            has_attachments, attachment_count, size_bytes, thread_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(credential_id, folder_id, uid) DO UPDATE SET
              updated_at = excluded.updated_at
            RETURNING id",
@@ -89,7 +88,6 @@ pub async fn insert_email(
             is_read,
             is_flagged,
             is_draft,
-            is_answered,
             has_attachments,
             attachment_count,
             size_bytes,
@@ -184,7 +182,7 @@ pub async fn get_email(conn: AsyncDbConnection, email_id: i64) -> Result<Email> 
         let mut stmt = conn.prepare(
             "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                     to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                    body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                    body_text, body_html, is_read, is_flagged, is_draft,
                     has_attachments, attachment_count, size_bytes, thread_id,
                     created_at, updated_at
              FROM emails WHERE id = ?"
@@ -215,13 +213,12 @@ pub async fn get_email(conn: AsyncDbConnection, email_id: i64) -> Result<Email> 
                 is_read: row.get(16)?,
                 is_flagged: row.get(17)?,
                 is_draft: row.get(18)?,
-                is_answered: row.get(19)?,
-                has_attachments: row.get(20)?,
-                attachment_count: row.get(21)?,
-                size_bytes: row.get(22)?,
-                thread_id: row.get(23)?,
-                created_at: row.get(24)?,
-                updated_at: row.get(25)?,
+                has_attachments: row.get(19)?,
+                attachment_count: row.get(20)?,
+                size_bytes: row.get(21)?,
+                thread_id: row.get(22)?,
+                created_at: row.get(23)?,
+                updated_at: row.get(24)?,
             })
         })?;
 
@@ -249,7 +246,7 @@ pub async fn list_emails_by_ids(conn: AsyncDbConnection, email_ids: &[i64]) -> R
             let query = format!(
                 "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                         to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                        body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                        body_text, body_html, is_read, is_flagged, is_draft,
                         has_attachments, attachment_count, size_bytes, thread_id,
                         created_at, updated_at
                  FROM emails
@@ -284,13 +281,12 @@ pub async fn list_emails_by_ids(conn: AsyncDbConnection, email_ids: &[i64]) -> R
                     is_read: row.get(16)?,
                     is_flagged: row.get(17)?,
                     is_draft: row.get(18)?,
-                    is_answered: row.get(19)?,
-                    has_attachments: row.get(20)?,
-                    attachment_count: row.get(21)?,
-                    size_bytes: row.get(22)?,
-                    thread_id: row.get(23)?,
-                    created_at: row.get(24)?,
-                    updated_at: row.get(25)?,
+                    has_attachments: row.get(19)?,
+                    attachment_count: row.get(20)?,
+                    size_bytes: row.get(21)?,
+                    thread_id: row.get(22)?,
+                    created_at: row.get(23)?,
+                    updated_at: row.get(24)?,
                 })
             })?;
 
@@ -326,7 +322,7 @@ pub async fn list_emails(
                 format!(
                     "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                             to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                            body_text, body_html, is_read, is_flagged, is_draft,
                             has_attachments, attachment_count, size_bytes, thread_id,
                             created_at, updated_at
                      FROM emails WHERE credential_id = {} AND folder_id = {}
@@ -338,7 +334,7 @@ pub async fn list_emails(
                 format!(
                     "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                             to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                            body_text, body_html, is_read, is_flagged, is_draft,
                             has_attachments, attachment_count, size_bytes, thread_id,
                             created_at, updated_at
                      FROM emails WHERE credential_id = {}
@@ -350,7 +346,7 @@ pub async fn list_emails(
                 format!(
                     "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                             to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                            body_text, body_html, is_read, is_flagged, is_draft,
                             has_attachments, attachment_count, size_bytes, thread_id,
                             created_at, updated_at
                      FROM emails WHERE folder_id = {}
@@ -362,7 +358,7 @@ pub async fn list_emails(
                 format!(
                     "SELECT id, credential_id, uid, folder_id, message_id, subject, from_address, from_name,
                             to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                            body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                            body_text, body_html, is_read, is_flagged, is_draft,
                             has_attachments, attachment_count, size_bytes, thread_id,
                             created_at, updated_at
                      FROM emails ORDER BY date_received DESC
@@ -399,13 +395,12 @@ pub async fn list_emails(
                     is_read: row.get(16)?,
                     is_flagged: row.get(17)?,
                     is_draft: row.get(18)?,
-                    is_answered: row.get(19)?,
-                    has_attachments: row.get(20)?,
-                    attachment_count: row.get(21)?,
-                    size_bytes: row.get(22)?,
-                    thread_id: row.get(23)?,
-                    created_at: row.get(24)?,
-                    updated_at: row.get(25)?,
+                    has_attachments: row.get(19)?,
+                    attachment_count: row.get(20)?,
+                    size_bytes: row.get(21)?,
+                    thread_id: row.get(22)?,
+                    created_at: row.get(23)?,
+                    updated_at: row.get(24)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -714,8 +709,7 @@ pub async fn list_emails_by_label(
         let query = format!(
             "SELECT e.id, e.credential_id, e.uid, e.folder_id, e.message_id, e.subject, e.from_address, e.from_name,
                     e.to_addresses, e.cc_addresses, e.bcc_addresses, e.reply_to, e.date_sent, e.date_received,
-                    e.body_text, e.body_html, e.is_read, e.is_flagged, e.is_draft, e.is_answered,
-                    e.has_attachments, e.attachment_count, e.size_bytes, e.thread_id,
+                    e.body_text, e.body_html, e.is_read, e.is_flagged, e.is_draft, e.e.has_attachments, e.attachment_count, e.size_bytes, e.thread_id,
                     e.created_at, e.updated_at
              FROM emails e
              INNER JOIN email_label_associations ela ON e.id = ela.email_id
@@ -752,13 +746,12 @@ pub async fn list_emails_by_label(
                     is_read: row.get(16)?,
                     is_flagged: row.get(17)?,
                     is_draft: row.get(18)?,
-                    is_answered: row.get(19)?,
-                    has_attachments: row.get(20)?,
-                    attachment_count: row.get(21)?,
-                    size_bytes: row.get(22)?,
-                    thread_id: row.get(23)?,
-                    created_at: row.get(24)?,
-                    updated_at: row.get(25)?,
+                    has_attachments: row.get(19)?,
+                    attachment_count: row.get(20)?,
+                    size_bytes: row.get(21)?,
+                    thread_id: row.get(22)?,
+                    created_at: row.get(23)?,
+                    updated_at: row.get(24)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -779,6 +772,7 @@ pub async fn insert_email_with_labels(
     uid: u32,
     folder_id: i64,
     message_id: Option<&str>,
+    in_reply_to: Option<&str>,
     subject: Option<&str>,
     from_address: &str,
     from_name: Option<&str>,
@@ -793,7 +787,6 @@ pub async fn insert_email_with_labels(
     is_read: bool,
     is_flagged: bool,
     is_draft: bool,
-    is_answered: bool,
     has_attachments: bool,
     attachment_count: i32,
     size_bytes: Option<i32>,
@@ -801,6 +794,7 @@ pub async fn insert_email_with_labels(
 ) -> Result<i64> {
     // Clone everything we need inside spawn_blocking
     let message_id = message_id.map(str::to_string);
+    let in_reply_to = in_reply_to.map(str::to_string);
     let subject = subject.map(str::to_string);
     let from_address = from_address.to_string();
     let from_name = from_name.map(str::to_string);
@@ -839,20 +833,20 @@ pub async fn insert_email_with_labels(
         let result: Result<i64> = (|| {
             let email_id: i64 = conn.query_row(
                 "INSERT INTO emails
-                 (credential_id, uid, folder_id, message_id, subject, from_address, from_name,
+                 (credential_id, uid, folder_id, message_id, in_reply_to, subject, from_address, from_name,
                    to_addresses, cc_addresses, bcc_addresses, reply_to, date_sent, date_received,
-                   body_text, body_html, is_read, is_flagged, is_draft, is_answered,
+                   body_text, body_html, is_read, is_flagged, is_draft,
                    has_attachments, attachment_count, size_bytes, thread_id, created_at, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                   ON CONFLICT(credential_id, folder_id, uid) DO UPDATE SET updated_at = excluded.updated_at
                   RETURNING id",
                 rusqlite::params![
-                    credential_id, uid as i32, folder_id, message_id, subject,
+                    credential_id, uid as i32, folder_id, message_id, in_reply_to, subject,
                     from_address, from_name,
                     &to_json, &cc_json, &bcc_json,
                     reply_to, date_sent, date_received,
                     body_text, body_html,
-                    is_read, is_flagged, is_draft, is_answered,
+                    is_read, is_flagged, is_draft,
                     has_attachments, attachment_count, size_bytes,
                     None::<String>, now, now
                 ],
@@ -907,7 +901,7 @@ pub async fn list_emails_for_indexing_page(
             "SELECT id, credential_id, uid, folder_id, message_id,
                     subject, from_address, from_name, to_addresses, cc_addresses, bcc_addresses,
                     reply_to, date_sent, date_received, body_text, body_html, is_read,
-                    is_flagged, is_draft, is_answered, has_attachments, attachment_count,
+                    is_flagged, is_draft, has_attachments, attachment_count,
                     size_bytes, thread_id, created_at, updated_at
              FROM emails
              WHERE id > ?1
@@ -936,13 +930,12 @@ pub async fn list_emails_for_indexing_page(
                 is_read: row.get(16)?,
                 is_flagged: row.get(17)?,
                 is_draft: row.get(18)?,
-                is_answered: row.get(19)?,
-                has_attachments: row.get(20)?,
-                attachment_count: row.get(21)?,
-                size_bytes: row.get(22)?,
-                thread_id: row.get(23)?,
-                created_at: row.get(24)?,
-                updated_at: row.get(25)?,
+                has_attachments: row.get(19)?,
+                attachment_count: row.get(20)?,
+                size_bytes: row.get(21)?,
+                thread_id: row.get(22)?,
+                created_at: row.get(23)?,
+                updated_at: row.get(24)?,
             };
 
             // Use simple_email_content to prefer plain text but fall back to HTML-to-text conversion
@@ -983,7 +976,7 @@ pub async fn get_emails_by_ids(conn: AsyncDbConnection, ids: &[i64]) -> Result<V
             "SELECT id, credential_id, uid, folder_id, message_id,
                     subject, from_address, from_name, to_addresses, cc_addresses, bcc_addresses,
                     reply_to, date_sent, date_received, body_text, body_html, is_read,
-                    is_flagged, is_draft, is_answered, has_attachments, attachment_count,
+                    is_flagged, is_draft, has_attachments, attachment_count,
                     size_bytes, thread_id, created_at, updated_at
              FROM emails
              WHERE id IN ({})",
@@ -1017,13 +1010,12 @@ pub async fn get_emails_by_ids(conn: AsyncDbConnection, ids: &[i64]) -> Result<V
                     is_read: row.get(16)?,
                     is_flagged: row.get(17)?,
                     is_draft: row.get(18)?,
-                    is_answered: row.get(19)?,
-                    has_attachments: row.get(20)?,
-                    attachment_count: row.get(21)?,
-                    size_bytes: row.get(22)?,
-                    thread_id: row.get(23)?,
-                    created_at: row.get(24)?,
-                    updated_at: row.get(25)?,
+                    has_attachments: row.get(19)?,
+                    attachment_count: row.get(20)?,
+                    size_bytes: row.get(21)?,
+                    thread_id: row.get(22)?,
+                    created_at: row.get(23)?,
+                    updated_at: row.get(24)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1244,6 +1236,95 @@ pub async fn list_unmatched_template_candidate_emails_by_sender_and_email_ids(
             rows.truncate(limit);
         }
         Ok(rows.into_iter().map(|(_, row)| row).collect())
+    })
+    .await?
+}
+// ... existing content ...
+
+/// Check if an email was answered by the user using the reliable method.
+/// Looks for a sent email where in_reply_to matches this email's message_id.
+/// This is more reliable than the IMAP \Answered flag which is client-dependent.
+pub async fn check_email_answered(conn: AsyncDbConnection, email_id: i64) -> Result<bool> {
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+
+        let answered: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                SELECT 1 
+                FROM emails e
+                JOIN email_folders ef ON e.folder_id = ef.id
+                WHERE ef.folder_type = 'Sent'
+                  AND e.in_reply_to = (
+                      SELECT message_id FROM emails WHERE id = ? AND message_id IS NOT NULL
+                  )
+                LIMIT 1
+            )",
+                [email_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        Ok(answered)
+    })
+    .await?
+}
+
+/// Batch check if emails were answered by the user.
+/// Returns a map of email_id -> was_answered
+pub async fn batch_check_emails_answered(
+    conn: AsyncDbConnection,
+    email_ids: &[i64],
+) -> Result<HashMap<i64, bool>> {
+    if email_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let email_ids = email_ids.to_vec();
+    task::spawn_blocking(move || {
+        let conn = conn.get_blocking();
+        let mut result = HashMap::new();
+
+        // Initialize all as false
+        for id in &email_ids {
+            result.insert(*id, false);
+        }
+
+        // Query in chunks to handle large lists
+        for chunk in email_ids.chunks(900) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let query = format!(
+                "SELECT e.id, EXISTS(
+                    SELECT 1 
+                    FROM emails sent
+                    JOIN email_folders ef ON sent.folder_id = ef.id
+                    WHERE ef.folder_type = 'Sent'
+                      AND sent.in_reply_to = e.message_id
+                    LIMIT 1
+                ) as was_answered
+                FROM emails e
+                WHERE e.id IN ({}) AND e.message_id IS NOT NULL",
+                placeholders
+            );
+
+            let mut stmt = conn.prepare(&query)?;
+            let params: Vec<Value> = chunk.iter().copied().map(Value::from).collect();
+
+            let rows = stmt.query_map(params_from_iter(params), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, bool>(1)?))
+            })?;
+
+            for row in rows {
+                let (id, answered) = row?;
+                result.insert(id, answered);
+            }
+        }
+
+        Ok(result)
     })
     .await?
 }
