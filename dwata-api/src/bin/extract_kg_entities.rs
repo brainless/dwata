@@ -315,6 +315,28 @@ impl ExtractionStateProvider for CliExtractionStateProvider {
 }
 
 // ---------------------------------------------------------------------------
+// No-op persistence provider for CLI (display-only mode, no DB writes)
+// ---------------------------------------------------------------------------
+
+use dwata_agents::entity_types::ExtractedEntitiesParams;
+use dwata_agents::kg_persistence::KgPersistenceProvider;
+
+struct NoOpKgPersistenceProvider;
+
+#[async_trait::async_trait]
+impl KgPersistenceProvider for NoOpKgPersistenceProvider {
+    async fn persist_pass_result(
+        &self,
+        _params: &ExtractedEntitiesParams,
+        _source_email_id: Option<i64>,
+        _sender_email: Option<&str>,
+    ) -> anyhow::Result<()> {
+        // No-op: CLI runs in display-only mode, no DB writes
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
@@ -453,10 +475,12 @@ async fn main() -> Result<()> {
 
     let email_content = format!("Subject: {}\n\n{}", simple.subject, simple.body);
 
+    let persistence = Arc::new(NoOpKgPersistenceProvider);
+
     let mut agent = KgEmailExtractionAgent::new(
         llm_client,
         storage,
-        state_provider.clone(),
+        persistence,
         selected_model.to_string(),
         email_content,
     )

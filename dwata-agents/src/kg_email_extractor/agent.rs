@@ -10,7 +10,7 @@ use crate::extraction_state::{
     count_entities_by_type, ExtractionStateProvider, ExtractionStep, RetryReason,
 };
 use crate::kg_email_extractor::types::LabelDocumentParams;
-use crate::kg_pass_context::{KgExtractionPass, KgPassType};
+use crate::kg_pass_context::{KgExtractionPass, KgPassType, KgPassTypeExt};
 use crate::kg_persistence::KgPersistenceProvider;
 use crate::storage::{AgentStorage, Message};
 

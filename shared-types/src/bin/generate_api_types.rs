@@ -107,6 +107,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(FinancialPagination::export_to_string()?));
     types.push(clean_type(ListFinancialBillsResponse::export_to_string()?));
 
+    // KG Extraction types
+    types.push(clean_type(ExtractionStepState::export_to_string()?));
+    types.push(clean_type(ExtractionStep::export_to_string()?));
+    types.push(clean_type(ExtractionSummary::export_to_string()?));
+    types.push(clean_type(ExtractionStatus::export_to_string()?));
+    types.push(clean_type(PassStepState::export_to_string()?));
+    types.push(clean_type(PassStatus::export_to_string()?));
+    types.push(clean_type(RetryReason::export_to_string()?));
+    types.push(clean_type(NamedEntityKind::export_to_string()?));
+    types.push(clean_type(EntitySearchResult::export_to_string()?));
+    types.push(clean_type(KgPassType::export_to_string()?));
+    types.push(clean_type(LabelDocumentParams::export_to_string()?));
+    types.push(clean_type(DocumentType::export_to_string()?));
+    types.push(clean_type(ExtractedEntitiesParams::export_to_string()?));
+    types.push(clean_type(ExtractedLocation::export_to_string()?));
+    types.push(clean_type(ExtractedOrganisation::export_to_string()?));
+    types.push(clean_type(ExtractedPerson::export_to_string()?));
+    types.push(clean_type(ExtractedBill::export_to_string()?));
+    types.push(clean_type(ExtractedTransaction::export_to_string()?));
+    types.push(clean_type(ExtractedSubscription::export_to_string()?));
+    types.push(clean_type(ExtractedOrder::export_to_string()?));
+    types.push(clean_type(ExtractedEvent::export_to_string()?));
+
     let output_dir = Path::new("../gui/src/api-types");
     fs::create_dir_all(output_dir)?;
 

@@ -27,7 +27,7 @@ pub use extraction_state::{
 pub use kg_email_extractor::{
     DocumentType, KgEmailExtractionAgent, LabelDocumentParams, TemplateDocumentLabelerAgent,
 };
-pub use kg_pass_context::{KgExtractionPass, KgPassType};
+pub use kg_pass_context::{KgExtractionPass, KgPassType, KgPassTypeExt};
 pub use kg_persistence::KgPersistenceProvider;
 pub use statement_extractor::{ColumnarSheet, StatementField, StatementTemplate};
 pub use storage::{AgentStorage, Message, Session, ToolCall};

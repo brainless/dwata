@@ -517,26 +517,9 @@ export type OrdersResponse = { orders: Array<Order>, };
 
 
 /**
- * Financial summary/overview
- */
-export type FinancialSummary = { total_income: number, total_expenses: number, net_balance: number, pending_bills: number, overdue_payments: number, currency: string, period_start: string, period_end: string, };
-
-
-/**
  * Financial extraction source summary
  */
 export type FinancialExtractionSummary = { source_count: bigint, transaction_count: bigint, last_extracted_at: bigint | null, };
-
-
-import type { Bill } from "./Bill";
-import type { CategoryBreakdown } from "./CategoryBreakdown";
-import type { FinancialSummary } from "./FinancialSummary";
-import type { Transaction } from "./Transaction";
-
-/**
- * Financial health metrics
- */
-export type FinancialHealth = { summary: FinancialSummary, recent_transactions: Array<Transaction>, upcoming_bills: Array<Bill>, category_breakdown: Array<CategoryBreakdown>, };
 
 
 import type { TransactionCategory } from "./TransactionCategory";
@@ -556,96 +539,155 @@ import type { FinancialPagination } from "./FinancialPagination";
 export type ListFinancialBillsResponse = { bills: Array<Bill>, pagination: FinancialPagination, };
 
 
-export type FinancialTemplateType = "bill" | "transaction";
+import type { ExtractionStep } from "./ExtractionStep";
+import type { ExtractionSummary } from "./ExtractionSummary";
+import type { PassStepState } from "./PassStepState";
+
+/**
+ * Complete state for a single email extraction
+ */
+export type ExtractionStepState = { session_id: bigint, summary: ExtractionSummary, steps: Array<ExtractionStep>, pass_states: { [key: string]: PassStepState }, };
 
 
-export type FinancialTemplateStatus = "active" | "superseded" | "disabled";
+import type { EntitySearchResult } from "./EntitySearchResult";
+import type { ExtractedEntitiesParams } from "./ExtractedEntitiesParams";
+import type { KgPassType } from "./KgPassType";
+import type { LabelDocumentParams } from "./LabelDocumentParams";
+import type { RetryReason } from "./RetryReason";
+
+export type ExtractionStep = { "step_type": "document_labeled", timestamp: bigint, label: LabelDocumentParams, } | { "step_type": "pass_started", timestamp: bigint, pass_type: KgPassType, pass_name: string, } | { "step_type": "search_performed", timestamp: bigint, pass_type: KgPassType, keywords: string, entity_types: Array<string>, results: Array<EntitySearchResult>, result_count: number, } | { "step_type": "sender_search_performed", timestamp: bigint, pass_type: KgPassType, sender_email: string, results: Array<EntitySearchResult>, result_count: number, } | { "step_type": "entities_extracted", timestamp: bigint, pass_type: KgPassType, entities: ExtractedEntitiesParams, entity_counts: { [key: string]: number }, total_entities: number, } | { "step_type": "pass_completed", timestamp: bigint, pass_type: KgPassType, entities_persisted: boolean, } | { "step_type": "pass_failed", timestamp: bigint, pass_type: KgPassType, error_message: string, } | { "step_type": "tool_call_made", timestamp: bigint, pass_type: KgPassType, tool_name: string, iteration: number, } | { "step_type": "retry_occurred", timestamp: bigint, pass_type: KgPassType, reason: RetryReason, attempt: number, max_attempts: number, };
 
 
-import type { DataSourceType } from "./DataSourceType";
-import type { FinancialTemplateStatus } from "./FinancialTemplateStatus";
-import type { FinancialTemplateType } from "./FinancialTemplateType";
+import type { ExtractionStatus } from "./ExtractionStatus";
 
-export type FinancialExtractionTemplate = { id: bigint, data_source_type: DataSourceType, data_source_id: string, template_type: FinancialTemplateType, template_body: string, status: FinancialTemplateStatus, version: number, created_at: bigint, updated_at: bigint, };
-
-
-export type FinancialTemplateVariable = { id: bigint, template_id: bigint, placeholder_name: string, target_field: string, created_at: bigint, };
+/**
+ * Summary statistics for an extraction run
+ */
+export type ExtractionSummary = { started_at: bigint, completed_at: bigint | null, email_id: bigint | null, sender_email: string | null, status: ExtractionStatus, total_passes: number, completed_passes: number, failed_passes: number, total_entities_extracted: number, total_search_results: number, error_message: string | null, };
 
 
-import type { DataSourceType } from "./DataSourceType";
-
-export type FinancialTemplateApplicability = { id: bigint, template_id: bigint, data_source_type: DataSourceType, data_source_id: string, match_score: number | null, created_at: bigint, };
+export type ExtractionStatus = "running" | "completed" | "failed";
 
 
-export type DetectFinancialTemplatesRequest = { credential_id: bigint | null, max_candidate_emails: number | null, max_templates_per_sender: number | null, };
+import type { EntitySearchResult } from "./EntitySearchResult";
+import type { ExtractedEntitiesParams } from "./ExtractedEntitiesParams";
+import type { KgPassType } from "./KgPassType";
+import type { PassStatus } from "./PassStatus";
+
+/**
+ * Per-pass state tracking
+ */
+export type PassStepState = { pass_type: KgPassType, pass_name: string, started_at: bigint | null, completed_at: bigint | null, status: PassStatus, search_keywords: string | null, search_results: Array<EntitySearchResult>, entities_extracted: ExtractedEntitiesParams | null, error_message: string | null, };
 
 
-export type DetectedFinancialTemplateVariable = { placeholder_name: string, target_field: string, };
+export type PassStatus = "pending" | "running" | "completed" | "failed";
 
 
-import type { DetectedFinancialTemplateVariable } from "./DetectedFinancialTemplateVariable";
-import type { FinancialTemplateType } from "./FinancialTemplateType";
-
-export type DetectedFinancialTemplate = { template_id: bigint, sender_email: string, template_type: FinancialTemplateType, template_body: string, translated_template_body: string, source_email_ids: Array<bigint>, variables: Array<DetectedFinancialTemplateVariable>, };
+export type RetryReason = "parse_failed" | "confirm_before_submit" | "empty_confirm" | "no_tool_calls";
 
 
-import type { DetectedFinancialTemplate } from "./DetectedFinancialTemplate";
-
-export type DetectFinancialTemplatesResponse = { candidate_sender_count: number, candidate_email_count: number, templates: Array<DetectedFinancialTemplate>, };
+export type NamedEntityKind = "location" | "organisation" | "person" | "bill" | "transaction" | "subscription" | "order" | "event";
 
 
-export type TemplateDetectionSenderRank = { sender_email: string, rank: number, total_candidate_emails: number, recent_candidate_emails: number, latest_email_ts: bigint, max_existing_cluster_size: number, };
+import type { NamedEntityKind } from "./NamedEntityKind";
+
+/**
+ * Result of an entity search
+ */
+export type EntitySearchResult = { id: bigint, entity_type: NamedEntityKind, score: number, name: string, search_summary: string | null, };
 
 
-import type { DetectedFinancialTemplateVariable } from "./DetectedFinancialTemplateVariable";
-import type { FinancialTemplateType } from "./FinancialTemplateType";
-
-export type TemplateDetectionGeneratedTemplateDebug = { template_id: bigint | null, template_type: FinancialTemplateType | null, template_body: string, translated_template_body: string, source_email_ids: Array<bigint>, variables: Array<DetectedFinancialTemplateVariable>, has_bill: boolean, discarded_reason: string | null, };
+export type KgPassType = "identity_resolution" | "financial_extraction" | "event_extraction" | "order_extraction";
 
 
-import type { TemplateDetectionGeneratedTemplateDebug } from "./TemplateDetectionGeneratedTemplateDebug";
+import type { DocumentType } from "./DocumentType";
 
-export type TemplateDetectionSenderDebug = { sender_email: string, rank: number, sender_candidate_count: number, existing_template_count: number, initially_matched_count: number, fresh_unmatched_count: number, pool_count: number, generated_templates: Array<TemplateDetectionGeneratedTemplateDebug>, error: string | null, skipped_reason: string | null, };
-
-
-import type { TemplateDetectionSenderDebug } from "./TemplateDetectionSenderDebug";
-import type { TemplateDetectionSenderRank } from "./TemplateDetectionSenderRank";
-
-export type TemplateDetectionDebugState = { keyword_query: string, keyword_list: Array<string>, max_candidate_emails: number, matched_email_ids_count: number, sender_ranking: Array<TemplateDetectionSenderRank>, candidate_email_ids: Array<bigint>, sender_debug: Array<TemplateDetectionSenderDebug>, };
-
-
-export type FinancialTemplateDetectionJobStatus = "idle" | "running" | "completed" | "failed";
-
-
-import type { FinancialTemplateDetectionJobStatus } from "./FinancialTemplateDetectionJobStatus";
-import type { TemplateDetectionDebugState } from "./TemplateDetectionDebugState";
-
-export type FinancialTemplateDetectionJobState = { run_id: bigint, status: FinancialTemplateDetectionJobStatus, started_at: bigint | null, finished_at: bigint | null, total_senders: number, processed_senders: number, current_sender: string | null, candidate_sender_count: number, candidate_email_count: number, new_templates_count: number, error: string | null, debug: TemplateDetectionDebugState | null, };
-
-
-export type TemplateDetectionSenderLlmDraftPreview = { seed_text: string, cluster_size: number, selected_email_ids: Array<bigint>, full_template: string, sample_subject: string, sample_body: string, };
-
-
-import type { TemplateDetectionSenderLlmDraftPreview } from "./TemplateDetectionSenderLlmDraftPreview";
-
-export type TemplateDetectionSenderLlmInputsResponse = { sender_email: string, sender_candidate_count: number, existing_template_count: number, initially_matched_count: number, fresh_unmatched_count: number, pool_count: number, drafts: Array<TemplateDetectionSenderLlmDraftPreview>, };
-
-
-export type FinancialTemplateFieldMapping = { placeholder_name: string, target_field: string, };
-
-
-import type { FinancialExtractionTemplate } from "./FinancialExtractionTemplate";
-import type { FinancialTemplateFieldMapping } from "./FinancialTemplateFieldMapping";
-
-export type FinancialTemplateWithVariables = { template: FinancialExtractionTemplate, variables: Array<FinancialTemplateFieldMapping>, };
-
-
-import type { FinancialTemplateWithVariables } from "./FinancialTemplateWithVariables";
-
-export type ListFinancialTemplatesResponse = { templates: Array<FinancialTemplateWithVariables>, };
+/**
+ * Result of the document labeler agent.
+ *
+ * Drives which downstream extractors are run on this template.
+ */
+export type LabelDocumentParams = { 
+/**
+ * The primary type of this financial document. Choose the single best match:
+ * - "bill": you owe money — has amount due, due date, billing period
+ * - "invoice": you are owed money
+ * - "payment-confirmation": a bank/processor confirms payment was made
+ * - "receipt": merchant-side post-payment confirmation
+ * - "bank-statement": bulk statement (multiple transactions)
+ * - "tax-document": tax-related document
+ */
+doc_type: DocumentType, 
+/**
+ * True if the document contains a payable/due amount with a due date or billing period.
+ * Signals: "amount due", "due by", "billing period", "pay by", "your bill".
+ */
+has_bill: boolean, 
+/**
+ * True if the document confirms a completed payment or debit.
+ * Signals: "payment received", "you paid", "debited", "transaction successful", "amount charged".
+ */
+has_transaction: boolean, 
+/**
+ * True if the document contains a meeting, appointment, or calendar event.
+ * Signals: "meeting", "appointment", "scheduled", "invite", "calendar", "event", "join us".
+ */
+has_event: boolean, 
+/**
+ * True if the document contains an e-commerce order or shipment.
+ * Signals: "order", "shipment", "tracking", "shipped", "delivered", "your purchase", "item".
+ */
+has_order: boolean, };
 
 
-export type DeleteFinancialTemplatesRequest = { template_ids: Array<bigint>, };
+export type DocumentType = "bill" | "invoice" | "payment-confirmation" | "receipt" | "bank-statement" | "tax-document" | "unknown";
 
 
-export type DeleteFinancialTemplatesResponse = { deleted_count: number, };
+import type { ExtractedBill } from "./ExtractedBill";
+import type { ExtractedEvent } from "./ExtractedEvent";
+import type { ExtractedLocation } from "./ExtractedLocation";
+import type { ExtractedOrder } from "./ExtractedOrder";
+import type { ExtractedOrganisation } from "./ExtractedOrganisation";
+import type { ExtractedPerson } from "./ExtractedPerson";
+import type { ExtractedSubscription } from "./ExtractedSubscription";
+import type { ExtractedTransaction } from "./ExtractedTransaction";
+
+export type ExtractedEntitiesParams = { locations: Array<ExtractedLocation> | null, organisations: Array<ExtractedOrganisation> | null, persons: Array<ExtractedPerson> | null, bills: Array<ExtractedBill> | null, transactions: Array<ExtractedTransaction> | null, subscriptions: Array<ExtractedSubscription> | null, orders: Array<ExtractedOrder> | null, events: Array<ExtractedEvent> | null, };
+
+
+export type ExtractedLocation = { id: bigint, 
+/**
+ * Named place, e.g. "Central Park". Omit for pure street addresses.
+ */
+name: string | null, address_line1: string | null, address_line2: string | null, city: string | null, region: string | null, country_code: string | null, postal_code: string | null, search_summary: string | null, };
+
+
+import type { OrganisationRole } from "./OrganisationRole";
+
+export type ExtractedOrganisation = { id: bigint, name: string, industry: string | null, website: string | null, 
+/**
+ * Primary contact or billing email for this organisation, e.g. billing@netflix.com
+ */
+email: string | null, roles: Array<OrganisationRole>, location_id: bigint | null, search_summary: string | null, };
+
+
+export type ExtractedPerson = { id: bigint, email_id: bigint | null, name: string, email: string | null, phone: string | null, organisation_id: bigint | null, search_summary: string | null, };
+
+
+export type ExtractedBill = { id: bigint, total_amount: string | null, currency: string | null, issued_date: string | null, due_date: string | null, billing_period_start: string | null, billing_period_end: string | null, document_reference: string | null, issuer_organisation_id: bigint | null, subscription_id: bigint | null, };
+
+
+export type ExtractedTransaction = { id: bigint, amount: number, currency: string, transaction_date: string | null, transaction_reference: string | null, payer_organisation_id: bigint | null, payee_organisation_id: bigint | null, bill_id: bigint | null, };
+
+
+export type ExtractedSubscription = { id: bigint, organisation_id: bigint | null, service_name: string, plan_name: string | null, billing_cycle: string | null, amount: number | null, currency: string | null, next_billing_date: string | null, start_date: string | null, };
+
+
+export type ExtractedOrder = { id: bigint, organisation_id: bigint | null, order_reference: string | null, order_date: string | null, status: string | null, total_amount: number | null, currency: string | null, items: Array<string> | null, tracking_number: string | null, transaction_id: bigint | null, };
+
+
+export type ExtractedEvent = { id: bigint, name: string, description: string | null, event_date: string | null, location_id: bigint | null, 
+/**
+ * Email addresses of attendees (resolved to person IDs server-side after extraction).
+ */
+attendees: Array<string> | null, };

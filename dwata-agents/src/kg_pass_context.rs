@@ -1,5 +1,3 @@
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::entity_search::{
@@ -7,39 +5,17 @@ use crate::entity_search::{
 };
 use crate::entity_type_manifest::{existing_entities_section, generate_entity_manifest};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum KgPassType {
-    IdentityResolution,
-    FinancialExtraction,
-    EventExtraction,
-    OrderExtraction,
+// Re-export KgPassType from shared_types
+pub use shared_types::KgPassType;
+
+/// Extension trait for KgPassType with agent-specific methods
+pub trait KgPassTypeExt {
+    fn entity_types(&self) -> Vec<NamedEntityKind>;
+    fn search_types(&self) -> Vec<NamedEntityKind>;
 }
 
-impl KgPassType {
-    pub fn name(&self) -> &'static str {
-        match self {
-            KgPassType::IdentityResolution => "identity_resolution",
-            KgPassType::FinancialExtraction => "financial_extraction",
-            KgPassType::EventExtraction => "event_extraction",
-            KgPassType::OrderExtraction => "order_extraction",
-        }
-    }
-
-    pub fn description(&self) -> &'static str {
-        match self {
-            KgPassType::IdentityResolution => {
-                "Extract locations, organisations, and persons with their relationships"
-            }
-            KgPassType::FinancialExtraction => {
-                "Extract bills, transactions, and subscriptions linked to identified entities"
-            }
-            KgPassType::EventExtraction => "Extract calendar events and meetings",
-            KgPassType::OrderExtraction => "Extract e-commerce orders and shipments",
-        }
-    }
-
-    pub fn entity_types(&self) -> Vec<NamedEntityKind> {
+impl KgPassTypeExt for KgPassType {
+    fn entity_types(&self) -> Vec<NamedEntityKind> {
         match self {
             KgPassType::IdentityResolution => vec![
                 NamedEntityKind::Location,
@@ -56,7 +32,7 @@ impl KgPassType {
         }
     }
 
-    pub fn search_types(&self) -> Vec<NamedEntityKind> {
+    fn search_types(&self) -> Vec<NamedEntityKind> {
         match self {
             KgPassType::IdentityResolution => vec![
                 NamedEntityKind::Organisation,
@@ -163,6 +139,8 @@ impl KgExtractionPass {
     }
 
     pub fn build_system_prompt(&self) -> String {
+        use crate::kg_pass_context::KgPassTypeExt;
+
         let manifest = generate_entity_manifest(Some(&self.pass_type.entity_types()));
         let existing = existing_entities_section(&self.existing_entities);
         let pass_desc = self.pass_type.description();
