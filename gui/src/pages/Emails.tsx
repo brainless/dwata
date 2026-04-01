@@ -175,6 +175,11 @@ export default function Emails() {
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays}d ago`;
 
+    const isDifferentYear = date.getFullYear() !== now.getFullYear();
+    if (isDifferentYear) {
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 

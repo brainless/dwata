@@ -136,8 +136,8 @@ pub fn contains_date(text: &str) -> bool {
         // Full date patterns to try
         text,
         // Try first 50 chars, then 100 chars
-        &text[..text.len().min(50)],
-        &text[..text.len().min(100)],
+        &text.chars().take(50).collect::<String>(),
+        &text.chars().take(100).collect::<String>(),
     ];
 
     for pattern in &date_patterns {
