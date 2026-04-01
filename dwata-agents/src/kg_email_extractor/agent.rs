@@ -6,6 +6,9 @@ use nocodo_llm_sdk::Tool;
 
 use crate::entity_search::EntitySearchProvider;
 use crate::entity_types::{ConfirmEntitiesParams, ExtractedEntitiesParams};
+use crate::extraction_state::{
+    count_entities_by_type, ExtractionStateProvider, ExtractionStep, RetryReason,
+};
 use crate::kg_email_extractor::types::LabelDocumentParams;
 use crate::kg_pass_context::{KgExtractionPass, KgPassType};
 use crate::kg_persistence::KgPersistenceProvider;
@@ -30,6 +33,7 @@ pub struct KgEmailExtractionAgent {
     storage: Arc<dyn AgentStorage>,
     persistence: Arc<dyn KgPersistenceProvider>,
     search_provider: Option<Arc<dyn EntitySearchProvider>>,
+    state_provider: Option<Arc<dyn ExtractionStateProvider>>,
     model: String,
     email_content: String,
     label: Option<LabelDocumentParams>,
@@ -52,6 +56,7 @@ impl KgEmailExtractionAgent {
             storage,
             persistence,
             search_provider: None,
+            state_provider: None,
             model,
             email_content,
             label: None,
@@ -64,6 +69,11 @@ impl KgEmailExtractionAgent {
 
     pub fn with_search_provider(mut self, provider: Arc<dyn EntitySearchProvider>) -> Self {
         self.search_provider = Some(provider);
+        self
+    }
+
+    pub fn with_extraction_state(mut self, provider: Arc<dyn ExtractionStateProvider>) -> Self {
+        self.state_provider = Some(provider);
         self
     }
 
@@ -102,7 +112,40 @@ impl KgEmailExtractionAgent {
         format!("{}{}", from_line, self.email_content)
     }
 
+    /// Initialize extraction state if a state provider is configured
+    async fn initialize_state(&self, session_id: i64) {
+        if let Some(ref provider) = self.state_provider {
+            provider
+                .initialize_state(session_id, self.source_email_id, self.sender_email.clone())
+                .await;
+        }
+    }
+
+    /// Record a step event if a state provider is configured
+    async fn record_step(&self, session_id: i64, step: ExtractionStep) {
+        if let Some(ref provider) = self.state_provider {
+            provider.record_step(session_id, step).await;
+        }
+    }
+
+    /// Complete extraction state
+    async fn complete_extraction(&self, session_id: i64) {
+        if let Some(ref provider) = self.state_provider {
+            provider.complete_extraction(session_id).await;
+        }
+    }
+
+    /// Mark extraction as failed
+    async fn fail_extraction(&self, session_id: i64, error_message: String) {
+        if let Some(ref provider) = self.state_provider {
+            provider.fail_extraction(session_id, error_message).await;
+        }
+    }
+
     pub async fn execute(&self, session_id: i64) -> anyhow::Result<()> {
+        // Initialize extraction state
+        self.initialize_state(session_id).await;
+
         let passes = self.active_passes();
         let content = self.build_content();
         tracing::info!(
@@ -115,12 +158,27 @@ impl KgEmailExtractionAgent {
         for (i, pass_type) in passes.iter().enumerate() {
             tracing::info!("Starting KG pass: {:?}", pass_type);
 
+            // Record pass started
+            self.record_step(
+                session_id,
+                ExtractionStep::PassStarted {
+                    timestamp: current_timestamp(),
+                    pass_type: *pass_type,
+                    pass_name: pass_type.name().to_string(),
+                },
+            )
+            .await;
+
             let mut pass = KgExtractionPass::new(*pass_type, content.clone());
             if let Some(ref email) = self.sender_email {
                 pass = pass.with_sender_email(email.clone());
             }
             let pass = pass
                 .populate_existing_entities(self.search_provider.as_ref())
+                .await;
+
+            // Record search steps from the pass
+            self.record_search_steps(session_id, *pass_type, &pass)
                 .await;
 
             let system_prompt = pass.build_system_prompt();
@@ -148,49 +206,128 @@ impl KgEmailExtractionAgent {
                 })
                 .await?;
 
-            let entities = self
+            match self
                 .run_pass_loop(
                     session_id,
+                    *pass_type,
                     pass_type.name(),
                     &system_prompt,
                     expect_non_empty,
                     pass_history_start_index,
                     self.single_tool_submission,
                 )
-                .await?;
+                .await
+            {
+                Ok(entities) => {
+                    tracing::info!(
+                        "Persisting entities from pass {:?} (source_email_id={:?})",
+                        pass_type,
+                        self.source_email_id
+                    );
 
-            tracing::info!(
-                "Persisting entities from pass {:?} (source_email_id={:?})",
-                pass_type,
-                self.source_email_id
-            );
-
-            self.persistence
-                .persist_pass_result(
-                    &entities,
-                    self.source_email_id,
-                    self.sender_email.as_deref(),
-                )
-                .await?;
-
-            // Notify the LLM that the pass is done and the next one is starting,
-            // so it keeps context across passes.
-            if i + 1 < passes.len() {
-                let next = passes[i + 1];
-                let transition =
-                    super::prompts::pass_complete_message(pass_type.name(), next.name());
-                self.storage
-                    .create_message(Message {
-                        id: None,
+                    // Record entities extracted
+                    let (entity_counts, total_entities) = count_entities_by_type(&entities);
+                    self.record_step(
                         session_id,
-                        role: "user".to_string(),
-                        content: transition,
-                    })
-                    .await?;
+                        ExtractionStep::EntitiesExtracted {
+                            timestamp: current_timestamp(),
+                            pass_type: *pass_type,
+                            entities: entities.clone(),
+                            entity_counts,
+                            total_entities,
+                        },
+                    )
+                    .await;
+
+                    self.persistence
+                        .persist_pass_result(
+                            &entities,
+                            self.source_email_id,
+                            self.sender_email.as_deref(),
+                        )
+                        .await?;
+
+                    // Record pass completed
+                    self.record_step(
+                        session_id,
+                        ExtractionStep::PassCompleted {
+                            timestamp: current_timestamp(),
+                            pass_type: *pass_type,
+                            entities_persisted: true,
+                        },
+                    )
+                    .await;
+
+                    // Notify the LLM that the pass is done and the next one is starting,
+                    // so it keeps context across passes.
+                    if i + 1 < passes.len() {
+                        let next = passes[i + 1];
+                        let transition =
+                            super::prompts::pass_complete_message(pass_type.name(), next.name());
+                        self.storage
+                            .create_message(Message {
+                                id: None,
+                                session_id,
+                                role: "user".to_string(),
+                                content: transition,
+                            })
+                            .await?;
+                    }
+                }
+                Err(e) => {
+                    // Record pass failed
+                    self.record_step(
+                        session_id,
+                        ExtractionStep::PassFailed {
+                            timestamp: current_timestamp(),
+                            pass_type: *pass_type,
+                            error_message: e.to_string(),
+                        },
+                    )
+                    .await;
+
+                    self.fail_extraction(session_id, e.to_string()).await;
+                    return Err(e);
+                }
             }
         }
 
+        // Complete extraction
+        self.complete_extraction(session_id).await;
+
         Ok(())
+    }
+
+    /// Record search steps from a completed pass
+    async fn record_search_steps(
+        &self,
+        session_id: i64,
+        pass_type: KgPassType,
+        pass: &KgExtractionPass,
+    ) {
+        // Record the combined search results that were found
+        if !pass.existing_entities.is_empty() {
+            // Determine which type of search(es) produced these results
+            // For now, we record them as a combined search step
+            let entity_types: Vec<String> = pass_type
+                .search_types()
+                .iter()
+                .map(|t| t.as_str().to_string())
+                .collect();
+
+            self.record_step(
+                session_id,
+                ExtractionStep::SearchPerformed {
+                    timestamp: current_timestamp(),
+                    pass_type,
+                    keywords: extract_subject_keywords(&pass.source_content),
+                    entity_types,
+                    results: pass.existing_entities.clone(),
+                    result_count: pass.existing_entities.len(),
+                },
+            )
+            .await;
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -234,6 +371,7 @@ impl KgEmailExtractionAgent {
     async fn run_pass_loop(
         &self,
         session_id: i64,
+        pass_type: KgPassType,
         pass_name: &str,
         system_prompt: &str,
         expect_non_empty: bool,
@@ -262,6 +400,7 @@ impl KgEmailExtractionAgent {
         let mut parse_retry_count = 0;
         let mut empty_confirm_retry_count = 0;
         let mut confirm_before_submit_retry_count = 0;
+        let mut iteration = 0;
         let initial_messages = self.storage.get_messages(session_id).await?;
         let mut llm_messages: Vec<LlmMessage> = initial_messages
             .iter()
@@ -275,6 +414,8 @@ impl KgEmailExtractionAgent {
             .collect();
 
         loop {
+            iteration += 1;
+
             let request = CompletionRequest {
                 messages: llm_messages.clone(),
                 max_tokens: 2048,
@@ -337,6 +478,18 @@ impl KgEmailExtractionAgent {
                 for tool_call in &tool_calls {
                     tracing::info!(tool = tool_call.name(), "KG pass: model called tool");
 
+                    // Record tool call
+                    self.record_step(
+                        session_id,
+                        ExtractionStep::ToolCallMade {
+                            timestamp: current_timestamp(),
+                            pass_type,
+                            tool_name: tool_call.name().to_string(),
+                            iteration,
+                        },
+                    )
+                    .await;
+
                     if tool_call.name() == "submit_entities" {
                         let entities: ExtractedEntitiesParams = match tool_call.parse_arguments() {
                             Ok(v) => v,
@@ -350,6 +503,20 @@ impl KgEmailExtractionAgent {
                                     "submit_entities parse failed: {}",
                                     e
                                 );
+
+                                // Record retry
+                                self.record_step(
+                                    session_id,
+                                    ExtractionStep::RetryOccurred {
+                                        timestamp: current_timestamp(),
+                                        pass_type,
+                                        reason: RetryReason::ParseFailed,
+                                        attempt: parse_retry_count,
+                                        max_attempts: MAX_PARSE_RETRIES_PER_PASS,
+                                    },
+                                )
+                                .await;
+
                                 if parse_retry_count >= MAX_PARSE_RETRIES_PER_PASS {
                                     return Err(anyhow::anyhow!(
                                         "submit_entities parse failed after {} retries: {}",
@@ -412,6 +579,20 @@ impl KgEmailExtractionAgent {
                                     "confirm_entities parse failed: {}",
                                     e
                                 );
+
+                                // Record retry
+                                self.record_step(
+                                    session_id,
+                                    ExtractionStep::RetryOccurred {
+                                        timestamp: current_timestamp(),
+                                        pass_type,
+                                        reason: RetryReason::ParseFailed,
+                                        attempt: parse_retry_count,
+                                        max_attempts: MAX_PARSE_RETRIES_PER_PASS,
+                                    },
+                                )
+                                .await;
+
                                 if parse_retry_count >= MAX_PARSE_RETRIES_PER_PASS {
                                     return Err(anyhow::anyhow!(
                                         "confirm_entities parse failed after {} retries: {}",
@@ -450,6 +631,20 @@ impl KgEmailExtractionAgent {
                                 max_retries = MAX_CONFIRM_BEFORE_SUBMIT_RETRIES_PER_PASS,
                                 "Model called confirm_entities before submit_entities"
                             );
+
+                            // Record retry
+                            self.record_step(
+                                session_id,
+                                ExtractionStep::RetryOccurred {
+                                    timestamp: current_timestamp(),
+                                    pass_type,
+                                    reason: RetryReason::ConfirmBeforeSubmit,
+                                    attempt: confirm_before_submit_retry_count,
+                                    max_attempts: MAX_CONFIRM_BEFORE_SUBMIT_RETRIES_PER_PASS,
+                                },
+                            )
+                            .await;
+
                             if confirm_before_submit_retry_count
                                 >= MAX_CONFIRM_BEFORE_SUBMIT_RETRIES_PER_PASS
                             {
@@ -496,6 +691,20 @@ impl KgEmailExtractionAgent {
                                     max_retries = MAX_EMPTY_CONFIRM_RETRIES_PER_PASS,
                                     "Model confirmed empty entities despite expected extraction"
                                 );
+
+                                // Record retry
+                                self.record_step(
+                                    session_id,
+                                    ExtractionStep::RetryOccurred {
+                                        timestamp: current_timestamp(),
+                                        pass_type,
+                                        reason: RetryReason::EmptyConfirm,
+                                        attempt: empty_confirm_retry_count,
+                                        max_attempts: MAX_EMPTY_CONFIRM_RETRIES_PER_PASS,
+                                    },
+                                )
+                                .await;
+
                                 if empty_confirm_retry_count > MAX_EMPTY_CONFIRM_RETRIES_PER_PASS {
                                     return Ok(entities);
                                 }
@@ -568,6 +777,20 @@ impl KgEmailExtractionAgent {
                     max_nudges = MAX_TOOL_WAIT_ITERATIONS,
                     "KG pass response had no tool calls"
                 );
+
+                // Record retry
+                self.record_step(
+                    session_id,
+                    ExtractionStep::RetryOccurred {
+                        timestamp: current_timestamp(),
+                        pass_type,
+                        reason: RetryReason::NoToolCalls,
+                        attempt: nudge_count,
+                        max_attempts: MAX_TOOL_WAIT_ITERATIONS,
+                    },
+                )
+                .await;
+
                 if nudge_count >= MAX_TOOL_WAIT_ITERATIONS {
                     // If we have a partial result from a previous submit, use it.
                     if let Some(entities) = last_entities {
@@ -649,4 +872,30 @@ fn entities_is_empty(entities: &ExtractedEntitiesParams) -> bool {
             .as_ref()
             .map(|v| v.is_empty())
             .unwrap_or(true)
+}
+
+fn current_timestamp() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+/// Extract BM25 search keywords from the Subject line of the email content.
+fn extract_subject_keywords(content: &str) -> String {
+    let subject = content
+        .lines()
+        .find(|l| l.starts_with("Subject: "))
+        .and_then(|l| l.strip_prefix("Subject: "))
+        .unwrap_or("");
+
+    let mut seen = std::collections::HashSet::new();
+    subject
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() >= 4)
+        .filter(|w| seen.insert(*w))
+        .take(10)
+        .collect::<Vec<_>>()
+        .join(" ")
 }

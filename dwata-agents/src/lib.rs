@@ -2,6 +2,7 @@ pub mod date_parser;
 pub mod entity_search;
 pub mod entity_type_manifest;
 pub mod entity_types;
+pub mod extraction_state;
 pub mod kg_email_extractor;
 pub mod kg_pass_context;
 pub mod kg_persistence;
@@ -17,6 +18,11 @@ pub use entity_types::{
     parse_value, ConfirmEntitiesParams, ExtractedBill, ExtractedEntitiesParams, ExtractedEvent,
     ExtractedLocation, ExtractedOrder, ExtractedOrganisation, ExtractedPerson,
     ExtractedSubscription, ExtractedTransaction, ParsedValue,
+};
+pub use extraction_state::{
+    count_entities_by_type, ExtractionStateProvider, ExtractionStatus, ExtractionStep,
+    ExtractionStepState, ExtractionSummary, InMemoryExtractionState, PassStatus, PassStepState,
+    RetryReason,
 };
 pub use kg_email_extractor::{
     DocumentType, KgEmailExtractionAgent, LabelDocumentParams, TemplateDocumentLabelerAgent,

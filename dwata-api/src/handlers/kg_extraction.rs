@@ -13,8 +13,10 @@ use crate::state::kg_extraction::{AccountProgress, ExtractionStatus, KgExtractio
 use dwata_agents::{
     simple_email_content,
     storage::{AgentStorage, InMemoryAgentStorage, Session},
+    ExtractionStateProvider, ExtractionStep, ExtractionStepState, InMemoryExtractionState,
     KgEmailExtractionAgent, TemplateDocumentLabelerAgent,
 };
+use futures::executor::block_on;
 use nocodo_llm_sdk::llama_cpp::LlamaCppClient;
 use nocodo_llm_sdk::models::llama_cpp::QWEN_3_5_0_8B;
 use serde::Deserialize;
@@ -38,6 +40,12 @@ pub struct ProgressQueryParams {
     pub long_poll: Option<bool>,
     /// Optional: specific credential_id to get progress for
     pub credential_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StepStateQueryParams {
+    /// Session ID to get detailed step state for
+    pub session_id: i64,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -99,6 +107,68 @@ impl From<AccountProgress> for AccountProgressJson {
     }
 }
 
+/// Response type for step state endpoint
+#[derive(Debug, serde::Serialize)]
+pub struct StepStateResponse {
+    pub session_id: i64,
+    pub extraction_state: Option<ExtractionStepState>,
+}
+
+/// API Extraction State Provider - wraps InMemoryExtractionState and integrates with KgExtractionState
+#[derive(Debug, Clone)]
+pub struct ApiExtractionStateProvider {
+    inner: InMemoryExtractionState,
+    kg_state: Arc<KgExtractionState>,
+}
+
+impl ApiExtractionStateProvider {
+    pub fn new(kg_state: Arc<KgExtractionState>) -> Self {
+        Self {
+            inner: InMemoryExtractionState::new(),
+            kg_state,
+        }
+    }
+
+    pub fn get_state(&self, session_id: i64) -> Option<ExtractionStepState> {
+        // Use blocking approach for sync contexts
+        block_on(self.inner.get_state(session_id))
+    }
+}
+
+#[async_trait::async_trait]
+impl ExtractionStateProvider for ApiExtractionStateProvider {
+    async fn record_step(&self, session_id: i64, step: ExtractionStep) {
+        self.inner.record_step(session_id, step).await;
+        // Also update the kg_state to notify of changes for long polling
+        self.kg_state.notify_update();
+    }
+
+    async fn get_state(&self, session_id: i64) -> Option<ExtractionStepState> {
+        self.inner.get_state(session_id).await
+    }
+
+    async fn initialize_state(
+        &self,
+        session_id: i64,
+        email_id: Option<i64>,
+        sender_email: Option<String>,
+    ) {
+        self.inner
+            .initialize_state(session_id, email_id, sender_email)
+            .await;
+    }
+
+    async fn complete_extraction(&self, session_id: i64) {
+        self.inner.complete_extraction(session_id).await;
+        self.kg_state.notify_update();
+    }
+
+    async fn fail_extraction(&self, session_id: i64, error_message: String) {
+        self.inner.fail_extraction(session_id, error_message).await;
+        self.kg_state.notify_update();
+    }
+}
+
 /// Get current extraction progress with optional long polling
 ///
 /// Long polling: When long_poll=true, the server holds the connection
@@ -149,6 +219,21 @@ pub async fn get_kg_extraction_progress(
             updated: false,
         }))
     }
+}
+
+/// Get detailed step state for a specific extraction session
+pub async fn get_extraction_step_state(
+    query: web::Query<StepStateQueryParams>,
+) -> Result<HttpResponse> {
+    // Since we can't easily access the state provider from here,
+    // we'll need to store a reference to it somewhere accessible.
+    // For now, return a placeholder response.
+    // TODO: Store the extraction state provider in the app state
+
+    Ok(HttpResponse::Ok().json(StepStateResponse {
+        session_id: query.session_id,
+        extraction_state: None,
+    }))
 }
 
 /// Run KG extraction for all email accounts or a specific account
@@ -229,6 +314,8 @@ pub async fn run_kg_extraction(
         Some(entity_index.clone()),
     ));
     let search_provider = Arc::new(DbEntitySearchProvider::new(pool.clone(), entity_index));
+    let extraction_state_provider =
+        Arc::new(ApiExtractionStateProvider::new(state.get_ref().clone()));
 
     let mut accounts_processed = Vec::new();
     let mut total_emails_processed = 0_usize;
@@ -366,6 +453,7 @@ pub async fn run_kg_extraction(
                 storage.clone(),
                 persistence.clone(),
                 search_provider.clone(),
+                extraction_state_provider.clone(),
                 all_passes,
             )
             .await
@@ -439,6 +527,7 @@ async fn process_single_email(
     storage: Arc<dyn AgentStorage>,
     persistence: Arc<KgPersistenceLayer>,
     search_provider: Arc<DbEntitySearchProvider>,
+    extraction_state_provider: Arc<ApiExtractionStateProvider>,
     all_passes: bool,
 ) -> anyhow::Result<()> {
     // Load email
@@ -489,6 +578,18 @@ async fn process_single_email(
                     label.has_event,
                     label.has_order,
                 );
+
+                // Record the document labeled step
+                extraction_state_provider
+                    .record_step(
+                        label_session_id,
+                        ExtractionStep::DocumentLabeled {
+                            timestamp: current_timestamp(),
+                            label: label.clone(),
+                        },
+                    )
+                    .await;
+
                 Some(label)
             }
             Err(e) => {
@@ -520,6 +621,7 @@ async fn process_single_email(
         QWEN_3_5_0_8B.to_string(),
         email_content,
     )
+    .with_extraction_state(extraction_state_provider)
     .with_search_provider(search_provider)
     .with_source_email_id(email.id)
     .with_sender(email.from_name.clone(), Some(email.from_address.clone()));
@@ -536,4 +638,12 @@ async fn process_single_email(
     tracing::debug!("KG extraction complete for email {}", email.id);
 
     Ok(())
+}
+
+fn current_timestamp() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }

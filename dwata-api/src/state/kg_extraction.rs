@@ -267,6 +267,12 @@ impl KgExtractionState {
         // Can be implemented if needed to prevent memory growth
         // For now, we keep all history
     }
+
+    /// Notify that an update has occurred (used by ExtractionStateProvider)
+    /// This updates the polling state to trigger long-polling responses
+    pub fn notify_update(&self) {
+        self.update_polling_state();
+    }
 }
 
 impl Default for KgExtractionState {
