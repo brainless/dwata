@@ -160,24 +160,49 @@ impl GoogleOAuthConfig {
 
 impl ApiConfig {
     pub fn load() -> Result<(Self, PathBuf), String> {
-        let config_path = Self::find_config_file().ok_or_else(|| {
-            "Config file not found. Place config.toml in the project root or next to the binary. \
-                Copy config.example.toml as a starting point."
-                .to_string()
-        })?;
+        if let Some(config_path) = Self::find_config_file() {
+            let contents = fs::read_to_string(&config_path).map_err(|e| {
+                format!(
+                    "Failed to read config file at {}: {}",
+                    config_path.display(),
+                    e
+                )
+            })?;
 
-        let contents = fs::read_to_string(&config_path).map_err(|e| {
+            let config: ApiConfig = toml::from_str(&contents)
+                .map_err(|e| format!("Failed to parse TOML config: {}", e))?;
+
+            return Ok((config, config_path));
+        }
+
+        // No config file found anywhere — create a default one at the OS config dir.
+        let config_path = dirs::config_dir()
+            .map(|d| d.join("dwata").join("config.toml"))
+            .ok_or_else(|| "Cannot determine OS config directory".to_string())?;
+
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Failed to create config directory {}: {}",
+                    parent.display(),
+                    e
+                )
+            })?;
+        }
+
+        let default_config = ApiConfig::default();
+        let toml_string = toml::to_string(&default_config)
+            .map_err(|e| format!("Failed to serialize default config: {}", e))?;
+
+        fs::write(&config_path, &toml_string).map_err(|e| {
             format!(
-                "Failed to read config file at {}: {}",
+                "Failed to write default config to {}: {}",
                 config_path.display(),
                 e
             )
         })?;
 
-        let config: ApiConfig =
-            toml::from_str(&contents).map_err(|e| format!("Failed to parse TOML config: {}", e))?;
-
-        Ok((config, config_path))
+        Ok((default_config, config_path))
     }
 
     fn exe_dir() -> Option<PathBuf> {
@@ -205,5 +230,9 @@ impl ApiConfig {
 }
 
 pub fn get_config_path() -> PathBuf {
-    ApiConfig::find_config_file().unwrap_or_else(|| PathBuf::from("config.toml"))
+    ApiConfig::find_config_file().unwrap_or_else(|| {
+        dirs::config_dir()
+            .map(|d| d.join("dwata").join("config.toml"))
+            .unwrap_or_else(|| PathBuf::from("config.toml"))
+    })
 }

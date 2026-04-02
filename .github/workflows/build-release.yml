@@ -33,7 +33,10 @@ jobs:
       - name: Checkout llm-sdk dependency
         shell: bash
         run: |
+          LLM_SDK_COMMIT="b6e4a4890cc9a994fcf91e1502d7664b7ab36ff7"
           git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/brainless/llm-sdk.git "$GITHUB_WORKSPACE/../llm-sdk"
+          git -C "$GITHUB_WORKSPACE/../llm-sdk" fetch --depth 1 origin "$LLM_SDK_COMMIT"
+          git -C "$GITHUB_WORKSPACE/../llm-sdk" checkout "$LLM_SDK_COMMIT"
 
       - name: Build production artifacts
         shell: bash
