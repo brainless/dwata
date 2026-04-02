@@ -2,7 +2,6 @@ import { getApiUrl } from "../config/api";
 import type {
   CredentialMetadata,
   CredentialListResponse,
-  Document,
   EmailFolder,
   EmailLabel,
   Email,
@@ -11,7 +10,8 @@ import type {
   ListEmailsResponse,
   EmailsByIdsRequest,
   EmailsByIdsResponse,
-  SearchDocumentsResponse,
+  SearchResponse,
+  SearchHit,
 } from "../api-types/types";
 
 export async function fetchCredentials(): Promise<CredentialMetadata[]> {
@@ -173,12 +173,16 @@ async function searchEmails(
   const response = await fetch(getApiUrl(`/api/documents/search?${params}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-  const searchData: SearchDocumentsResponse = await response.json();
+  const searchData: SearchResponse = await response.json();
   const emailIds = Array.from(
     new Set(
-      searchData.documents
-        .map((doc: Document) => doc.email_id)
-        .filter((emailId): emailId is IdLike => emailId !== null),
+      searchData.hits
+        .map((hit: SearchHit) => {
+          // HitId is serialised as { "email": number } or { "file": number }
+          const id = (hit.hit_id as { email?: number })?.email;
+          return typeof id === "number" ? id : null;
+        })
+        .filter((id): id is number => id !== null),
     ),
   );
 

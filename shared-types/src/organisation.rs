@@ -104,3 +104,21 @@ pub struct UpdateOrganisationRequest {
 pub struct OrganisationsResponse {
     pub organisations: Vec<Organisation>,
 }
+
+/// Organisation with email count statistics derived from the emails table.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct OrganisationWithCounts {
+    #[serde(flatten)]
+    pub organisation: Organisation,
+    /// Emails where this organisation is the sender (`from_address` match).
+    pub received_count: i64,
+    /// Emails where this organisation appears in `to_addresses` or `cc_addresses`.
+    pub in_to_count: i64,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct OrganisationsWithCountsResponse {
+    pub organisations: Vec<OrganisationWithCounts>,
+}

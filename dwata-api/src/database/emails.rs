@@ -945,10 +945,20 @@ pub async fn list_emails_for_indexing_page(
                 email.body_html.as_deref(),
             );
 
+            // Flatten all recipient addresses into a space-separated string for Tantivy.
+            let to_addrs: String = email
+                .to_addresses
+                .iter()
+                .chain(email.cc_addresses.iter())
+                .map(|a| a.email.to_lowercase())
+                .collect::<Vec<_>>()
+                .join(" ");
+
             let indexed_text = crate::search::tantivy::IndexedTextFields::from_email(
                 Some(simple_content.body),
                 email.subject.clone(),
                 email.from_address.clone(),
+                Some(to_addrs).filter(|s| !s.is_empty()),
                 email.credential_id,
             );
 

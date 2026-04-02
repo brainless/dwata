@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use shared_types::{ContactLinksResponse, PersonsResponse};
+use shared_types::{ContactLinksResponse, PersonsWithCountsResponse};
 use std::sync::Arc;
 
 use crate::database::contact_links as links_db;
@@ -7,11 +7,11 @@ use crate::database::persons as db;
 use crate::database::Database;
 
 pub async fn list_persons(database: web::Data<Arc<Database>>) -> ActixResult<HttpResponse> {
-    let persons = db::list_persons(database.async_connection.clone(), 100)
+    let persons = db::list_persons_with_counts(database.async_connection.clone(), 500)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(PersonsResponse { persons }))
+    Ok(HttpResponse::Ok().json(PersonsWithCountsResponse { persons }))
 }
 
 pub async fn get_person(

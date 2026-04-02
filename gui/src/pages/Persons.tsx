@@ -1,11 +1,16 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
-import type { Person, PersonsResponse } from "../api-types/types";
+import { A } from "@solidjs/router";
+import type { PersonWithCounts, PersonsWithCountsResponse } from "../api-types/types";
 import { getApiUrl } from "../config/api";
 
 export default function Persons() {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
-  const [persons, setPersons] = createSignal<Person[]>([]);
+  const [persons, setPersons] = createSignal<PersonWithCounts[]>([]);
+
+  const [isExtracting, setIsExtracting] = createSignal(false);
+  const [extractError, setExtractError] = createSignal("");
+  const [extractStats, setExtractStats] = createSignal<string | null>(null);
 
   const fetchPersons = async () => {
     setLoading(true);
@@ -18,13 +23,41 @@ export default function Persons() {
         throw new Error(`Failed to fetch persons: ${response.status}`);
       }
 
-      const data: PersonsResponse = await response.json();
+      const data: PersonsWithCountsResponse = await response.json();
       setPersons(data.persons || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch persons");
       console.error("Error fetching persons:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const extractContacts = async () => {
+    setIsExtracting(true);
+    setExtractError("");
+    setExtractStats(null);
+
+    try {
+      const response = await fetch(getApiUrl("/api/contact-extractor/run"), {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Extraction failed: ${response.statusText}`);
+      }
+
+      const stats = await response.json();
+      setExtractStats(
+        `Done — ${stats.persons_created} new people added, ${stats.persons_skipped} already known.`
+      );
+      await fetchPersons();
+    } catch (err) {
+      setExtractError(
+        err instanceof Error ? err.message : "Extraction failed"
+      );
+    } finally {
+      setIsExtracting(false);
     }
   };
 
@@ -35,10 +68,35 @@ export default function Persons() {
   return (
     <div class="h-full min-h-0 flex flex-col overflow-hidden">
       <header class="pt-4 px-4 md:pt-8 md:px-8 mb-6">
-        <h1 class="text-3xl font-bold mb-2">People</h1>
-        <p class="text-base-content/60">
-          Contacts extracted from your emails
-        </p>
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h1 class="text-3xl font-bold mb-2">People</h1>
+            <p class="text-base-content/60">
+              Contacts extracted from your emails
+            </p>
+          </div>
+          <button
+            class="btn btn-primary shrink-0"
+            onClick={extractContacts}
+            disabled={isExtracting()}
+          >
+            {isExtracting() ? (
+              <>
+                <span class="loading loading-spinner loading-sm"></span>
+                Extracting…
+              </>
+            ) : (
+              "Extract People / Organisations"
+            )}
+          </button>
+        </div>
+
+        <Show when={extractStats()}>
+          <div class="alert alert-success mt-3 py-2 text-sm">{extractStats()}</div>
+        </Show>
+        <Show when={extractError()}>
+          <div class="alert alert-error mt-3 py-2 text-sm">{extractError()}</div>
+        </Show>
       </header>
 
       <main class="flex-1 min-h-0 overflow-y-auto px-4 md:px-8">
@@ -73,7 +131,8 @@ export default function Persons() {
                     <tr>
                       <th>Name</th>
                       <th>Email</th>
-                      <th>Phone</th>
+                      <th class="text-right">Received</th>
+                      <th class="text-right">Sent to</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -81,18 +140,41 @@ export default function Persons() {
                       when={persons().length > 0}
                       fallback={
                         <tr>
-                          <td colSpan={3} class="text-center py-8 text-base-content/60">
+                          <td colSpan={4} class="text-center py-8 text-base-content/60">
                             No people found
                           </td>
                         </tr>
                       }
                     >
                       <For each={persons()}>
-                        {(person) => (
+                        {(row) => (
                           <tr class="hover">
-                            <td class="font-medium text-sm">{person.name}</td>
-                            <td class="text-xs">{person.email || "-"}</td>
-                            <td class="text-xs">{person.phone || "-"}</td>
+                            <td class="font-medium text-sm">{row.name}</td>
+                            <td class="text-xs">{row.email || "-"}</td>
+                            <td class="text-right">
+                              <Show when={row.email && row.received_count > 0} fallback={
+                                <span class="text-xs text-base-content/40">{row.received_count}</span>
+                              }>
+                                <A
+                                  href={`/emails?q=${encodeURIComponent(`from:${row.email}`)}`}
+                                  class="link link-primary text-xs"
+                                >
+                                  {row.received_count}
+                                </A>
+                              </Show>
+                            </td>
+                            <td class="text-right">
+                              <Show when={row.email && row.in_to_count > 0} fallback={
+                                <span class="text-xs text-base-content/40">{row.in_to_count}</span>
+                              }>
+                                <A
+                                  href={`/emails?q=${encodeURIComponent(`to:${row.email}`)}`}
+                                  class="link link-primary text-xs"
+                                >
+                                  {row.in_to_count}
+                                </A>
+                              </Show>
+                            </td>
                           </tr>
                         )}
                       </For>

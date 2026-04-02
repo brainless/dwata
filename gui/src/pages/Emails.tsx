@@ -1,5 +1,5 @@
 import { createSignal, createEffect, Show, For, onMount } from "solid-js";
-import { useParams, useNavigate, A } from "@solidjs/router";
+import { useParams, useNavigate, useSearchParams, A } from "@solidjs/router";
 import {
   HiOutlinePaperAirplane,
   HiOutlinePaperClip,
@@ -57,16 +57,25 @@ export default function Emails() {
     labelId?: string;
   }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // Load accounts on mount
   onMount(async () => {
+    // Pre-fill search from ?q= URL param (e.g. linked from Persons/Orgs pages)
+    const qParam = searchParams.q;
+    if (qParam) {
+      setSearchQuery(qParam);
+      setActiveSearchQuery(qParam);
+    }
+
     try {
       const creds = await fetchCredentials();
       setAccounts(creds);
 
-      // If no account in URL, navigate to first account
+      // If no account in URL, navigate to first account (preserve ?q= param)
       if (!params.accountId && creds.length > 0) {
-        navigate(`/emails/account/${creds[0].id.toString()}`, { replace: true });
+        const qs = qParam ? `?q=${encodeURIComponent(qParam)}` : "";
+        navigate(`/emails/account/${creds[0].id.toString()}${qs}`, { replace: true });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load accounts");

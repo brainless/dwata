@@ -348,6 +348,30 @@ import type { Person } from "./Person";
 export type PersonsResponse = { persons: Array<Person>, };
 
 
+/**
+ * Person with email count statistics derived from the emails table.
+ */
+export type PersonWithCounts = { 
+/**
+ * Emails where this person is the sender (`from_address` match).
+ */
+received_count: bigint, 
+/**
+ * Emails where this person appears in `to_addresses` or `cc_addresses`.
+ */
+in_to_count: bigint, id: bigint, email_id: bigint | null, name: string, email: string | null, phone: string | null, organisation_id: bigint | null, 
+/**
+ * LLM-generated summary for BM25 search during future extraction passes.
+ * Should capture relational context: e.g. "engineer at Acme Corp, john@acme.com"
+ */
+search_summary: string | null, created_at: bigint, updated_at: bigint, };
+
+
+import type { PersonWithCounts } from "./PersonWithCounts";
+
+export type PersonsWithCountsResponse = { persons: Array<PersonWithCounts>, };
+
+
 export type DataSourceType = "email" | "imap" | "bank-statement" | "credit-card-statement" | "bank-feed" | "csv-upload" | "manual" | "unknown";
 
 
@@ -537,6 +561,85 @@ import type { Bill } from "./Bill";
 import type { FinancialPagination } from "./FinancialPagination";
 
 export type ListFinancialBillsResponse = { bills: Array<Bill>, pagination: FinancialPagination, };
+
+
+import type { OrganisationRole } from "./OrganisationRole";
+
+export type Organisation = { id: bigint, name: string, description: string | null, industry: string | null, 
+/**
+ * Primary contact or billing email for this organisation.
+ */
+email: string | null, 
+/**
+ * All roles this organisation plays; stored in a separate organisation_roles table.
+ */
+roles: Array<OrganisationRole>, location_id: bigint | null, website: string | null, linkedin_url: string | null, 
+/**
+ * LLM-generated summary for BM25 search during future extraction passes.
+ * e.g. "streaming service, monthly billing via credit card, support at help@netflix.com"
+ */
+search_summary: string | null, created_at: bigint, updated_at: bigint, };
+
+
+export type OrganisationRole = "business" | "bank" | "insurer" | "payment-platform" | "employer" | "utility" | "service-provider" | "government" | "educational" | "non-profit" | "unknown";
+
+
+import type { Organisation } from "./Organisation";
+
+export type OrganisationsResponse = { organisations: Array<Organisation>, };
+
+
+import type { OrganisationRole } from "./OrganisationRole";
+
+/**
+ * Organisation with email count statistics derived from the emails table.
+ */
+export type OrganisationWithCounts = { 
+/**
+ * Emails where this organisation is the sender (`from_address` match).
+ */
+received_count: bigint, 
+/**
+ * Emails where this organisation appears in `to_addresses` or `cc_addresses`.
+ */
+in_to_count: bigint, id: bigint, name: string, description: string | null, industry: string | null, 
+/**
+ * Primary contact or billing email for this organisation.
+ */
+email: string | null, 
+/**
+ * All roles this organisation plays; stored in a separate organisation_roles table.
+ */
+roles: Array<OrganisationRole>, location_id: bigint | null, website: string | null, linkedin_url: string | null, 
+/**
+ * LLM-generated summary for BM25 search during future extraction passes.
+ * e.g. "streaming service, monthly billing via credit card, support at help@netflix.com"
+ */
+search_summary: string | null, created_at: bigint, updated_at: bigint, };
+
+
+import type { OrganisationWithCounts } from "./OrganisationWithCounts";
+
+export type OrganisationsWithCountsResponse = { organisations: Array<OrganisationWithCounts>, };
+
+
+export type HitId = { "email": bigint } | { "file": bigint };
+
+
+import type { HitId } from "./HitId";
+
+/**
+ * A single search result hit
+ */
+export type SearchHit = { hit_id: HitId, score: number, snippet: string | null, subject: string | null, filename: string | null, from_address: string | null, date_received: bigint | null, };
+
+
+import type { SearchHit } from "./SearchHit";
+
+/**
+ * Search response
+ */
+export type SearchResponse = { hits: Array<SearchHit>, total_hits: number, };
 
 
 import type { ExtractionStep } from "./ExtractionStep";

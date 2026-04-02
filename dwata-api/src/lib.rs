@@ -1,4 +1,5 @@
 pub mod config;
+pub mod contact_extractor;
 pub mod database;
 pub mod email_ranking;
 pub mod handlers;

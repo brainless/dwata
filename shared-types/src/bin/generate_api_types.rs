@@ -85,6 +85,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Person types
     types.push(clean_type(Person::export_to_string()?));
     types.push(clean_type(PersonsResponse::export_to_string()?));
+    types.push(clean_type(PersonWithCounts::export_to_string()?));
+    types.push(clean_type(PersonsWithCountsResponse::export_to_string()?));
 
     // Financial types
     types.push(clean_type(DataSourceType::export_to_string()?));
@@ -106,6 +108,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.push(clean_type(CategoryBreakdown::export_to_string()?));
     types.push(clean_type(FinancialPagination::export_to_string()?));
     types.push(clean_type(ListFinancialBillsResponse::export_to_string()?));
+
+    // Organisation types
+    types.push(clean_type(Organisation::export_to_string()?));
+    types.push(clean_type(OrganisationRole::export_to_string()?));
+    types.push(clean_type(OrganisationsResponse::export_to_string()?));
+    types.push(clean_type(OrganisationWithCounts::export_to_string()?));
+    types.push(clean_type(
+        OrganisationsWithCountsResponse::export_to_string()?,
+    ));
+
+    // Search types
+    types.push(clean_type(HitId::export_to_string()?));
+    types.push(clean_type(SearchHit::export_to_string()?));
+    types.push(clean_type(SearchResponse::export_to_string()?));
 
     // KG Extraction types
     types.push(clean_type(ExtractionStepState::export_to_string()?));

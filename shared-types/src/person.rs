@@ -22,3 +22,21 @@ pub struct Person {
 pub struct PersonsResponse {
     pub persons: Vec<Person>,
 }
+
+/// Person with email count statistics derived from the emails table.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct PersonWithCounts {
+    #[serde(flatten)]
+    pub person: Person,
+    /// Emails where this person is the sender (`from_address` match).
+    pub received_count: i64,
+    /// Emails where this person appears in `to_addresses` or `cc_addresses`.
+    pub in_to_count: i64,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct PersonsWithCountsResponse {
+    pub persons: Vec<PersonWithCounts>,
+}

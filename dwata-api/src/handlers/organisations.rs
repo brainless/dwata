@@ -1,16 +1,16 @@
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use shared_types::OrganisationsResponse;
+use shared_types::OrganisationsWithCountsResponse;
 use std::sync::Arc;
 
 use crate::database::organisations as db;
 use crate::database::Database;
 
 pub async fn list_organisations(database: web::Data<Arc<Database>>) -> ActixResult<HttpResponse> {
-    let organisations = db::list_organisations(database.async_connection.clone(), 100)
+    let organisations = db::list_organisations_with_counts(database.async_connection.clone(), 500)
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(OrganisationsResponse { organisations }))
+    Ok(HttpResponse::Ok().json(OrganisationsWithCountsResponse { organisations }))
 }
 
 pub async fn get_organisation(

@@ -19,6 +19,7 @@ pub enum SearchField {
     Any,
     Subject,     // Email subject or File title
     FromAddress, // Email sender
+    ToAddresses, // Email recipients (to/cc)
     BodyText,    // Email body or File content
     Filename,    // File name (for files)
 }

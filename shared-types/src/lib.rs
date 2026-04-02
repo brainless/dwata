@@ -67,10 +67,10 @@ pub use ollama::{
 pub use order::{Order, OrderItem, OrderStatus, OrdersResponse};
 
 pub use organisation::{
-    CreateOrganisationRequest, Organisation, OrganisationRole, OrganisationsResponse,
-    UpdateOrganisationRequest,
+    CreateOrganisationRequest, Organisation, OrganisationRole, OrganisationWithCounts,
+    OrganisationsResponse, OrganisationsWithCountsResponse, UpdateOrganisationRequest,
 };
-pub use person::{Person, PersonsResponse};
+pub use person::{Person, PersonWithCounts, PersonsResponse, PersonsWithCountsResponse};
 pub use project::{Project, ProjectStatus};
 pub use search::{
     HitId, SearchField, SearchFieldLegacy, SearchHit, SearchHitLegacy, SearchRequest,

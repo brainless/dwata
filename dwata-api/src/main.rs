@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tracing_subscriber::prelude::*;
 
 mod config;
+mod contact_extractor;
 mod database;
 mod handlers;
 mod helpers;
@@ -400,6 +401,10 @@ async fn main() -> std::io::Result<()> {
                 web::post().to(handlers::clear_data::clear_extracted_data),
             )
             .route(
+                "/api/contact-extractor/run",
+                web::post().to(handlers::contact_extractor::run_extraction),
+            )
+            .route(
                 "/api/kg-extraction/run",
                 web::post().to(handlers::kg_extraction::run_kg_extraction),
             )
@@ -465,6 +470,10 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(handlers::emails::get_email_labels),
             )
             .route("/api/search", web::get().to(handlers::search::search))
+            .route(
+                "/api/documents/search",
+                web::get().to(handlers::search::search),
+            )
             .route(
                 "/api/credentials/{credential_id}/folders",
                 web::get().to(handlers::folders::list_folders),

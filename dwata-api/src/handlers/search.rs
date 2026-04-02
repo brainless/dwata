@@ -28,6 +28,7 @@ fn parse_q_term(
     if let Some((prefix, value)) = trimmed.split_once(':') {
         let field = match prefix.trim().to_ascii_lowercase().as_str() {
             "from" | "sender" => Some(SearchField::FromAddress),
+            "to" | "recipient" => Some(SearchField::ToAddresses),
             "subject" => Some(SearchField::Subject),
             "body" | "text" => Some(SearchField::BodyText),
             _ => None,

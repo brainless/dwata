@@ -30,6 +30,7 @@ pub struct TantivyFields {
     // Email-specific fields
     pub subject: Field,
     pub from_address: Field,
+    pub to_addresses: Field,
     // Filtering
     pub credential_id: Field,
 }
@@ -41,15 +42,19 @@ pub struct IndexedTextFields {
     pub filename: Option<String>,
     pub subject: Option<String>,
     pub from_address: Option<String>,
+    /// Space-separated lowercase email addresses from to + cc fields.
+    pub to_addresses: Option<String>,
     pub credential_id: Option<i64>,
 }
 
 impl IndexedTextFields {
-    /// Create from email data
+    /// Create from email data.
+    /// `to_addresses` should be a space-separated string of all recipient addresses.
     pub fn from_email(
         body_text: Option<String>,
         subject: Option<String>,
         from_address: String,
+        to_addresses: Option<String>,
         credential_id: i64,
     ) -> Self {
         Self {
@@ -57,6 +62,7 @@ impl IndexedTextFields {
             filename: None,
             subject,
             from_address: Some(from_address),
+            to_addresses,
             credential_id: Some(credential_id),
         }
     }
@@ -95,6 +101,7 @@ pub fn build_schema() -> Schema {
     // Email-specific fields
     builder.add_text_field("subject", free_text.clone());
     builder.add_text_field("from_address", exact_text.clone());
+    builder.add_text_field("to_addresses", exact_text.clone());
 
     // Filtering
     builder.add_u64_field("credential_id", INDEXED | FAST);
@@ -120,6 +127,7 @@ fn fields_from_schema(schema: &Schema) -> Result<TantivyFields> {
         filename: get("filename")?,
         subject: get("subject")?,
         from_address: get("from_address")?,
+        to_addresses: get("to_addresses")?,
         credential_id: get("credential_id")?,
         date_received: get("date_received")?,
     })
@@ -203,6 +211,12 @@ impl TantivySearchIndex {
             .unwrap_or_default()
             .to_lowercase();
 
+        let to_addresses = extracted
+            .to_addresses
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
+
         // Delete any existing document with this email_id
         writer.delete_term(Term::from_field_u64(
             self.fields.email_id,
@@ -216,8 +230,9 @@ impl TantivySearchIndex {
             self.fields.filename => extracted.filename.clone().unwrap_or_default(),
             self.fields.subject => extracted.subject.clone().unwrap_or_default(),
             self.fields.from_address => from_address,
+            self.fields.to_addresses => to_addresses,
             self.fields.credential_id => extracted.credential_id.unwrap_or(0).max(0) as u64,
-            self.fields.date_received => 0i64,  // TODO: Add date to IndexedTextFields if needed
+            self.fields.date_received => 0i64,
         ))?;
         Ok(())
     }
@@ -255,6 +270,15 @@ impl TantivySearchIndex {
             )?));
         }
 
+        if matches!(term.field, SearchField::ToAddresses) {
+            let lowered = term.value.trim().to_lowercase();
+            let pattern = format!(".*{}.*", regex::escape(&lowered));
+            return Ok(Box::new(RegexQuery::from_pattern(
+                &pattern,
+                self.fields.to_addresses,
+            )?));
+        }
+
         if matches!(term.field, SearchField::Any) {
             let parser = QueryParser::for_index(
                 &self.index,
@@ -275,10 +299,12 @@ impl TantivySearchIndex {
             let lowered = term.value.trim().to_lowercase();
             let pattern = format!(".*{}.*", regex::escape(&lowered));
             let from_query = RegexQuery::from_pattern(&pattern, self.fields.from_address)?;
+            let to_query = RegexQuery::from_pattern(&pattern, self.fields.to_addresses)?;
 
             return Ok(Box::new(BooleanQuery::new(vec![
                 (Occur::Should, text_query),
                 (Occur::Should, Box::new(from_query)),
+                (Occur::Should, Box::new(to_query)),
             ])));
         }
 
@@ -290,6 +316,7 @@ impl TantivySearchIndex {
             ],
             SearchField::Subject => vec![self.fields.subject],
             SearchField::FromAddress => vec![self.fields.from_address],
+            SearchField::ToAddresses => vec![self.fields.to_addresses],
             SearchField::BodyText => vec![self.fields.body_text],
             SearchField::Filename => vec![self.fields.filename],
         };
