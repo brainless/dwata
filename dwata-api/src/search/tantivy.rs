@@ -148,6 +148,32 @@ pub fn open_or_create_index(path: &Path) -> Result<TantivySearchIndex> {
     })
 }
 
+/// Open an existing index if present; create a new one otherwise.
+/// Unlike `open_or_create_index`, this function does not wipe existing index contents.
+pub fn open_or_create_index_preserving(path: &Path) -> Result<TantivySearchIndex> {
+    let schema = build_schema();
+    let index = if path.exists() {
+        Index::open_in_dir(path)?
+    } else {
+        std::fs::create_dir_all(path)?;
+        Index::create_in_dir(path, schema)?
+    };
+
+    let fields = fields_from_schema(&index.schema())?;
+    let reader = index
+        .reader_builder()
+        .reload_policy(ReloadPolicy::OnCommitWithDelay)
+        .try_into()?;
+    let writer = index.writer(50_000_000)?;
+
+    Ok(TantivySearchIndex {
+        index,
+        reader,
+        writer: Arc::new(Mutex::new(writer)),
+        fields,
+    })
+}
+
 impl TantivySearchIndex {
     fn escape_query_value(value: &str) -> String {
         value

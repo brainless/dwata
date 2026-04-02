@@ -11,10 +11,10 @@ impl RankingFactor for UserEngagementFactor {
     }
 
     fn score_email(&self, email: &Email, context: &RankingContext) -> f64 {
-        let sender = &email.from_address;
+        let sender = crate::email_ranking::sender::normalize_sender_key(&email.from_address);
 
         // Get count of user's replies to this sender
-        let reply_count = context.user_reply_counts.get(sender).copied().unwrap_or(0);
+        let reply_count = context.user_reply_counts.get(&sender).copied().unwrap_or(0);
 
         // Score based on reply count
         // 0 replies = 0 points

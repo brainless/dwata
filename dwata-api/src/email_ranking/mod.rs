@@ -5,6 +5,7 @@ use std::collections::HashSet;
 pub mod conversation;
 pub mod financial_content;
 pub mod multi_factor;
+pub mod sender;
 pub mod tantivy_ranking;
 pub mod temporal;
 pub mod user_engagement;

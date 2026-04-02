@@ -11,6 +11,8 @@ pub trait RankingFactor {
 pub struct RankingContext {
     /// Map of sender email -> count of user's replies to this sender
     pub user_reply_counts: HashMap<String, i64>,
+    /// Map of sender email -> sender reputation score (0-100)
+    pub sender_scores: HashMap<String, f64>,
     /// Map of thread_id -> (total_emails, user_participated)
     pub thread_info: HashMap<Option<String>, ThreadInfo>,
     /// Current timestamp for temporal scoring
@@ -27,6 +29,7 @@ impl RankingContext {
     pub fn new(current_time_ms: i64) -> Self {
         Self {
             user_reply_counts: HashMap::new(),
+            sender_scores: HashMap::new(),
             thread_info: HashMap::new(),
             current_time_ms,
         }
@@ -40,6 +43,9 @@ pub struct RankingWeights {
     pub user_engagement: f64,
     pub conversation_thread: f64,
     pub recency: f64,
+    /// Additive sender score boost relative to 0-100 sender score.
+    /// Example: 0.20 means +20 points max to the base email score.
+    pub sender_reputation_boost: f64,
 }
 
 impl Default for RankingWeights {
@@ -49,6 +55,7 @@ impl Default for RankingWeights {
             user_engagement: 0.30,     // User replied to sender is strong signal
             conversation_thread: 0.20, // Part of ongoing conversation
             recency: 0.10,             // Recent emails slightly preferred
+            sender_reputation_boost: 0.20,
         }
     }
 }
@@ -69,7 +76,8 @@ pub struct MultiFactorRankedEmail {
     pub from_address: String,
     pub subject: Option<String>,
     pub date_received: i64,
-    pub final_score: f64, // 0-100
+    pub base_score: f64,  // 0-100, email-only factors
+    pub final_score: f64, // 0-100, base + sender boost
     pub factor_scores: FactorScores,
 }
 
@@ -80,6 +88,7 @@ pub struct FactorScores {
     pub user_engagement: f64,
     pub conversation_thread: f64,
     pub recency: f64,
+    pub sender_reputation: f64,
 }
 
 /// Calculate multi-factor ranking for a list of emails
@@ -104,13 +113,22 @@ pub fn rank_emails_multi_factor(
                 user_engagement: factors[1].score_email(&email, context),
                 conversation_thread: factors[2].score_email(&email, context),
                 recency: factors[3].score_email(&email, context),
+                sender_reputation: context
+                    .sender_scores
+                    .get(&crate::email_ranking::sender::normalize_sender_key(
+                        &email.from_address,
+                    ))
+                    .copied()
+                    .unwrap_or(0.0),
             };
 
-            // Calculate weighted final score
-            let final_score = factor_scores.financial_content * weights.financial_content
+            let base_score = factor_scores.financial_content * weights.financial_content
                 + factor_scores.user_engagement * weights.user_engagement
                 + factor_scores.conversation_thread * weights.conversation_thread
                 + factor_scores.recency * weights.recency;
+            let final_score = (base_score
+                + factor_scores.sender_reputation * weights.sender_reputation_boost)
+                .min(100.0);
 
             MultiFactorRankedEmail {
                 email_id: email.id,
@@ -118,6 +136,7 @@ pub fn rank_emails_multi_factor(
                 from_address: email.from_address.clone(),
                 subject: email.subject.clone(),
                 date_received: email.date_received,
+                base_score,
                 final_score,
                 factor_scores,
             }

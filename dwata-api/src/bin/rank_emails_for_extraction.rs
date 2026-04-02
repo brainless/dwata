@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use dwata_api::database::credentials as credentials_db;
-use dwata_api::email_ranking::tantivy_ranking::rank_emails_from_db_detailed;
+use dwata_api::email_ranking::tantivy_ranking::{
+    list_top_sender_scores, rank_emails_from_db_detailed_with_options, RankingPipelineOptions,
+};
 use dwata_api::helpers::database::initialize_database;
+use std::sync::Arc;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -25,6 +28,22 @@ struct Args {
     /// Minimum score threshold (0-100)
     #[arg(short, long, default_value_t = 0.0)]
     min_score: f64,
+
+    /// Enable Tantivy keyword candidate pass before DB ranking
+    #[arg(long, default_value_t = false)]
+    use_tantivy_candidates: bool,
+
+    /// Disable sender reputation pass
+    #[arg(long, default_value_t = false)]
+    disable_sender_reputation: bool,
+
+    /// Candidate fetch multiplier (higher = broader candidate set)
+    #[arg(long, default_value_t = 6)]
+    candidate_multiplier: usize,
+
+    /// Number of top senders to show (0 disables)
+    #[arg(long, default_value_t = 25)]
+    top_senders: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -151,11 +170,51 @@ async fn main() -> Result<()> {
     println!(
         "  Factors: Financial (40%), User Engagement (30%), Conversation (20%), Recency (10%)"
     );
+    println!(
+        "  Passes: Tantivy Candidates={}, Sender Reputation={}",
+        args.use_tantivy_candidates, !args.disable_sender_reputation
+    );
     println!();
 
-    let ranked_detailed = rank_emails_from_db_detailed(&db, args.credential_id, args.limit)
-        .await
-        .context("Failed to rank emails")?;
+    let pipeline_options = RankingPipelineOptions {
+        enable_tantivy_candidate_pass: args.use_tantivy_candidates,
+        enable_sender_reputation_pass: !args.disable_sender_reputation,
+        candidate_fetch_multiplier: args.candidate_multiplier.max(1),
+    };
+
+    let search_index = if args.use_tantivy_candidates {
+        let (config, _) = dwata_api::config::ApiConfig::load()
+            .map_err(|e| anyhow::anyhow!("Failed to load config: {e}"))?;
+        let search_index_path = config
+            .search
+            .as_ref()
+            .and_then(|s| s.index_path.as_ref())
+            .map(std::path::PathBuf::from)
+            .or_else(|| dirs::data_local_dir().map(|d| d.join("dwata").join("tantivy-index")))
+            .context("Failed to resolve search index path")?;
+
+        Some(Arc::new(
+            dwata_api::search::tantivy::open_or_create_index_preserving(&search_index_path)
+                .with_context(|| {
+                    format!(
+                        "Failed to open/create Tantivy index at {}",
+                        search_index_path.display()
+                    )
+                })?,
+        ))
+    } else {
+        None
+    };
+
+    let ranked_detailed = rank_emails_from_db_detailed_with_options(
+        &db,
+        args.credential_id,
+        args.limit,
+        &pipeline_options,
+        search_index.as_deref(),
+    )
+    .await
+    .context("Failed to rank emails")?;
 
     // Filter by minimum score if specified
     let filtered: Vec<_> = ranked_detailed
@@ -180,15 +239,47 @@ async fn main() -> Result<()> {
                 truncate(email.subject.as_deref().unwrap_or("(no subject)"), 50),
                 format_timestamp(email.date_received),
                 format!("{:.1}", email.final_score),
+                format!("{:.1}", email.factor_scores.sender_reputation),
                 format!("{:.0}", email.factor_scores.user_engagement),
             ]
         })
         .collect();
 
     print_table(
-        &["ID", "From", "Subject", "Date", "Score", "Engaged"],
+        &[
+            "ID", "From", "Subject", "Date", "Score", "Sender", "Engaged",
+        ],
         &rows,
     );
+
+    if !args.disable_sender_reputation && args.top_senders > 0 {
+        println!();
+        println!("Top {} Sender Scores:", args.top_senders);
+        let top_senders = list_top_sender_scores(
+            db.async_connection.clone(),
+            args.credential_id,
+            args.top_senders,
+        )
+        .await
+        .context("Failed to compute top sender scores")?;
+
+        let sender_rows: Vec<Vec<String>> = top_senders
+            .iter()
+            .map(|s| {
+                vec![
+                    truncate(&s.sender, 45),
+                    s.emails_received.to_string(),
+                    s.emails_replied.to_string(),
+                    format_timestamp(s.most_recent_date_received_ms),
+                    format!("{:.1}", s.score),
+                ]
+            })
+            .collect();
+        print_table(
+            &["Sender", "Received", "Replied", "Most Recent", "Score"],
+            &sender_rows,
+        );
+    }
 
     // Print detailed information if verbose mode
     if args.verbose {
@@ -206,7 +297,8 @@ async fn main() -> Result<()> {
             println!("  Date: {}", format_timestamp(email.date_received));
             println!();
             println!("  ═══ Multi-Factor Scores ═══");
-            println!("    Final Score: {:.2}/100", email.final_score);
+            println!("    Base Email Score: {:.2}/100", email.base_score);
+            println!("    Final Score:      {:.2}/100", email.final_score);
             println!(
                 "    ├─ Financial Content: {:.1} (weight: 0.40)",
                 email.factor_scores.financial_content
@@ -220,8 +312,12 @@ async fn main() -> Result<()> {
                 email.factor_scores.conversation_thread
             );
             println!(
-                "    └─ Recency:           {:.1} (weight: 0.10)",
+                "    ├─ Recency:           {:.1} (weight: 0.10)",
                 email.factor_scores.recency
+            );
+            println!(
+                "    └─ Sender Reputation: {:.1} (boosted separately)",
+                email.factor_scores.sender_reputation
             );
             println!();
             println!(
