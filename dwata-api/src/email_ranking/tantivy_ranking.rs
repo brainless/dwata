@@ -363,7 +363,8 @@ async fn query_sender_aggregates(
                                 ELSE e2.from_address
                             END
                         )) AS sender_key,
-                        e1.id AS sent_id
+                        e1.id AS sent_id,
+                        e1.date_received AS sent_date_received
                     FROM emails e1
                     JOIN emails e2 ON e1.in_reply_to = e2.message_id
                     WHERE e1.in_reply_to IS NOT NULL
@@ -383,7 +384,8 @@ async fn query_sender_aggregates(
                     -- Direct recipient matching from Sent -> to_addresses JSON
                     SELECT
                         lower(trim(json_extract(ta.value, '$.email'))) AS sender_key,
-                        e1.id AS sent_id
+                        e1.id AS sent_id,
+                        e1.date_received AS sent_date_received
                     FROM emails e1
                     JOIN json_each(COALESCE(e1.to_addresses, '[]')) ta
                     WHERE (?1 IS NULL OR e1.credential_id = ?1)
@@ -397,7 +399,8 @@ async fn query_sender_aggregates(
                 )
                 SELECT
                     sender_key,
-                    COUNT(DISTINCT sent_id) AS user_reply_count
+                    COUNT(DISTINCT sent_id) AS user_reply_count,
+                    MAX(sent_date_received) AS last_user_reply_ms
                 FROM reply_events
                 WHERE sender_key IS NOT NULL AND sender_key <> ''
                 GROUP BY sender_key
@@ -459,6 +462,7 @@ async fn query_sender_aggregates(
                 sb.last_email_received,
                 sb.active_months,
                 COALESCE(rc.user_reply_count, 0) AS user_reply_count,
+                COALESCE(rc.last_user_reply_ms, 0) AS last_user_reply_ms,
                 COALESCE(et.engaged_thread_count, 0) AS engaged_thread_count
             FROM sender_base sb
             LEFT JOIN reply_counts rc ON rc.sender_key = sb.sender_key
@@ -474,7 +478,8 @@ async fn query_sender_aggregates(
                 last_email_received_ms: row.get(2)?,
                 active_months: row.get(3)?,
                 user_reply_count: row.get(4)?,
-                engaged_thread_count: row.get(5)?,
+                last_user_reply_ms: row.get(5)?,
+                engaged_thread_count: row.get(6)?,
             };
             Ok((sender_key, stats))
         })?;

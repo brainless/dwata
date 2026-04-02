@@ -6,6 +6,7 @@ pub struct SenderAggregate {
     pub last_email_received_ms: i64,
     pub active_months: i64,
     pub user_reply_count: i64,
+    pub last_user_reply_ms: i64,
     pub engaged_thread_count: i64,
 }
 
@@ -27,14 +28,17 @@ pub fn normalize_sender_key(sender: &str) -> String {
 pub fn compute_sender_score(stats: &SenderAggregate, current_time_ms: i64) -> f64 {
     let frequency_score = score_frequency(stats.email_count);
     let recency_score = score_recency(stats.last_email_received_ms, current_time_ms);
+    let owner_reply_recency_score = score_recency(stats.last_user_reply_ms, current_time_ms);
+    // Very strong recency emphasis: prioritize recent owner replies over passive inbound recency.
+    let blended_recency_score = recency_score * 0.30 + owner_reply_recency_score * 0.70;
     let engagement_score = score_user_engagement(stats.user_reply_count);
     let conversation_score =
         score_regular_conversation(stats.active_months, stats.engaged_thread_count);
 
-    let score = frequency_score * 0.20
-        + recency_score * 0.20
-        + engagement_score * 0.40
-        + conversation_score * 0.20;
+    let score = frequency_score * 0.10
+        + blended_recency_score * 0.65
+        + engagement_score * 0.15
+        + conversation_score * 0.10;
 
     score.clamp(0.0, 100.0)
 }
