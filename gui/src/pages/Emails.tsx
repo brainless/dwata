@@ -57,7 +57,7 @@ export default function Emails() {
     labelId?: string;
   }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Load accounts on mount
   onMount(async () => {
@@ -82,6 +82,14 @@ export default function Emails() {
     }
   });
 
+  // Keep search bar and active search in sync with ?q= URL param, including
+  // navigations from other pages while this component is already mounted.
+  createEffect(() => {
+    const qParam = searchParams.q?.trim() || "";
+    setSearchQuery(qParam);
+    setActiveSearchQuery(qParam);
+  });
+
   // Load folders/labels when account changes
   createEffect(async () => {
     const accountId = params.accountId;
@@ -103,8 +111,9 @@ export default function Emails() {
           f => f.name.toLowerCase() === 'inbox'
         );
         if (inbox) {
+          const qs = searchParams.q ? `?q=${encodeURIComponent(searchParams.q)}` : "";
           navigate(
-            `/emails/account/${accountId}/folder/${inbox.id}`,
+            `/emails/account/${accountId}/folder/${inbox.id}${qs}`,
             { replace: true }
           );
         }
@@ -116,13 +125,16 @@ export default function Emails() {
 
   // Trigger search
   const performSearch = () => {
-    setActiveSearchQuery(searchQuery());
+    const q = searchQuery().trim();
+    setActiveSearchQuery(q);
+    setSearchParams(q ? { q } : {}, { replace: true });
   };
 
   // Clear search
   const clearSearch = () => {
     setSearchQuery("");
     setActiveSearchQuery("");
+    setSearchParams({}, { replace: true });
   };
 
   // Load emails when folder/label/account changes, or when search is performed

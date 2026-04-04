@@ -7,6 +7,13 @@ use crate::database::emails as emails_db;
 use crate::database::Database;
 use crate::search::tantivy::TantivySearchIndex;
 
+fn render_hit_id(hit_id: &HitId) -> String {
+    match hit_id {
+        HitId::Email(id) => format!("email:{id}"),
+        HitId::File(id) => format!("file:{id}"),
+    }
+}
+
 fn parse_q_term(
     q: &str,
     explicit_field: Option<SearchField>,
@@ -72,6 +79,15 @@ pub async fn search(
     query: web::Query<SearchQuery>,
 ) -> ActixResult<HttpResponse> {
     let query = query.into_inner();
+    let raw_q = query.q.clone();
+    let raw_terms = query.terms.clone();
+    let explicit_field = query.field.clone();
+    let is_phrase = query.is_phrase.unwrap_or(false);
+    let requested_target = query.target.clone();
+    let credential_id = query.credential_id;
+    let limit = query.limit.unwrap_or(25);
+    let offset = query.offset.unwrap_or(0);
+
     let terms = if let Some(terms_json) = query.terms.as_ref().filter(|s| !s.trim().is_empty()) {
         serde_json::from_str::<Vec<SearchTerm>>(terms_json)
             .map_err(|e| actix_web::error::ErrorBadRequest(format!("Invalid terms: {e}")))?
@@ -84,6 +100,11 @@ pub async fn search(
     };
 
     if terms.is_empty() {
+        tracing::warn!(
+            q = ?raw_q,
+            terms = ?raw_terms,
+            "Rejecting search request because parsed terms are empty"
+        );
         return Ok(
             HttpResponse::BadRequest().json(shared_types::ErrorResponse {
                 error: "terms must not be empty".to_string(),
@@ -99,7 +120,25 @@ pub async fn search(
         offset: query.offset,
     };
 
+    tracing::info!(
+        q = ?raw_q,
+        terms_json = ?raw_terms,
+        explicit_field = ?explicit_field,
+        is_phrase,
+        target = ?requested_target,
+        effective_target = ?request.target,
+        credential_id,
+        limit,
+        offset,
+        parsed_terms = ?request.terms,
+        "Search request received"
+    );
+
     if request.limit.unwrap_or(25) > 100 {
+        tracing::warn!(
+            requested_limit = request.limit.unwrap_or(25),
+            "Rejecting search request because limit is > 100"
+        );
         return Ok(
             HttpResponse::BadRequest().json(shared_types::ErrorResponse {
                 error: "limit must be <= 100".to_string(),
@@ -111,6 +150,13 @@ pub async fn search(
         .search(&request)
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
+    let sample_hit_ids: Vec<String> = search_result
+        .hits
+        .iter()
+        .take(10)
+        .map(|hit| render_hit_id(&hit.hit_id))
+        .collect();
+
     // Extract email IDs from hits
     let email_ids: Vec<i64> = search_result
         .hits
@@ -120,6 +166,14 @@ pub async fn search(
             _ => None,
         })
         .collect();
+
+    tracing::info!(
+        total_hits = search_result.total_hits,
+        page_hits = search_result.hits.len(),
+        email_hit_ids = email_ids.len(),
+        sample_hit_ids = ?sample_hit_ids,
+        "Search index returned hits"
+    );
 
     // Fetch full email data for the hits
     let emails = emails_db::get_emails_by_ids(db.async_connection.clone(), &email_ids)
@@ -146,6 +200,13 @@ pub async fn search(
         );
     }
 
+    tracing::info!(
+        requested_email_hits = email_ids.len(),
+        hydrated_emails = emails_by_id.len(),
+        missing_hydration = missing_ids.len(),
+        "Search hydration completed"
+    );
+
     // Update hits with email data where available
     let hits: Vec<shared_types::SearchHit> = search_result
         .hits
@@ -168,6 +229,12 @@ pub async fn search(
             hit
         })
         .collect();
+
+    tracing::info!(
+        response_hits = hits.len(),
+        response_total_hits = search_result.total_hits,
+        "Search response ready"
+    );
 
     Ok(HttpResponse::Ok().json(SearchResponse {
         hits,

@@ -357,7 +357,7 @@ impl TantivySearchIndex {
                 must_clauses.push((
                     Occur::Must,
                     Box::new(TermQuery::new(
-                        Term::from_field_u64(self.fields.email_id, 0u64),
+                        Term::from_field_u64(self.fields.file_id, 0u64),
                         IndexRecordOption::Basic,
                     )),
                 ));
@@ -366,7 +366,7 @@ impl TantivySearchIndex {
                 must_clauses.push((
                     Occur::Must,
                     Box::new(TermQuery::new(
-                        Term::from_field_u64(self.fields.file_id, 0u64),
+                        Term::from_field_u64(self.fields.email_id, 0u64),
                         IndexRecordOption::Basic,
                     )),
                 ));
@@ -458,5 +458,73 @@ impl TantivySearchIndex {
         }
 
         Ok(TantivySearchResult { hits, total_hits })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn any_term(value: &str) -> SearchTerm {
+        SearchTerm {
+            field: SearchField::Any,
+            value: value.to_string(),
+            is_phrase: false,
+        }
+    }
+
+    #[test]
+    fn search_target_email_returns_indexed_email_hits() {
+        let dir = tempdir().expect("temp dir");
+        let index = open_or_create_index(dir.path()).expect("index");
+
+        let extracted = IndexedTextFields::from_email(
+            Some("invoice from acme".to_string()),
+            Some("Acme invoice".to_string()),
+            "billing@acme.com".to_string(),
+            Some("user@example.com".to_string()),
+            42,
+        );
+        index.index_email(101, &extracted).expect("index email");
+
+        let request = SearchRequest {
+            target: SearchTarget::Email,
+            terms: vec![any_term("invoice")],
+            credential_id: Some(42),
+            limit: Some(10),
+            offset: Some(0),
+        };
+
+        let result = index.search(&request).expect("search");
+        assert_eq!(result.total_hits, 1);
+        assert!(matches!(result.hits[0].hit_id, HitId::Email(101)));
+    }
+
+    #[test]
+    fn search_target_file_excludes_indexed_email_hits() {
+        let dir = tempdir().expect("temp dir");
+        let index = open_or_create_index(dir.path()).expect("index");
+
+        let extracted = IndexedTextFields::from_email(
+            Some("invoice from acme".to_string()),
+            Some("Acme invoice".to_string()),
+            "billing@acme.com".to_string(),
+            Some("user@example.com".to_string()),
+            42,
+        );
+        index.index_email(101, &extracted).expect("index email");
+
+        let request = SearchRequest {
+            target: SearchTarget::File,
+            terms: vec![any_term("invoice")],
+            credential_id: Some(42),
+            limit: Some(10),
+            offset: Some(0),
+        };
+
+        let result = index.search(&request).expect("search");
+        assert_eq!(result.total_hits, 0);
+        assert!(result.hits.is_empty());
     }
 }
