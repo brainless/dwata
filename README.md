@@ -1,106 +1,98 @@
 # Dwata
 
-Connect your email inbox, download emails, and use LLM agents to extract financial transaction data — all running locally on your machine.
-
-**All data stays on your machine.** dwata works with Ollama and local models (tested on Mac Mini M4 16GB), so your emails never leave your computer.
-
-> [!WARNING]
-> dwata is very early software and is being developed actively, I am sorry if the extracted data has bugs.
-
-## What dwata does today
-
-### Email inbox
-
-Connect your Gmail or IMAP account. dwata downloads your emails and stores them locally in SQLite.
-
-![Email inbox](docs/assets/dwata_email_home.png)
-
-### Financial template detection
-
-Select financial emails and run an LLM agent to generate extraction templates. The agent reads sample emails and produces reusable patterns — you only need AI once per email sender.
-
-![Detect financial templates](docs/assets/dwata_detect_financial_templates_with_ai.png)
-
-![Running template detection with Ollama](docs/assets/dwata_run_financial_template_detection.png)
-
-### Financial templates
-
-Browse and manage the generated templates. Each template captures how to extract financial data from a specific sender.
-
-![Financial templates](docs/assets/dwata_financial_templates.png)
-
-### Extracted transactions
-
-Once templates are in place, dwata extracts financial transactions from matching emails automatically.
+Dwata is a local-first Rust backend for connecting email accounts, storing mail
+in SQLite, and using LLM agents to extract financial data and knowledge-graph
+entities. Email data stays on the machine running `dwata-api` unless you choose
+an external AI provider.
 
 > [!WARNING]
-> There are quite a few issues with the extraction logic. I am working on it actively.
+> Dwata is an active restart. The native cross-platform UI is planned but is
+> not shipped yet. This repository currently provides the backend API and Rust
+> agent components; it does not provide a downloadable desktop application.
 
-![Financial transactions](docs/assets/dwata_financial_transactions.png)
+## What is available now
 
-![Financial bills](docs/assets/dwata_financial_bills.png)
+- `dwata-api`: an Actix-web JSON-over-HTTP API with local SQLite storage,
+  email/OAuth integration, search, download jobs, and extraction endpoints.
+- `dwata-agents`: Rust agents for financial and knowledge-graph extraction.
+- `shared-types`: Rust domain and API types shared by the backend and agents.
 
-### LLM settings
+The API is intended to be the server boundary for the restart. A future native
+Rust UI will compose with the same application capabilities; the former web
+and Tauri desktop applications are no longer part of the project.
 
-Use Ollama with a local model (Ministral 3: 3b), OpenAI (GPT-4o Nano), or Google Gemini (Gemini 2.5 Flash Preview). Switch models in settings.
+## Run the backend
 
-![Settings - Ollama Ministral 3 3b](docs/assets/dwata_settings_ollama_ministral3_3b.png)
-
-## Privacy
-
-- All email data is stored locally in SQLite — never sent to a cloud service
-- With Ollama, template detection runs entirely on your machine with no external API calls
-- OS keychain stores credentials (Gmail password / OAuth tokens) — dwata uses a single keychain entry so you get one prompt on first launch
-- On macOS, select **Always Allow** when the keychain prompt appears so you're not asked again
-
-## Getting started
-
-Download the latest release for your platform from [GitHub Releases](https://github.com/brainless/dwata/releases).
-
-Launch the Dwata desktop app (Tauri). It starts the `dwata-api` sidecar automatically and loads the GUI inside the app window.
-
-### Connecting Gmail
-
-dwata supports Gmail via OAuth. Set your Google OAuth `client_id` and `client_secret` in the config file:
-
-- **macOS**: `~/Library/Application Support/dwata/project.toml`
-- **Linux**: `~/.config/dwata/project.toml`
-- **Windows**: `%APPDATA%\dwata\project.toml`
-
-You can use your own Google OAuth app (bring-your-own credentials).
-
-### Using Ollama
-
-Install [Ollama](https://ollama.com) and pull model [Ministral 3:3b](https://ollama.com/library/ministral-3:3b):
+Install the Rust toolchain, then start the API from the repository root:
 
 ```bash
-ollama pull ministral-3:3b
+cargo run -p dwata-api
 ```
 
-Then set the model in dwata's settings page.
+By default it listens on `127.0.0.1:8080`. Verify that the service and SQLite
+connection are available:
 
-## Tech stack
+```bash
+curl http://127.0.0.1:8080/api/health
+```
 
-- **Backend**: Rust + Actix-web
-- **Database**: SQLite (local)
-- **Frontend**: SolidJS
-- **UI Components**: DaisyUI
-- **LLM**: Ollama (local), OpenAI, or Google Gemini
+The first start creates a configuration file in the OS configuration directory
+when neither `config.toml` nor `../config.toml` exists:
+
+- macOS: `~/Library/Application Support/dwata/config.toml`
+- Linux: `~/.config/dwata/config.toml`
+- Windows: `%APPDATA%\dwata\config.toml`
+
+Copy and adapt [`config.example.toml`](config.example.toml) if you need to set
+the listen address, OAuth client credentials, AI-provider keys, or search
+index path. See the [developer guide](DEVELOP.md) for configuration, database,
+and agent-development details.
+
+## Gmail and AI providers
+
+Gmail OAuth uses a Google OAuth client configured under `[google_oauth]` in
+`config.toml`. The redirect URI is derived from `[server]` as
+`http://<host>:<port>/api/oauth/google/callback`; register that exact URI with
+your OAuth application.
+
+For local inference, install [Ollama](https://ollama.com) and pull the default
+model:
+
+```bash
+ollama pull qwen3.5:2b
+```
+
+OpenAI and Gemini keys can instead be configured in
+`[ai_provider_api_keys]`. Using an external provider sends the applicable
+extraction prompts and content to that provider.
+
+## Privacy and storage
+
+- SQLite data is local. Its default path is OS-specific; see
+  [DEVELOP.md](DEVELOP.md#database-storage).
+- Credentials are stored as SQLite metadata plus secrets in the OS keychain.
+- Ollama inference is local; third-party AI providers are not.
+
+## Development
+
+Backend development needs Rust. SQLite's CLI is optional for inspecting the
+database. Node.js, TypeScript, Tauri, and a web GUI are not required or
+included in the current workspace.
+
+Useful commands:
+
+```bash
+cargo fmt --check
+cargo test --workspace
+cargo build --workspace
+```
 
 ## Support
 
-- **Bugs & issues**: [GitHub Issues](https://github.com/brainless/dwata/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/brainless/dwata/discussions)
-- **Developer guide**: [DEVELOP.md](DEVELOP.md)
+- [Issues](https://github.com/brainless/dwata/issues)
+- [Discussions](https://github.com/brainless/dwata/discussions)
+- [Developer guide](DEVELOP.md)
 
 ## License
 
 GPL v3 — see [LICENSE](LICENSE).
-
-## From the founder
-
-I am Sumit, and I live in a small eastern Himalayan village in India. I mentor/co-mentor hundreds of folks each month about how to use coding agents. I run a digital nomad space in our village. Come, say Hi!
-
-- [Curry Hostel](https://www.instagram.com/curryhostel)
-- [Me on YouTube](https://www.youtube.com/@nomadsome)
-- [Sponsor me on GitHub](https://github.com/sponsors/brainless)
