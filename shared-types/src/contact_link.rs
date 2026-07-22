@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ContactLinkType {
     Linkedin,
@@ -12,8 +10,7 @@ pub enum ContactLinkType {
     Other,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContactLink {
     pub id: i64,
     /// FK to the persons table.
@@ -27,18 +24,7 @@ pub struct ContactLink {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct CreateContactLinkRequest {
-    pub person_id: i64,
-    pub link_type: ContactLinkType,
-    pub url: String,
-    pub label: Option<String>,
-    pub is_primary: Option<bool>,
-}
-
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct ContactLinksResponse {
     pub links: Vec<ContactLink>,
 }

@@ -21,8 +21,7 @@ where
 // Per-entity extraction structs (exposed to LLM via tool schema)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExtractedLocation {
     #[schemars(
         description = "Unique positive integer id you assign — other entities reference this"
@@ -43,8 +42,7 @@ pub struct ExtractedLocation {
     pub search_summary: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExtractedOrganisation {
     #[schemars(description = "Unique positive integer id you assign")]
     pub id: i64,
@@ -65,8 +63,7 @@ pub struct ExtractedOrganisation {
     pub search_summary: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExtractedPerson {
     #[schemars(description = "Unique positive integer id you assign")]
     pub id: i64,
@@ -83,8 +80,7 @@ pub struct ExtractedPerson {
     pub search_summary: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExtractedBill {
     #[schemars(description = "Unique positive integer id you assign")]
     pub id: i64,
@@ -112,8 +108,7 @@ pub struct ExtractedBill {
     pub subscription_id: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExtractedTransaction {
     #[schemars(description = "Unique positive integer id you assign")]
     pub id: i64,
@@ -132,8 +127,7 @@ pub struct ExtractedTransaction {
     pub bill_id: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExtractedSubscription {
     #[schemars(description = "Unique positive integer id you assign")]
     pub id: i64,
@@ -157,8 +151,7 @@ pub struct ExtractedSubscription {
     pub start_date: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExtractedOrder {
     #[schemars(description = "Unique positive integer id you assign")]
     pub id: i64,
@@ -182,8 +175,7 @@ pub struct ExtractedOrder {
     pub transaction_id: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExtractedEvent {
     #[schemars(description = "Unique positive integer id you assign")]
     pub id: i64,
@@ -201,8 +193,7 @@ pub struct ExtractedEvent {
 // Top-level tool payload
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(
     description = "All entities extracted from the email. Include only entities actually present; omit empty lists."
 )]
@@ -237,8 +228,7 @@ pub struct ExtractedEntitiesParams {
 // Confirmation tool payload
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(
     description = "Confirm whether the parsed entity values shown to you are correct. If not, call submit_entities again with corrections."
 )]

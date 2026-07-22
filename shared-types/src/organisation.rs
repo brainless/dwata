@@ -1,11 +1,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 /// The role an organisation plays, especially in financial contexts.
 /// An organisation can play multiple roles across different interactions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, JsonSchema)]
-#[ts(export)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum OrganisationRole {
     /// A for-profit company or business
@@ -50,8 +48,7 @@ impl std::fmt::Display for OrganisationRole {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organisation {
     pub id: i64,
     pub name: String,
@@ -71,43 +68,8 @@ pub struct Organisation {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct CreateOrganisationRequest {
-    pub name: String,
-    pub description: Option<String>,
-    pub industry: Option<String>,
-    pub email: Option<String>,
-    pub roles: Vec<OrganisationRole>,
-    pub location_id: Option<i64>,
-    pub website: Option<String>,
-    pub linkedin_url: Option<String>,
-    pub search_summary: Option<String>,
-}
-
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct UpdateOrganisationRequest {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub industry: Option<String>,
-    pub email: Option<String>,
-    pub roles: Option<Vec<OrganisationRole>>,
-    pub location_id: Option<i64>,
-    pub website: Option<String>,
-    pub linkedin_url: Option<String>,
-    pub search_summary: Option<String>,
-}
-
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
-pub struct OrganisationsResponse {
-    pub organisations: Vec<Organisation>,
-}
-
 /// Organisation with email count statistics derived from the emails table.
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct OrganisationWithCounts {
     #[serde(flatten)]
     pub organisation: Organisation,
@@ -117,8 +79,7 @@ pub struct OrganisationWithCounts {
     pub in_to_count: i64,
 }
 
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct OrganisationsWithCountsResponse {
     pub organisations: Vec<OrganisationWithCounts>,
 }

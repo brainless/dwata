@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 /// Data source type for extracted transactions
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DataSourceType {
     Email,
@@ -16,7 +15,7 @@ pub enum DataSourceType {
 }
 
 /// Category for financial transactions
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TransactionCategory {
     Income,
@@ -33,7 +32,7 @@ pub enum TransactionCategory {
 }
 
 /// Status of financial transaction
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TransactionStatus {
     Paid,
@@ -42,7 +41,7 @@ pub enum TransactionStatus {
 }
 
 /// Financial transaction extracted from documents
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     pub id: i64,
     pub data_source_type: DataSourceType,

@@ -1,11 +1,10 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 use crate::transaction::{DataSourceType, TransactionCategory};
 
 /// Status specific to a financial document (bill, invoice, statement).
 /// Distinct from TransactionStatus which tracks payment events.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BillStatus {
     Received,
@@ -13,18 +12,6 @@ pub enum BillStatus {
     Paid,
     Overdue,
     Cancelled,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "kebab-case")]
-pub enum ServiceIdentifierKind {
-    PhoneNumber,
-    AccountNumber,
-    PolicyNumber,
-    MeterNumber,
-    SubscriptionId,
-    ContractId,
-    Other,
 }
 
 /// A financial document (bill, invoice, receipt, statement) extracted from an email or file.
@@ -38,7 +25,7 @@ pub enum ServiceIdentifierKind {
 /// - `{field}`      — `BIGINT` — parsed UTC timestamp in milliseconds since Unix epoch.
 ///                    For date-only values, use 00:00:00 UTC for that calendar day.
 ///                    Nullable when parsing fails.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bill {
     pub id: i64,
     pub data_source_type: DataSourceType,
@@ -71,18 +58,6 @@ pub struct Bill {
     pub billing_period_end_raw: Option<String>,
     pub billing_period_end: Option<i64>,
 
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct BillSubject {
-    pub id: i64,
-    pub bill_id: i64,
-    pub kind: ServiceIdentifierKind,
-    pub value: String,
-    pub masked_value: Option<String>,
-    pub is_primary: bool,
     pub created_at: i64,
     pub updated_at: i64,
 }

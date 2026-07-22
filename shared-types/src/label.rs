@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailLabel {
     pub id: i64,
     pub credential_id: i64,
@@ -15,14 +13,7 @@ pub struct EmailLabel {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct ListLabelsRequest {
-    pub credential_id: i64,
-}
-
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct ListLabelsResponse {
     pub labels: Vec<EmailLabel>,
 }

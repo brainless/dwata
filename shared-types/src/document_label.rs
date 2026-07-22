@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 /// Primary type of a financial document.
 ///
 /// Determines which downstream extractors to run and what data to expect.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum DocumentType {
     /// Inward bill: you owe money (utility, subscription, rent, etc.)
@@ -33,8 +32,7 @@ pub enum DocumentType {
 /// Result of the document labeler agent.
 ///
 /// Drives which downstream extractors are run on this template.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(
     description = "Classify the financial document type and determine what structured data it contains."
 )]

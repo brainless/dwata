@@ -1,9 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 /// Order status options
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OrderStatus {
     Placed,
@@ -18,8 +17,7 @@ pub enum OrderStatus {
 }
 
 /// A single line item within an order.
-#[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct OrderItem {
     pub name: String,
     pub quantity: Option<i32>,
@@ -27,8 +25,7 @@ pub struct OrderItem {
 }
 
 /// A product or e-commerce order extracted from emails
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Order {
     pub id: i64,
     /// FK to the Organisation that is the seller/merchant
@@ -51,8 +48,7 @@ pub struct Order {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct OrdersResponse {
     pub orders: Vec<Order>,
 }

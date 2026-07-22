@@ -1,9 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 /// Billing cycle options for subscriptions
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BillingCycle {
     Weekly,
@@ -15,8 +14,7 @@ pub enum BillingCycle {
 }
 
 /// A recurring subscription to a service extracted from emails
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Subscription {
     pub id: i64,
     /// FK to the Organisation providing the service
@@ -43,8 +41,7 @@ pub struct Subscription {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct SubscriptionsResponse {
     pub subscriptions: Vec<Subscription>,
 }

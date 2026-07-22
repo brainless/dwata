@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 /// Core agent session model stored in database
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,50 +62,11 @@ impl AgentToolCall {
 // API Response types
 
 /// Simplified session info for list views
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SessionListItem {
     pub id: i64,
     pub agent_name: String,
     pub user_prompt: String,
     pub status: String,
     pub started_at: i64,
-}
-
-/// Detailed session with messages and tool calls
-#[derive(Debug, Serialize, Deserialize, TS)]
-pub struct SessionResponse {
-    pub id: i64,
-    pub agent_name: String,
-    pub provider: String,
-    pub model: String,
-    pub system_prompt: Option<String>,
-    pub user_prompt: String,
-    #[ts(type = "any")]
-    pub config: Option<serde_json::Value>,
-    pub status: String,
-    pub result: Option<String>,
-    pub messages: Vec<SessionMessage>,
-    pub tool_calls: Vec<SessionToolCall>,
-    pub started_at: i64,
-    pub ended_at: Option<i64>,
-}
-
-/// Message in session response
-#[derive(Debug, Serialize, Deserialize, TS)]
-pub struct SessionMessage {
-    pub role: String,
-    pub content: String,
-    pub created_at: i64,
-}
-
-/// Tool call in session response
-#[derive(Debug, Serialize, Deserialize, TS)]
-pub struct SessionToolCall {
-    pub tool_name: String,
-    #[ts(type = "any")]
-    pub request: serde_json::Value,
-    #[ts(type = "any")]
-    pub response: Option<serde_json::Value>,
-    pub status: String,
-    pub execution_time_ms: Option<i64>,
 }
