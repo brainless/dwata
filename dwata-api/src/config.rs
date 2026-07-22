@@ -34,9 +34,7 @@ impl Default for ApiConfig {
                 secret: "change-me-in-production".to_string(),
                 expiration_hours: 24,
             }),
-            cors: Some(CorsConfig {
-                allowed_origins: vec!["http://localhost:3030".to_string()],
-            }),
+            cors: None,
             google_oauth: Some(GoogleOAuthConfig::default()),
             email_downloads: Some(EmailDownloadsConfig::default()),
             search: Some(SearchConfig::default()),

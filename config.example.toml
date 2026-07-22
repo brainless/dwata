@@ -21,8 +21,9 @@ port = 8080
 secret           = "your-super-secret-jwt-key-change-this-in-production"
 expiration_hours = 24
 
-[cors]
-allowed_origins = ["http://localhost:3030"]
+# Optional when a browser client is intentionally placed in front of the API.
+# [cors]
+# allowed_origins = ["https://client.example.com"]
 
 [google_oauth]
 # Google Cloud Console OAuth2 client ID for Gmail

@@ -93,7 +93,7 @@ This split is a direction, not a requirement for the initial cleanup. Avoid coup
 - [x] Remove `shared-types` TypeScript export infrastructure and only types/exports that no longer have Rust consumers. Retain shared API/agent domain types; do not perform a speculative domain/contract split in this cleanup.
 - [x] Update `Cargo.toml` workspace membership/exclusions and dependencies to reflect the remaining Rust crates. Regenerate `Cargo.lock` through Cargo after removal.
 - [x] Rewrite `README.md` and `DEVELOP.md` for the interim backend-first restart: no desktop download instructions, no GUI/Tauri prerequisites, no TypeScript generation, and no claims that the legacy desktop application is available.
-- [ ] Search the active repository configuration and docs for stale Tauri/GUI references. Historical material in `tasks/` may either be clearly marked historical or removed in a separate documentation cleanup, but must not be presented as current development guidance.
+- [x] Search the active repository configuration and docs for stale Tauri/GUI references. Historical material in `tasks/` may either be clearly marked historical or removed in a separate documentation cleanup, but must not be presented as current development guidance.
 - [ ] Verify the resulting Rust workspace with formatting and workspace tests/builds appropriate to the supported crates. Confirm a clean checkout has no Node/Tauri dependency required for normal backend development.
 
 ## Acceptance criteria
