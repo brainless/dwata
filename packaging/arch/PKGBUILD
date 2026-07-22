@@ -7,7 +7,7 @@ arch=('x86_64')
 url="https://github.com/brainless/dwata"
 license=('MIT')
 depends=()
-makedepends=('rust' 'cargo' 'git' 'nodejs' 'npm')
+makedepends=('rust' 'cargo' 'git')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/brainless/dwata/archive/v$pkgver.tar.gz")
 sha256sums=('SKIP')  # Update this with actual checksum after first release
 
@@ -21,13 +21,7 @@ prepare() {
 build() {
   cd "$srcdir/dwata-$pkgver"
 
-  # Build GUI
-  cd gui
-  npm install
-  npm run build
-  cd ..
-
-  # Build API with bundled GUI
+  # Build API server
   cargo build --release --locked -p dwata-api --target-dir target
 }
 
