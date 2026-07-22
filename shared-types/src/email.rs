@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 /// Represents a stored email
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Email {
     pub id: i64,
     pub credential_id: i64,
@@ -46,16 +44,14 @@ pub struct Email {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailAddress {
     pub email: String,
     pub name: Option<String>,
 }
 
 /// Request to list emails
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Deserialize)]
 pub struct ListEmailsRequest {
     pub credential_id: Option<i64>,
     pub folder_id: Option<i64>,
@@ -66,8 +62,7 @@ pub struct ListEmailsRequest {
 }
 
 /// Response for email list
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct ListEmailsResponse {
     pub emails: Vec<Email>,
     pub total_count: i64,
@@ -75,15 +70,13 @@ pub struct ListEmailsResponse {
 }
 
 /// Request to fetch emails by IDs
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Deserialize)]
 pub struct EmailsByIdsRequest {
     pub email_ids: Vec<i64>,
 }
 
 /// Response for email batch lookup
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct EmailsByIdsResponse {
     pub emails: Vec<Email>,
 }

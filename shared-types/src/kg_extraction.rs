@@ -2,10 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Type of named entity in the knowledge graph
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, ts_rs::TS,
-)]
-#[ts(export)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NamedEntityKind {
     Location,
@@ -47,8 +44,7 @@ impl NamedEntityKind {
 }
 
 /// Parameters for searching entities
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchEntitiesParams {
     pub keywords: String,
     pub entity_types: Vec<NamedEntityKind>,
@@ -59,8 +55,7 @@ pub struct SearchEntitiesParams {
 }
 
 /// Result of an entity search
-#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntitySearchResult {
     pub id: i64,
     pub entity_type: NamedEntityKind,

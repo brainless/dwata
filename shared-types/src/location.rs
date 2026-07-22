@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Location {
     pub id: i64,
     /// Named place, e.g. "Central Park", "Delhi Airport". Nullable for pure address locations.
@@ -20,8 +18,7 @@ pub struct Location {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct LocationsResponse {
     pub locations: Vec<Location>,
 }

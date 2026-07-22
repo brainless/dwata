@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailFolder {
     pub id: i64,
     pub credential_id: i64,
@@ -23,14 +21,7 @@ pub struct EmailFolder {
     pub last_synced_at: Option<i64>,
 }
 
-#[derive(Debug, Deserialize, TS)]
-#[ts(export)]
-pub struct ListFoldersRequest {
-    pub credential_id: i64,
-}
-
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct ListFoldersResponse {
     pub folders: Vec<EmailFolder>,
 }

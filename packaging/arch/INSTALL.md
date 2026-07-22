@@ -70,5 +70,4 @@ The server will start on `http://127.0.0.1:8080` by default.
 The static binary has no runtime dependencies. For the PKGBUILD build, you need:
 - `rust` and `cargo` (build time)
 - `git` (build time)
-- `nodejs` and `npm` (build time)
 - `gnome-keyring` or `libsecret` (runtime, for credential storage)

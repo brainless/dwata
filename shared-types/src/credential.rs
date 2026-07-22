@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum CredentialType {
     Imap,
@@ -14,7 +13,7 @@ pub enum CredentialType {
 }
 
 /// Authentication method for IMAP
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ImapAuthMethod {
     Plain,
@@ -23,7 +22,7 @@ pub enum ImapAuthMethod {
 }
 
 /// IMAP-specific account settings
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImapAccountSettings {
     /// IMAP server host (e.g., "imap.gmail.com")
     pub host: String,
@@ -76,7 +75,7 @@ impl Default for ImapAccountSettings {
 }
 
 /// SMTP-specific account settings
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmtpAccountSettings {
     /// SMTP server host (e.g., "smtp.gmail.com")
     pub host: String,
@@ -90,7 +89,7 @@ pub struct SmtpAccountSettings {
 }
 
 /// API Key service settings
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiKeySettings {
     /// Base URL for the API (e.g., "https://api.stripe.com")
     pub base_url: String,
@@ -102,7 +101,7 @@ pub struct ApiKeySettings {
 }
 
 /// Local file path settings
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalFileSettings {
     /// Absolute path to the file or directory
     pub file_path: String,
@@ -154,7 +153,7 @@ impl std::fmt::Display for CredentialType {
     }
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize)]
 pub struct CreateCredentialRequest {
     pub credential_type: CredentialType,
     pub identifier: String,
@@ -168,7 +167,7 @@ pub struct CreateCredentialRequest {
     pub extra_metadata: Option<String>,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize)]
 pub struct UpdateCredentialRequest {
     pub username: Option<String>,
     pub password: Option<String>,
@@ -179,7 +178,7 @@ pub struct UpdateCredentialRequest {
     pub extra_metadata: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CredentialMetadata {
     pub id: i64,
     pub credential_type: CredentialType,
@@ -196,46 +195,14 @@ pub struct CredentialMetadata {
     pub extra_metadata: Option<String>,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize)]
 pub struct PasswordResponse {
     pub password: String,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize)]
 pub struct CredentialListResponse {
     pub credentials: Vec<CredentialMetadata>,
-}
-
-/// Extended credential metadata with parsed IMAP settings
-#[derive(Debug, Serialize, Deserialize, TS)]
-pub struct ImapCredentialMetadata {
-    pub id: i64,
-    pub identifier: String,
-    pub username: String,
-    pub settings: ImapAccountSettings,
-    pub notes: Option<String>,
-    pub created_at: i64,
-    pub updated_at: i64,
-    pub last_accessed_at: Option<i64>,
-    pub is_active: bool,
-}
-
-impl ImapCredentialMetadata {
-    /// Create from generic CredentialMetadata
-    pub fn from_generic(metadata: CredentialMetadata) -> Result<Self, String> {
-        let settings = metadata.parse_imap_settings()?;
-        Ok(Self {
-            id: metadata.id,
-            identifier: metadata.identifier,
-            username: metadata.username,
-            settings,
-            notes: metadata.notes,
-            created_at: metadata.created_at,
-            updated_at: metadata.updated_at,
-            last_accessed_at: metadata.last_accessed_at,
-            is_active: metadata.is_active,
-        })
-    }
 }
 
 // Helper functions for working with service-specific settings

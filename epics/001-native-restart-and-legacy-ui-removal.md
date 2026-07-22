@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Completed
 
 ## Overview
 
@@ -85,16 +85,16 @@ This split is a direction, not a requirement for the initial cleanup. Avoid coup
 
 ## Tasks
 
-- [ ] Inventory every Tauri, SolidJS/GUI, TypeScript API-generation, GUI-embedding, and legacy launcher/packaging reference. Identify whether it is active code, documentation, a release asset, or historical task material.
-- [ ] Remove the `tauri/` project, including the Tauri Rust app, Node package files, generated capabilities/schema files, sidecar binary, icons, and Tauri-specific README.
-- [ ] Remove the `gui/` project, including SolidJS source, Vite configuration, Node package files, generated `api-types`, screenshots or assets that are solely legacy GUI documentation, and GUI-only guides.
-- [ ] Remove the legacy launch script (`run-dwata-app.sh`) and any Tauri-sidecar build or release wiring.
-- [ ] Delete `dwata-api` GUI embedding/static-serving code and its default fallback route. Ensure API requests still resolve normally and unknown routes return an API-appropriate 404.
-- [ ] Remove `shared-types` TypeScript export infrastructure and only types/exports that no longer have Rust consumers. Retain shared API/agent domain types; do not perform a speculative domain/contract split in this cleanup.
-- [ ] Update `Cargo.toml` workspace membership/exclusions and dependencies to reflect the remaining Rust crates. Regenerate `Cargo.lock` through Cargo after removal.
-- [ ] Rewrite `README.md` and `DEVELOP.md` for the interim backend-first restart: no desktop download instructions, no GUI/Tauri prerequisites, no TypeScript generation, and no claims that the legacy desktop application is available.
-- [ ] Search the active repository configuration and docs for stale Tauri/GUI references. Historical material in `tasks/` may either be clearly marked historical or removed in a separate documentation cleanup, but must not be presented as current development guidance.
-- [ ] Verify the resulting Rust workspace with formatting and workspace tests/builds appropriate to the supported crates. Confirm a clean checkout has no Node/Tauri dependency required for normal backend development.
+- [x] Inventory every Tauri, SolidJS/GUI, TypeScript API-generation, GUI-embedding, and legacy launcher/packaging reference. Identify whether it is active code, documentation, a release asset, or historical task material. See [the inventory](001-native-restart-and-legacy-ui-removal-inventory.md).
+- [x] Remove the `tauri/` project, including the Tauri Rust app, Node package files, generated capabilities/schema files, sidecar binary, icons, and Tauri-specific README.
+- [x] Remove the `gui/` project, including SolidJS source, Vite configuration, Node package files, generated `api-types`, screenshots or assets that are solely legacy GUI documentation, and GUI-only guides.
+- [x] Remove the legacy launch script (`run-dwata-app.sh`) and any Tauri-sidecar build or release wiring.
+- [x] Delete `dwata-api` GUI embedding/static-serving code and its default fallback route. Ensure API requests still resolve normally and unknown routes return an API-appropriate 404.
+- [x] Remove `shared-types` TypeScript export infrastructure and only types/exports that no longer have Rust consumers. Retain shared API/agent domain types; do not perform a speculative domain/contract split in this cleanup.
+- [x] Update `Cargo.toml` workspace membership/exclusions and dependencies to reflect the remaining Rust crates. Regenerate `Cargo.lock` through Cargo after removal.
+- [x] Rewrite `README.md` and `DEVELOP.md` for the interim backend-first restart: no desktop download instructions, no GUI/Tauri prerequisites, no TypeScript generation, and no claims that the legacy desktop application is available.
+- [x] Search the active repository configuration and docs for stale Tauri/GUI references. Historical material in `tasks/` may either be clearly marked historical or removed in a separate documentation cleanup, but must not be presented as current development guidance.
+- [x] Verify the resulting Rust workspace with formatting and workspace tests/builds appropriate to the supported crates. Confirm a clean checkout has no Node/Tauri dependency required for normal backend development.
 
 ## Acceptance criteria
 
@@ -119,4 +119,3 @@ This split is a direction, not a requirement for the initial cleanup. Avoid coup
 3. **Native desktop shell:** create the native wgpu UI crate, compose it with the application services into one binary, and establish desktop lifecycle, configuration, secure storage, and OAuth UX.
 4. **Job/event transport:** decide where polling is sufficient and add SSE or WebSockets for concrete progress/interactive requirements.
 5. **Server deployment and security:** define TLS termination, authentication/authorization, secret management, remote storage/backup policy, and operational packaging.
-

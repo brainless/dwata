@@ -2,7 +2,6 @@
 set -euo pipefail
 
 API_VERSION_OVERRIDE=""
-GUI_VERSION_OVERRIDE=""
 VERSION_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
@@ -11,17 +10,13 @@ while [[ $# -gt 0 ]]; do
       API_VERSION_OVERRIDE="$2"
       shift 2
       ;;
-    --gui-version)
-      GUI_VERSION_OVERRIDE="$2"
-      shift 2
-      ;;
     --version)
       VERSION_OVERRIDE="$2"
       shift 2
       ;;
     -h|--help)
-      echo "Usage: ./scripts/release.sh [--version X.Y.Z] [--api-version X.Y.Z] [--gui-version X.Y.Z]"
-      echo "If no versions are provided, the default is a minor bump for both."
+      echo "Usage: ./scripts/release.sh [--version X.Y.Z] [--api-version X.Y.Z]"
+      echo "If no version is provided, the default is a minor bump."
       exit 0
       ;;
     *)
@@ -73,23 +68,6 @@ raise SystemExit("Failed to resolve current version (Cargo.toml uses template an
 PY
 )
 
-read -r CURRENT_GUI_VERSION < <(FALLBACK_VERSION="$CURRENT_API_VERSION" python3 - <<'PY'
-import json
-from pathlib import Path
-import os
-data = json.loads(Path("gui/package.json").read_text())
-version = data.get("version", "0.0.0")
-if version.count(".") == 2 and all(part.isdigit() for part in version.split(".")):
-  print(version)
-  raise SystemExit(0)
-fallback = os.environ.get("FALLBACK_VERSION", "")
-if fallback:
-  print(fallback)
-  raise SystemExit(0)
-raise SystemExit("Failed to resolve current GUI version (package.json uses template and no fallback found)")
-PY
-)
-
 read -r DEFAULT_VERSION < <(CURRENT_VERSION="$CURRENT_API_VERSION" python3 - <<'PY'
 import os
 parts = os.environ["CURRENT_VERSION"].split(".")
@@ -104,19 +82,15 @@ PY
 
 if [[ -n "$VERSION_OVERRIDE" ]]; then
   API_VERSION="$VERSION_OVERRIDE"
-  GUI_VERSION="$VERSION_OVERRIDE"
 else
   API_VERSION="${API_VERSION_OVERRIDE:-$DEFAULT_VERSION}"
-  GUI_VERSION="${GUI_VERSION_OVERRIDE:-$DEFAULT_VERSION}"
 fi
 
 echo "Current versions:"
 echo "  dwata-api/workspace: $CURRENT_API_VERSION"
-echo "  gui: $CURRENT_GUI_VERSION"
 echo
 echo "Next versions:"
 echo "  dwata-api/workspace: $API_VERSION"
-echo "  gui: $GUI_VERSION"
 echo
 read -r -p "Proceed with release? [y/N] " CONFIRM
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
@@ -130,14 +104,12 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   exit 1
 fi
 
-API_VERSION="$API_VERSION" GUI_VERSION="$GUI_VERSION" python3 - <<'PY'
-import json
+API_VERSION="$API_VERSION" python3 - <<'PY'
 import re
 from pathlib import Path
 import os
 
 api_version = os.environ["API_VERSION"]
-gui_version = os.environ["GUI_VERSION"]
 
 cargo_toml = Path("Cargo.toml")
 text = cargo_toml.read_text()
@@ -149,28 +121,9 @@ if count != 1:
   raise SystemExit("Failed to update Cargo.toml workspace version")
 cargo_toml.write_text(new_text)
 
-package_json = Path("gui/package.json")
-data = json.loads(package_json.read_text())
-data["version"] = gui_version
-package_json.write_text(json.dumps(data, indent=2) + "\n")
-
-tauri_cargo = Path("tauri/src-tauri/Cargo.toml")
-if tauri_cargo.exists():
-  tauri_text = tauri_cargo.read_text()
-  pattern = re.compile(r'(^version\s*=\s*")[^"]+(")', re.MULTILINE)
-  new_text, count = pattern.subn(rf'\g<1>{api_version}\g<2>', tauri_text, count=1)
-  if count != 1:
-    raise SystemExit("Failed to update tauri/src-tauri/Cargo.toml version")
-  tauri_cargo.write_text(new_text)
-
-tauri_conf = Path("tauri/src-tauri/tauri.conf.json")
-if tauri_conf.exists():
-  conf = json.loads(tauri_conf.read_text())
-  conf["version"] = api_version
-  tauri_conf.write_text(json.dumps(conf, indent=2) + "\n")
 PY
 
-git add Cargo.toml gui/package.json tauri/src-tauri/Cargo.toml tauri/src-tauri/tauri.conf.json
+git add Cargo.toml
 git commit -m "Release $TAG"
 git tag "$TAG"
 git push origin main

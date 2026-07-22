@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use clap::Parser;
 use std::sync::Arc;
 use tracing_subscriber::prelude::*;
@@ -13,16 +13,6 @@ mod integrations;
 mod jobs;
 mod search;
 mod state;
-
-const GUI_EMBED_ENABLED: bool = false;
-
-mod gui_embed {
-    use super::*;
-
-    pub async fn serve_gui(_req: HttpRequest) -> HttpResponse {
-        HttpResponse::NotFound().finish()
-    }
-}
 
 #[get("/api/hello")]
 async fn hello() -> impl Responder {
@@ -74,8 +64,6 @@ async fn update_oauth_client_apps(
 struct Args {
     #[arg(long)]
     log_file_path: Option<String>,
-    #[arg(long)]
-    no_open: bool,
 }
 
 #[actix_web::main]
@@ -560,27 +548,12 @@ async fn main() -> std::io::Result<()> {
                 "/api/financial/bills/{id}",
                 web::get().to(handlers::financial::get_bill),
             )
-            .default_service(web::route().to(gui_embed::serve_gui))
     })
     .bind((host.as_str(), port))?
     .run();
 
     let handle = server.handle();
     let shutdown_manager = email_sync_manager.clone();
-
-    let open_in_browser = GUI_EMBED_ENABLED
-        && !cfg!(debug_assertions)
-        && !args.no_open
-        && std::env::var("DWATA_NO_OPEN").is_err();
-    if open_in_browser {
-        let url = format!("http://{}:{}/", host, port);
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            if let Err(err) = webbrowser::open(&url) {
-                tracing::warn!("Failed to open browser: {}", err);
-            }
-        });
-    }
 
     tokio::spawn(async move {
         if let Err(e) = tokio::signal::ctrl_c().await {

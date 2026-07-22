@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 /// What type of content to search for
-#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SearchTarget {
     Email,
@@ -12,8 +10,7 @@ pub enum SearchTarget {
 }
 
 /// Which fields to search within
-#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchField {
     Any,
@@ -25,8 +22,7 @@ pub enum SearchField {
 }
 
 /// A single search term
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchTerm {
     pub field: SearchField,
     pub value: String,
@@ -34,8 +30,7 @@ pub struct SearchTerm {
 }
 
 /// Search request
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchRequest {
     pub target: SearchTarget,
     pub terms: Vec<SearchTerm>,
@@ -45,8 +40,7 @@ pub struct SearchRequest {
 }
 
 /// Identifies what type of item was found and its ID
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HitId {
     Email(i64),
@@ -54,8 +48,7 @@ pub enum HitId {
 }
 
 /// A single search result hit
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchHit {
     pub hit_id: HitId,
     pub score: f32,
@@ -68,39 +61,8 @@ pub struct SearchHit {
 }
 
 /// Search response
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResponse {
     pub hits: Vec<SearchHit>,
     pub total_hits: usize,
-}
-
-// Legacy types - keeping for backward compatibility during transition
-// TODO: Remove these after migration is complete
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
-#[ts(export)]
-#[serde(rename_all = "snake_case")]
-pub enum SearchFieldLegacy {
-    Any,
-    Title,
-    FromAddress,
-    BodyText,
-    AttachmentText,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct SearchTermLegacy {
-    pub field: SearchFieldLegacy,
-    pub value: String,
-    pub is_phrase: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct SearchHitLegacy {
-    pub document_id: i64,
-    pub score: f32,
-    pub snippet: Option<String>,
 }

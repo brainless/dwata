@@ -6,7 +6,6 @@ This document describes the architecture that matches the current branch and mig
 
 - `dwata-api`: Rust backend (Actix), SQLite persistence, sync jobs, extraction APIs
 - `dwata-agents`: template-based financial extraction logic and CLI tooling
-- `gui`: SolidJS frontend for settings, sync status, search, and financial flows
 - `nocodo-llm-sdk` (Cargo alias to sibling `llm-sdk` repo): provider abstraction for one-time template interpretation calls
 
 ## Primary Data Flow
@@ -43,5 +42,5 @@ For the design contract, see `docs/03-type-driven-financial-extraction.md`.
 ## Operational Notes
 
 - Dev runbook: `docs/04-run-from-source.md`
-- API host/port in this branch are aligned to GUI dev defaults (`9200` API, `9210` GUI)
-- OAuth callback reliability requires `server.host = "localhost"`
+- The API defaults to `127.0.0.1:8080`; configure a different host and port
+  when your OAuth client requires a specific callback URI.

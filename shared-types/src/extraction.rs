@@ -7,8 +7,7 @@ use crate::kg_extraction::EntitySearchResult;
 use crate::kg_pass::KgPassType;
 
 /// Events that occur during extraction, tracked step by step
-#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "step_type", rename_all = "snake_case")]
 pub enum ExtractionStep {
     /// Document labeling completed
@@ -84,8 +83,7 @@ pub enum ExtractionStep {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RetryReason {
     ParseFailed,
@@ -95,8 +93,7 @@ pub enum RetryReason {
 }
 
 /// Summary statistics for an extraction run
-#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionSummary {
     pub started_at: i64,
     pub completed_at: Option<i64>,
@@ -111,8 +108,7 @@ pub struct ExtractionSummary {
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionStatus {
     Running,
@@ -131,8 +127,7 @@ impl ExtractionStatus {
 }
 
 /// Complete state for a single email extraction
-#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionStepState {
     pub session_id: i64,
     pub summary: ExtractionSummary,
@@ -141,8 +136,7 @@ pub struct ExtractionStepState {
 }
 
 /// Per-pass state tracking
-#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PassStepState {
     pub pass_type: KgPassType,
     pub pass_name: String,
@@ -155,8 +149,7 @@ pub struct PassStepState {
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ts_rs::TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum PassStatus {
     Pending,

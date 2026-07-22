@@ -12,7 +12,6 @@ pub struct ApiConfig {
     pub deploy: Option<DeployConfig>,
     pub database: Option<DatabaseConfig>,
     pub server: Option<ServerConfig>,
-    pub gui: Option<GuiConfig>,
     pub jwt: Option<JwtConfig>,
     pub cors: Option<CorsConfig>,
     pub google_oauth: Option<GoogleOAuthConfig>,
@@ -31,14 +30,11 @@ impl Default for ApiConfig {
                 host: "127.0.0.1".to_string(),
                 port: 8080,
             }),
-            gui: Some(GuiConfig { port: 3030 }),
             jwt: Some(JwtConfig {
                 secret: "change-me-in-production".to_string(),
                 expiration_hours: 24,
             }),
-            cors: Some(CorsConfig {
-                allowed_origins: vec!["http://localhost:3030".to_string()],
-            }),
+            cors: None,
             google_oauth: Some(GoogleOAuthConfig::default()),
             email_downloads: Some(EmailDownloadsConfig::default()),
             search: Some(SearchConfig::default()),
@@ -64,11 +60,6 @@ pub struct DatabaseConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ServerConfig {
     pub host: String,
-    pub port: u16,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct GuiConfig {
     pub port: u16,
 }
 

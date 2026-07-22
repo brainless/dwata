@@ -1,6 +1,6 @@
-# Run Dwata From Source (This Branch)
+# Run Dwata From Source
 
-This guide is for running Dwata from source with both backend and GUI in development mode.
+This guide is for running the supported Rust backend from source.
 
 ## Repositories to Clone
 
@@ -25,15 +25,14 @@ Expected layout:
 ## Prerequisites
 
 - Rust toolchain (stable)
-- Node.js + npm
 
 ## 1. Configure API for Local Dev
 
-Start `dwata-api` once to generate config (if missing):
+Start `dwata-api` once to generate configuration if it is missing:
 
 ```bash
-cd dwata/dwata-api
-cargo run --bin dwata-api -- --no-open
+cd dwata
+cargo run -p dwata-api
 ```
 
 Config file path:
@@ -41,52 +40,30 @@ Config file path:
 - Linux: `~/.config/dwata/config.toml`
 - Windows: `%APPDATA%\dwata\config.toml`
 
-Set values to match current GUI defaults in this branch:
+Set values appropriate for your local API instance, for example:
 
 ```toml
 [server]
-host = "localhost"
-port = 9200
-
-[cors]
-allowed_origins = ["http://localhost:9210"]
+host = "127.0.0.1"
+port = 8080
 ```
 
 Notes:
-- `host = "localhost"` avoids Google Desktop OAuth callback issues.
-- GUI dev server runs on `9210` (`gui/vite.config.ts`).
-- GUI API default points to port `9200` (`gui/src/config/api.ts`).
+- The Google OAuth callback URI is derived from the configured host and port.
+- Configure `[cors]` only when you intentionally run a browser client in
+  front of the API.
 
 ## 2. Run `dwata-api`
 
 ```bash
-cd dwata/dwata-api
-cargo run --bin dwata-api -- --no-open
+cd dwata
+cargo run -p dwata-api
 ```
 
 Health check:
 
 ```bash
-curl http://localhost:9200/api/health
-```
-
-## 3. Run GUI
-
-In a second terminal:
-
-```bash
-cd dwata/gui
-npm install
-npm run dev
-```
-
-Open `http://localhost:9210`.
-
-## 4. Keep API Types in Sync (when shared-types changes)
-
-```bash
-cd dwata/shared-types
-cargo run --bin generate_api_types
+curl http://127.0.0.1:8080/api/health
 ```
 
 ## Source Dependency Check

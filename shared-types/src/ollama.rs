@@ -1,12 +1,11 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaStatusResponse {
     pub running: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaModelDetails {
     pub parent_model: Option<String>,
     pub format: String,
@@ -16,7 +15,7 @@ pub struct OllamaModelDetails {
     pub quantization_level: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaModelInfo {
     pub name: String,
     pub model: String,
@@ -26,17 +25,17 @@ pub struct OllamaModelInfo {
     pub details: OllamaModelDetails,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaModelsResponse {
     pub models: Vec<OllamaModelInfo>,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaPullModelRequest {
     pub model: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaPullModelResponse {
     pub status: String,
     pub digest: Option<String>,

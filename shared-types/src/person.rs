@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Person {
     pub id: i64,
     pub email_id: Option<i64>,
@@ -17,15 +15,8 @@ pub struct Person {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
-pub struct PersonsResponse {
-    pub persons: Vec<Person>,
-}
-
 /// Person with email count statistics derived from the emails table.
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct PersonWithCounts {
     #[serde(flatten)]
     pub person: Person,
@@ -35,8 +26,7 @@ pub struct PersonWithCounts {
     pub in_to_count: i64,
 }
 
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[derive(Debug, Serialize)]
 pub struct PersonsWithCountsResponse {
     pub persons: Vec<PersonWithCounts>,
 }
