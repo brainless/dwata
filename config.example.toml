@@ -17,9 +17,6 @@ path = "dwata.db"
 host = "127.0.0.1"
 port = 8080
 
-[gui]
-port = 3030
-
 [jwt]
 secret           = "your-super-secret-jwt-key-change-this-in-production"
 expiration_hours = 24
