@@ -53,6 +53,8 @@ pub fn parse_to_utc_timestamp_ms(raw: &str) -> Option<i64> {
 ///
 /// Designed for use when building `Bill` or `FinancialTransaction` structs:
 /// ```
+/// use dwata_agents::date_parser::parse_date_pair;
+///
 /// let (raw, parsed) = parse_date_pair("15 Jan 2025");
 /// // raw   = Some("15 Jan 2025")
 /// // parsed = Some("2025-01-15")
