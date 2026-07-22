@@ -86,7 +86,7 @@ This split is a direction, not a requirement for the initial cleanup. Avoid coup
 ## Tasks
 
 - [x] Inventory every Tauri, SolidJS/GUI, TypeScript API-generation, GUI-embedding, and legacy launcher/packaging reference. Identify whether it is active code, documentation, a release asset, or historical task material. See [the inventory](001-native-restart-and-legacy-ui-removal-inventory.md).
-- [ ] Remove the `tauri/` project, including the Tauri Rust app, Node package files, generated capabilities/schema files, sidecar binary, icons, and Tauri-specific README.
+- [x] Remove the `tauri/` project, including the Tauri Rust app, Node package files, generated capabilities/schema files, sidecar binary, icons, and Tauri-specific README.
 - [ ] Remove the `gui/` project, including SolidJS source, Vite configuration, Node package files, generated `api-types`, screenshots or assets that are solely legacy GUI documentation, and GUI-only guides.
 - [ ] Remove the legacy launch script (`run-dwata-app.sh`) and any Tauri-sidecar build or release wiring.
 - [ ] Delete `dwata-api` GUI embedding/static-serving code and its default fallback route. Ensure API requests still resolve normally and unknown routes return an API-appropriate 404.
