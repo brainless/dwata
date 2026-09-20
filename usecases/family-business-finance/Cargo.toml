@@ -1,0 +1,13 @@
+[package]
+name = "dwata-usecase-family-business-finance"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+csv = "1"

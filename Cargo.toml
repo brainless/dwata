@@ -2,7 +2,8 @@
 resolver = "2"
 members = ["dwata-agents",
     "dwata-api",
-    "shared-types"
+    "shared-types",
+    "usecases/family-business-finance"
 ]
 
 [workspace.dependencies]
